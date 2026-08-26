@@ -11,7 +11,9 @@
     "baseUrl": "./src",
     "paths": {
       "@/*": ["modules/*"],
-      "~/*": ["*"]
+      "~/*": ["*"],
+      "@/components/*": ["finance-ui/components/*"],
+      "@/lib/*": ["finance-ui/lib/*"]
     },
     "composite": false
   },
