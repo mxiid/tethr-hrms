@@ -131,28 +131,6 @@ const employeeNavigation: readonly NavigationEntry[] = [
 
 const workspaceUsersItem: NavigationItem = { label: 'Users', to: '/users', icon: IconUserCog };
 
-const SECTION_LABELS: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/clients': 'Client portfolio',
-  '/client': 'People overview',
-  '/me': 'My workspace',
-  '/me/profile': 'My profile',
-  '/me/leave': 'Leave',
-  '/me/payslips': 'Payslips',
-  '/me/holidays': 'Holidays',
-  '/me/feedback': 'Feedback',
-  '/employees': 'Employees',
-  '/employees/org-chart': 'Org chart',
-  '/attendance': 'Time & attendance',
-  '/compensation': 'Pay',
-  '/payroll': 'Payroll',
-  '/billing': 'Billing',
-  '/hiring': 'Hiring requests',
-  '/leave': 'Leave triage',
-  '/announcements': 'News bulletin',
-  '/feedback': 'Employee feedback',
-  '/users': 'Workspace users',
-};
 
 export const AppShell = () => {
   const { theme, toggle } = useTheme();
@@ -240,7 +218,6 @@ export const AppShell = () => {
 
   const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
   const ThemeIcon = theme.name === 'light' ? IconMoon : IconSun;
-  const section = SECTION_LABELS[pathname] ?? 'Workspace';
   const accountInitials = (user?.email ?? '?').slice(0, 2).toUpperCase();
   const portal = user?.portal ?? 'none';
   const navigation =
@@ -646,11 +623,6 @@ export const AppShell = () => {
       ) : null}
 
       <main className="app-content">
-        <div className="app-content-breadcrumb">
-          <span>{portalLabel(portal)}</span>
-          <span aria-hidden="true">/</span>
-          <strong>{section}</strong>
-        </div>
         <Outlet />
       </main>
     </div>

@@ -787,20 +787,6 @@ button {
   padding: 0 var(--hrms-space-10);
 }
 
-.app-content-breadcrumb {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: var(--hrms-space-1);
-  padding: var(--hrms-space-3) 0 0;
-  color: var(--hrms-color-text-tertiary);
-  font-size: var(--hrms-font-size-xs);
-}
-
-.app-content-breadcrumb strong {
-  color: var(--hrms-color-text-primary);
-  font-weight: var(--hrms-font-weight-medium);
-}
 
 .page-frame {
   display: grid;
@@ -2215,6 +2201,7 @@ button {
    --------------------------------------------------------------------------- */
 .employee-app {
   max-width: 720px;
+  width: 100%;
   margin: 0 auto;
   padding: var(--hrms-space-6);
 }
@@ -2348,6 +2335,7 @@ button {
    it holds. */
 .profile-page {
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
   padding: var(--hrms-space-6);
 }
@@ -2781,6 +2769,7 @@ button {
 .onboarding-flow {
   display: block;
   max-width: 1060px;
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -3097,7 +3086,7 @@ button {
 
 @media (max-width: 760px) {
   .onboarding-page {
-    padding: var(--hrms-space-4);
+    padding: var(--hrms-space-3);
   }
 
   .onboarding-field-pair {
@@ -3246,8 +3235,12 @@ button {
     display: none;
   }
 
+  .app-content {
+    padding: 0;
+  }
+
   .employees-content {
-    padding: var(--hrms-space-4);
+    padding: var(--hrms-space-3);
   }
 
   .page-header,
@@ -3323,7 +3316,7 @@ button {
 
   .profile-page,
   .employee-app {
-    padding: var(--hrms-space-4);
+    padding: var(--hrms-space-3);
   }
 
   .onboarding-flow-title {
@@ -4486,7 +4479,7 @@ button {
   .announcements-panel,
   .feedback-panel,
   .leave-panel {
-    padding: var(--hrms-space-4);
+    padding: var(--hrms-space-3);
   }
 
   .employee-identity {
