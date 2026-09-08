@@ -2322,8 +2322,11 @@ button {
   text-decoration: underline;
 }
 
+/* A grid, not a flex row: with flex the two buttons size from their own labels,
+   so "Check in" and "Check out" came out a few pixels apart on a narrow phone. */
 .me-hero-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--hrms-space-2);
   margin-top: var(--hrms-space-4);
 }
@@ -2333,7 +2336,6 @@ button {
    pretend to. */
 .me-hero-button {
   display: flex;
-  flex: 1 1 0;
   align-items: center;
   justify-content: center;
   gap: var(--hrms-space-2);
@@ -2346,7 +2348,15 @@ button {
   cursor: pointer;
   font-size: var(--hrms-font-size-sm);
   font-weight: var(--hrms-font-weight-medium);
+  /* Two words is enough to wrap "Check out" onto a second line at 360px, which
+     leaves the pair ragged and unequal. The label holds one line and the button
+     takes whatever width that needs. */
+  white-space: nowrap;
   transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.me-hero-button svg {
+  flex-shrink: 0;
 }
 
 .me-hero-button:hover:not(:disabled) {
