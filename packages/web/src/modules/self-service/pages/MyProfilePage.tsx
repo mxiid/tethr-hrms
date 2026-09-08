@@ -137,7 +137,13 @@ const WORKER_TYPE_LABELS: Record<string, string> = {
 
 export const MyProfilePage = () => {
   const { theme } = useTheme();
-  const { data, loading, refetch } = useQuery<MyProfileData>(MY_PROFILE_QUERY);
+  // `myCurrentSalaryRevision` is effective-dated, so the query has to say which
+  // day it is asking about — without it the whole document fails validation and
+  // the page renders every field empty.
+  const asOf = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const { data, loading, refetch } = useQuery<MyProfileData>(MY_PROFILE_QUERY, {
+    variables: { asOf },
+  });
   const [updateProfile, { loading: saving }] = useMutation(UPDATE_MY_EMPLOYEE_PROFILE_MUTATION);
   const [updatePhoto, { loading: savingPhoto }] = useMutation(UPDATE_MY_EMPLOYEE_PHOTO_MUTATION);
 

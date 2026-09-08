@@ -233,7 +233,7 @@ export const UPDATE_MY_EMPLOYEE_PHOTO_MUTATION = gql`
 // Just the employee identity plus the editable profile — the profile page has no
 // use for leave balances, payslips, or holidays, so it does not pull them.
 export const MY_PROFILE_QUERY = gql`
-  query MyProfile {
+  query MyProfile($asOf: String!) {
     myEmployee {
       id
       employeeNumber
@@ -249,7 +249,7 @@ export const MY_PROFILE_QUERY = gql`
         positionTitle
       }
     }
-    myCurrentSalaryRevision {
+    myCurrentSalaryRevision(asOf: $asOf) {
       id
       currency
       annualAmount

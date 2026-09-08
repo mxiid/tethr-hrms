@@ -9,6 +9,8 @@ import {
   IconClock,
   IconCurrencyDollar,
   IconFileInvoice,
+  IconFileText,
+  IconHome,
   IconLayoutDashboard,
   IconLogout,
   IconMenu2,
@@ -124,9 +126,15 @@ const clientNavigation: readonly NavigationEntry[] = [
   { kind: 'link', label: 'Announcements', to: '/announcements', icon: IconSpeakerphone },
 ];
 
+// Deliberately five leaf destinations and no groups: an employee sees only their
+// own screens, never the shape of the rest of the product. The same five render
+// as top pills on a desktop and as the bottom bar on a phone.
 const employeeNavigation: readonly NavigationEntry[] = [
-  { kind: 'link', label: 'My workspace', to: '/me', icon: IconUserCircle },
-  { kind: 'link', label: 'News', to: '/announcements', icon: IconSpeakerphone },
+  { kind: 'link', label: 'Home', to: '/me', icon: IconHome },
+  { kind: 'link', label: 'Attendance', to: '/me/attendance', icon: IconClock },
+  { kind: 'link', label: 'Leave', to: '/me/leave', icon: IconPlaneDeparture },
+  { kind: 'link', label: 'Payslips', to: '/me/payslips', icon: IconFileText },
+  { kind: 'link', label: 'Profile', to: '/me/profile', icon: IconUserCircle },
 ];
 
 const workspaceUsersItem: NavigationItem = { label: 'Users', to: '/users', icon: IconUserCog };
@@ -226,6 +234,10 @@ export const AppShell = () => {
       : portal === 'client'
         ? clientNavigation
         : employeeNavigation;
+  // The employee portal is a different kind of surface: five of their own
+  // screens and nothing else. It drops the search field and the drawer, and on a
+  // phone its nav becomes a fixed bottom bar instead of a hamburger.
+  const isEmployeePortal = portal === 'employee';
   const canManageUsers =
     user?.roleKeys?.includes('tethrAdmin') || user?.roleKeys?.includes('clientAdmin');
   const canManagePayroll =
@@ -307,6 +319,7 @@ export const AppShell = () => {
       <NavLink
         key={item.label}
         className={({ isActive }) => `nav-pill${isActive ? ' is-active' : ''}`}
+        end={isEmployeePortal}
         to={item.to}
       >
         <Icon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
@@ -355,22 +368,27 @@ export const AppShell = () => {
   };
 
   return (
-    <div className="app-shell" style={chipColorVar}>
+    <div
+      className={`app-shell${isEmployeePortal ? ' app-shell-employee' : ''}`}
+      style={chipColorVar}
+    >
       <header className="app-topnav">
         <div className="topnav-left">
-          <button
-            aria-expanded={mobileNavOpen}
-            aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
-            className="mobile-nav-toggle"
-            type="button"
-            onClick={() => setMobileNavOpen((open) => !open)}
-          >
-            {mobileNavOpen ? (
-              <IconX size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
-            ) : (
-              <IconMenu2 size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
-            )}
-          </button>
+          {isEmployeePortal ? null : (
+            <button
+              aria-expanded={mobileNavOpen}
+              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+              className="mobile-nav-toggle"
+              type="button"
+              onClick={() => setMobileNavOpen((open) => !open)}
+            >
+              {mobileNavOpen ? (
+                <IconX size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
+              ) : (
+                <IconMenu2 size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
+              )}
+            </button>
+          )}
           <div className="topnav-brand" aria-hidden="true">
             H
           </div>
@@ -452,11 +470,13 @@ export const AppShell = () => {
         </nav>
 
         <div className="topnav-right">
-          <label className="topbar-search">
-            <IconSearch size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            <input aria-label="Search" placeholder="Search" ref={searchInputRef} type="search" />
-            <kbd className="topbar-search-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
-          </label>
+          {isEmployeePortal ? null : (
+            <label className="topbar-search">
+              <IconSearch size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <input aria-label="Search" placeholder="Search" ref={searchInputRef} type="search" />
+              <kbd className="topbar-search-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+            </label>
+          )}
 
           <div className="topbar-actions">
             <button className="icon-button" title="Notifications" type="button">
@@ -625,6 +645,32 @@ export const AppShell = () => {
       <main className="app-content">
         <Outlet />
       </main>
+
+      {/* Phone navigation for the employee portal: the same five destinations as
+          the pill row, moved to thumb reach and carrying the workspace's own
+          color on whichever pill is open. Hidden above the phone breakpoint,
+          where the pill row is already visible. */}
+      {isEmployeePortal ? (
+        <nav className="bottom-nav" aria-label="Employee navigation">
+          {visibleNavigation.map((entry) => {
+            if (entry.kind !== 'link') return null;
+            const Icon = entry.icon;
+            return (
+              <NavLink
+                key={entry.label}
+                className={({ isActive }) => `bottom-nav-item${isActive ? ' is-active' : ''}`}
+                end
+                to={entry.to}
+              >
+                <span className="bottom-nav-pill">
+                  <Icon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                </span>
+                <span className="bottom-nav-label">{entry.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+      ) : null}
     </div>
   );
 };

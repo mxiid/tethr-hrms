@@ -9,7 +9,9 @@ import {
   IconClock,
   IconMessageCircle,
   IconPlaneDeparture,
-  IconUserCircle,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconSpeakerphone,
   type TablerIcon,
 } from '@tabler/icons-react';
 import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
@@ -18,6 +20,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { downloadBase64File } from '../../../app/download';
 import { ClockInOutCard } from '../../attendance/components/ClockInOutCard';
+import { useSelfClock } from '../../attendance/hooks/useSelfClock';
 import {
   MY_PAYSLIP_PDF_QUERY,
   MY_PAYSLIPS_QUERY,
@@ -130,60 +133,67 @@ type WorkspaceData = {
   readonly myCurrentSalaryRevision: SalaryRecord | null;
 };
 
-type EmployeeToolKey = 'leave' | 'payslips' | 'holidays' | 'profile' | 'feedback';
+type EmployeeViewKey = 'attendance' | 'leave' | 'payslips' | 'holidays' | 'feedback';
 
-type ToolCounts = { readonly leaveDays: number; readonly upcomingHolidays: number };
+type HomeCounts = { readonly leaveDays: number; readonly upcomingHolidays: number };
 
-// The home screen is a launcher: one row per thing an employee does, each on its
-// own page. Keeping the list here means the home screen and the sub-page header
-// read from the same source.
-const EMPLOYEE_TOOLS: ReadonlyArray<{
-  readonly key: EmployeeToolKey;
-  readonly to: string;
+// The pages this component renders behind /me/*. Each one is titled from here so
+// the sub-page header and the launcher never drift apart.
+const EMPLOYEE_VIEWS: ReadonlyArray<{
+  readonly key: EmployeeViewKey;
   readonly label: string;
   readonly blurb: string;
-  readonly icon: TablerIcon;
-  readonly meta: (counts: ToolCounts) => string;
 }> = [
   {
-    key: 'leave',
+    key: 'attendance',
+    label: 'Attendance',
+    blurb: 'Check in, check out, and see the hours already recorded.',
+  },
+  { key: 'leave', label: 'Leave', blurb: 'Request time off and track what you have left.' },
+  { key: 'payslips', label: 'Payslips', blurb: 'Every payslip issued to you, with a PDF.' },
+  { key: 'holidays', label: 'Holidays', blurb: 'Public holidays on your calendar.' },
+  { key: 'feedback', label: 'Feedback', blurb: 'Tell HR what is working and what is not.' },
+];
+
+// The home screen is a launcher: check in at the top, then one row per thing an
+// employee actually does. Nothing here exposes how the rest of the product is
+// laid out — an employee only ever sees their own five destinations.
+const QUICK_LINKS: ReadonlyArray<{
+  readonly to: string;
+  readonly label: string;
+  readonly icon: TablerIcon;
+  readonly meta: (counts: HomeCounts) => string;
+}> = [
+  {
     to: '/me/leave',
-    label: 'Leave',
-    blurb: 'Request time off and track what you have left.',
+    label: 'Request leave',
     icon: IconPlaneDeparture,
     meta: (counts) => `${counts.leaveDays.toFixed(1)} days available`,
   },
   {
-    key: 'payslips',
-    to: '/me/payslips',
-    label: 'Payslips',
-    blurb: 'Every payslip issued to you, with a PDF to download.',
-    icon: IconFileText,
-    meta: () => 'View and download',
+    to: '/me/attendance',
+    label: 'My attendance',
+    icon: IconClock,
+    meta: () => 'Hours recorded',
   },
+  { to: '/me/payslips', label: 'View payslips', icon: IconFileText, meta: () => 'Download a PDF' },
   {
-    key: 'holidays',
     to: '/me/holidays',
-    label: 'Holidays',
-    blurb: 'Public holidays on your calendar.',
+    label: 'Upcoming holidays',
     icon: IconCalendarEvent,
-    meta: (counts) => `${counts.upcomingHolidays} upcoming`,
+    meta: (counts) => `${counts.upcomingHolidays} in the next 120 days`,
   },
   {
-    key: 'profile',
-    to: '/me/profile',
-    label: 'Profile',
-    blurb: 'Contact details, addresses, emergency contact.',
-    icon: IconUserCircle,
-    meta: () => 'Contact and emergency details',
+    to: '/announcements',
+    label: 'Company news',
+    icon: IconSpeakerphone,
+    meta: () => 'Announcements from HR',
   },
   {
-    key: 'feedback',
     to: '/me/feedback',
-    label: 'Feedback',
-    blurb: 'Tell HR what is working and what is not.',
+    label: 'Share feedback',
     icon: IconMessageCircle,
-    meta: () => 'Share with HR',
+    meta: () => 'Tell HR what is working',
   },
 ];
 
@@ -231,6 +241,58 @@ const requestLabel: Record<ApprovalStatus, string> = {
   cancelled: 'Cancelled',
 };
 
+type EmployeeHomeHeroProps = { readonly firstName: string };
+
+// The check-in card doubles as the greeting: the one thing an employee opens the
+// app to do sits above everything else, the way a phone HR app puts it.
+const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
+  const { theme } = useTheme();
+  const clock = useSelfClock();
+
+  const status = clock.todayEntry
+    ? `${clock.todayEntry.hours.toFixed(2)} hours recorded today`
+    : clock.latestEntry
+      ? `Last recorded ${clock.latestEntry.hours.toFixed(2)} hours on ${formatDate(clock.latestEntry.date)}`
+      : 'No hours recorded yet';
+
+  return (
+    <section className="me-hero">
+      <h1 className="me-hero-title" id="employee-workspace-title">
+        Hey, {firstName}
+      </h1>
+      <p className="me-hero-status">{status}</p>
+
+      {clock.notice ? <p className="form-success">{clock.notice}</p> : null}
+      {clock.error ? (
+        <p className="auth-error" role="alert">
+          {clock.error}
+        </p>
+      ) : null}
+
+      <div className="me-hero-actions">
+        <button
+          className="me-hero-button"
+          disabled={clock.clockingIn}
+          type="button"
+          onClick={() => void clock.clockIn()}
+        >
+          <IconPlayerPlay size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          {clock.clockingIn ? 'Checking in...' : 'Check in'}
+        </button>
+        <button
+          className="me-hero-button"
+          disabled={clock.clockingOut}
+          type="button"
+          onClick={() => void clock.clockOut()}
+        >
+          <IconPlayerStop size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          {clock.clockingOut ? 'Checking out...' : 'Check out'}
+        </button>
+      </div>
+    </section>
+  );
+};
+
 export const EmployeeWorkspacePage = () => {
   const { theme } = useTheme();
   const date = useMemo(() => new Date(), []);
@@ -269,20 +331,17 @@ export const EmployeeWorkspacePage = () => {
     () => (data?.myLeaveBalances ?? []).reduce((sum, balance) => sum + balance.availableDays, 0),
     [data?.myLeaveBalances],
   );
-  const pendingRequestCount = (data?.myLeaveRequests ?? []).filter(
-    (request) => request.status === 'pending',
-  ).length;
-  const toolCounts: ToolCounts = {
+  const homeCounts: HomeCounts = {
     leaveDays: totalLeave,
     upcomingHolidays: (data?.upcomingHolidays ?? []).length,
   };
 
-  // Which tool is open follows the route, so back/forward and a shared link all
-  // behave. Anything that is not a known tool falls back to the launcher.
+  // Which page is open follows the route, so back/forward and a shared link all
+  // behave. Anything that is not a known view falls back to the launcher.
   const { pathname } = useLocation();
   const segment = pathname.replace(/^\/me\/?/, '');
-  const activeTool = EMPLOYEE_TOOLS.find((tool) => tool.key === segment) ?? null;
-  const view: EmployeeToolKey | 'home' = activeTool ? activeTool.key : 'home';
+  const activeView = EMPLOYEE_VIEWS.find((entry) => entry.key === segment) ?? null;
+  const view: EmployeeViewKey | 'home' = activeView ? activeView.key : 'home';
 
   const sortedRequests = useMemo(
     () =>
@@ -366,47 +425,63 @@ export const EmployeeWorkspacePage = () => {
     <main className="employee-app">
       {view === 'home' ? (
         <>
-          <header className="page-header">
-            <div>
-              <h1 className="page-title" id="employee-workspace-title">
-                Good day, {employee.firstName}
-              </h1>
-              <p className="page-subtitle">Clock in, then pick what you need.</p>
-            </div>
-          </header>
+          <EmployeeHomeHero firstName={employee.firstName} />
 
-          <ClockInOutCard />
+          <section className="me-section">
+            <h2 className="me-section-title">Quick links</h2>
+            <nav className="app-tiles" aria-label="Quick links">
+              {QUICK_LINKS.map((link) => {
+                const LinkIcon = link.icon;
+                return (
+                  <Link className="app-tile" key={link.to} to={link.to}>
+                    <span className="app-tile-icon">
+                      <LinkIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    </span>
+                    <span className="app-tile-copy">
+                      <span className="app-tile-label">{link.label}</span>
+                      <span className="app-tile-meta">{link.meta(homeCounts)}</span>
+                    </span>
+                    <IconChevronRight size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  </Link>
+                );
+              })}
+            </nav>
+          </section>
 
-          <div className="metric-strip employee-metrics">
-            <div className="metric-card">
-              <div className="metric-label">Leave available</div>
-              <div className="metric-value">{totalLeave.toFixed(1)} days</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-label">Pending requests</div>
-              <div className="metric-value">{pendingRequestCount}</div>
-            </div>
-          </div>
-
-          {/* The launcher. Each tool is its own page, so the home screen stays a
-              short list of things to do rather than every list at once. */}
-          <nav className="app-tiles" aria-label="Employee tools">
-            {EMPLOYEE_TOOLS.map((tool) => {
-              const ToolIcon = tool.icon;
-              return (
-                <Link className="app-tile" key={tool.key} to={tool.to}>
-                  <span className="app-tile-icon">
-                    <ToolIcon size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
-                  </span>
-                  <span className="app-tile-copy">
-                    <span className="app-tile-label">{tool.label}</span>
-                    <span className="app-tile-meta">{tool.meta(toolCounts)}</span>
-                  </span>
-                  <IconChevronRight size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          {/* The last few requests, not the full table — the table lives on the
+              leave page, and this is only here to answer "did mine go through?". */}
+          <section className="me-section">
+            <div className="me-section-head">
+              <h2 className="me-section-title">My requests</h2>
+              {sortedRequests.length > 0 ? (
+                <Link className="me-section-link" to="/me/leave">
+                  View all
                 </Link>
-              );
-            })}
-          </nav>
+              ) : null}
+            </div>
+            <div className="stack-list stack-card">
+              {sortedRequests.slice(0, 4).map((request) => (
+                <div className="stack-row" key={request.id}>
+                  <div className="stack-row-copy">
+                    <div className="employee-primary">
+                      {leaveTypesById.get(request.leaveTypeId)?.name ?? 'Leave'}
+                    </div>
+                    <div className="employee-secondary">
+                      {formatDate(request.startDate)} - {formatDate(request.endDate)} ·{' '}
+                      {request.dayCount.toFixed(1)} days
+                    </div>
+                  </div>
+                  <span className="chip" style={chipStyle(requestColor[request.status])}>
+                    <span className="chip-dot" />
+                    {requestLabel[request.status]}
+                  </span>
+                </div>
+              ))}
+              {sortedRequests.length === 0 ? (
+                <div className="table-empty">You have no requests</div>
+              ) : null}
+            </div>
+          </section>
         </>
       ) : (
         <>
@@ -417,11 +492,13 @@ export const EmployeeWorkspacePage = () => {
           <header className="page-header">
             <div>
               <h1 className="page-title" id="employee-workspace-title">
-                {activeTool?.label ?? 'My workspace'}
+                {activeView?.label ?? 'My workspace'}
               </h1>
-              <p className="page-subtitle">{activeTool?.blurb ?? ''}</p>
+              <p className="page-subtitle">{activeView?.blurb ?? ''}</p>
             </div>
           </header>
+
+          {view === 'attendance' ? <ClockInOutCard /> : null}
 
           {view === 'leave' ? (
             <>

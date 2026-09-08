@@ -571,6 +571,87 @@ button {
   background: var(--hrms-color-background-tertiary);
 }
 
+/* Employee bottom bar. Hidden by default — above the phone breakpoint the pill
+   row in the header already carries these five destinations. The bar takes the
+   same brand wash as the header, and the open destination gets a pill in the
+   workspace's own color rather than a bare tinted icon. */
+.bottom-nav {
+  position: fixed;
+  z-index: 30;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+  padding: var(--hrms-space-2) var(--hrms-space-2)
+    calc(var(--hrms-space-2) + env(safe-area-inset-bottom, 0px));
+  background: color-mix(
+    in srgb,
+    var(--chip-color, var(--hrms-color-tag-gray)) 6%,
+    var(--hrms-color-background-primary)
+  );
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--hrms-space-1) 0;
+  color: var(--hrms-color-text-tertiary);
+  text-decoration: none;
+}
+
+.bottom-nav-pill {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 28px;
+  border-radius: var(--hrms-radius-pill);
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.bottom-nav-label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bottom-nav-item.is-active {
+  color: color-mix(
+    in srgb,
+    var(--chip-color, var(--hrms-color-tag-gray)) 75%,
+    var(--hrms-color-text-primary)
+  );
+}
+
+.bottom-nav-item.is-active .bottom-nav-pill {
+  background: color-mix(
+    in srgb,
+    var(--chip-color, var(--hrms-color-tag-gray)) 22%,
+    transparent
+  );
+}
+
+@media (max-width: 760px) {
+  .bottom-nav {
+    display: grid;
+  }
+
+  /* The bar is fixed, so the page needs its height back as padding or the last
+     row of every employee screen sits underneath it. */
+  .app-shell-employee .app-content {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .app-subnav {
   display: flex;
   justify-content: center;
@@ -2196,49 +2277,155 @@ button {
 }
 
 /* ---------------------------------------------------------------------------
-   Employee app. /me is a launcher — clock card, two live figures, then a list of
-   tools that each open their own page — rather than every list stacked at once.
+   Employee app. /me is deliberately the smallest surface in the product: a
+   check-in card, a short list of quick links, and the state of your own
+   requests. An employee never sees the shape of the rest of the app — no
+   groups, no search, no drawer — and on a phone the nav moves to a fixed
+   bottom bar so the whole thing reads as a mobile app.
    --------------------------------------------------------------------------- */
 .employee-app {
-  max-width: 720px;
+  max-width: 640px;
   width: 100%;
   margin: 0 auto;
   padding: var(--hrms-space-6);
 }
 
-.app-tiles {
-  display: grid;
+/* The greeting and the check-in are one card: the thing an employee opens the
+   app to do is the first thing under their name. */
+.me-hero {
+  padding: var(--hrms-space-5);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+}
+
+.me-hero-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-lg);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
+.me-hero-status {
+  margin: var(--hrms-space-2) 0 0;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+}
+
+.me-hero-link {
+  color: color-mix(in srgb, var(--chip-color, var(--hrms-color-tag-gray)) 70%, var(--hrms-color-text-primary));
+  font-weight: var(--hrms-font-weight-medium);
+  text-decoration: none;
+}
+
+.me-hero-link:hover {
+  text-decoration: underline;
+}
+
+.me-hero-actions {
+  display: flex;
   gap: var(--hrms-space-2);
   margin-top: var(--hrms-space-4);
 }
 
-.app-tile {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 16px;
+/* One tap target per action, both the same weight: without a query for open
+   clock events the app cannot know which one you need next, so it does not
+   pretend to. */
+.me-hero-button {
+  display: flex;
+  flex: 1 1 0;
   align-items: center;
-  gap: var(--hrms-space-3);
-  padding: var(--hrms-space-3) var(--hrms-space-4);
+  justify-content: center;
+  gap: var(--hrms-space-2);
+  min-height: 44px;
+  padding: 0 var(--hrms-space-4);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  cursor: pointer;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.me-hero-button:hover:not(:disabled) {
+  background: var(--hrms-color-background-quaternary);
+}
+
+.me-hero-button:disabled {
   color: var(--hrms-color-text-tertiary);
+  cursor: not-allowed;
+}
+
+.me-section {
+  margin-top: var(--hrms-space-6);
+}
+
+.me-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--hrms-space-3);
+}
+
+.me-section-title {
+  margin: 0;
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.me-section-link {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  text-decoration: none;
+}
+
+.me-section-link:hover {
+  color: var(--hrms-color-text-primary);
+}
+
+/* Quick links are one card of hairline-divided rows rather than six separate
+   boxes — six bordered cards is more chrome than six labels deserve. */
+.app-tiles {
+  display: grid;
+  margin-top: var(--hrms-space-2);
   background: var(--hrms-color-background-secondary);
   border: 1px solid var(--hrms-color-border-light);
   border-radius: var(--hrms-radius-md);
+  overflow: hidden;
+}
+
+.app-tile {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: var(--hrms-space-3);
+  min-height: 56px;
+  padding: var(--hrms-space-3) var(--hrms-space-4);
+  color: var(--hrms-color-text-tertiary);
+  background: transparent;
+  border-bottom: 1px solid var(--hrms-color-border-light);
   text-decoration: none;
   transition: var(--hrms-animation-clickable-background-transition);
 }
 
+.app-tile:last-child {
+  border-bottom: 0;
+}
+
 .app-tile:hover {
-  border-color: var(--hrms-color-border-strong);
-  background: var(--hrms-color-background-primary);
+  background: var(--hrms-color-background-tertiary);
 }
 
 .app-tile-icon {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  color: var(--hrms-color-accent-accent9);
-  background: var(--hrms-color-background-tertiary);
-  border-radius: var(--hrms-radius-md);
+  width: 24px;
+  height: 24px;
+  color: var(--hrms-color-text-secondary);
 }
 
 .app-tile-copy {
@@ -2250,12 +2437,53 @@ button {
 .app-tile-label {
   color: var(--hrms-color-text-primary);
   font-size: var(--hrms-font-size-sm);
-  font-weight: var(--hrms-font-weight-semi-bold);
+  font-weight: var(--hrms-font-weight-medium);
 }
 
 .app-tile-meta {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xs);
+}
+
+/* A list of records that is genuinely two fields wide — recorded days, recent
+   requests — as rows rather than a table that would only be collapsed back into
+   rows at the phone breakpoint anyway. */
+.stack-list {
+  display: grid;
+}
+
+.stack-card {
+  margin-top: var(--hrms-space-2);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  overflow: hidden;
+}
+
+.stack-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-3);
+  min-height: 56px;
+  padding: var(--hrms-space-3) var(--hrms-space-4);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.stack-row:last-child {
+  border-bottom: 0;
+}
+
+.stack-row-copy {
+  min-width: 0;
+}
+
+.stack-row-figure {
+  flex-shrink: 0;
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  font-variant-numeric: tabular-nums;
 }
 
 .employee-form-card {
@@ -2267,10 +2495,6 @@ button {
    the main column as a card rather than a panel section. */
 .clock-card {
   padding: var(--hrms-space-5);
-  margin-bottom: var(--hrms-space-4);
-}
-
-.clock-card .panel-title-row {
   margin-bottom: var(--hrms-space-4);
 }
 

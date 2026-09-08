@@ -2,6 +2,17 @@
 
 > As of 2026-09-04 (`feat/attendance-module-and-ux-revamp`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## Employee portal reduced to a phone app (2026-09-09)
+
+The employee surface is now the smallest one in the product, on the principle that an employee should never see the shape of the rest of it.
+
+- **Five destinations, no groups.** `employeeNavigation` is Home / Attendance / Leave / Payslips / Profile, all leaf links. The portal also drops the search field and the hamburger drawer, and its pills match exactly (`end`) — `/me` is a prefix of every other employee route.
+- **Bottom bar below 760px.** The same five entries render as a fixed bottom bar (`.bottom-nav`), tinted with the workspace brand color, the open destination carrying a brand-colored pill. Above the breakpoint the header pill row already covers them, so the bar is hidden. `.app-shell-employee .app-content` gets the bar's height back as padding.
+- **Home is a greeting + launcher**: check in / check out under the employee's name, a single card of hairline-divided quick links, and the last four of their own requests. The metric strip and the six-card tile grid are gone.
+- **Attendance is its own page** (`/me/attendance`): the clock card plus the days already recorded. `useSelfClock` (new, in `modules/attendance/hooks`) holds the clock state so the home hero and that page read one query; the card no longer repeats the page title.
+- **Fixed while verifying:** `MY_PROFILE_QUERY` selected the effective-dated `myCurrentSalaryRevision` with no `asOf`, so the whole document failed validation (400) and `/me/profile` rendered every field empty. It now passes today's date.
+- **Verified live** against the hosted Supabase DB as `employee@demo.test` at 390x844 and 1280x900, light and dark: check in and check out both round-trip, and the only console error left is the dev server's missing favicon. Typecheck, lint (0 errors), and 132 tests green.
+
 ## Attendance exposure + authorization fix (2026-09-04)
 
 **Security.** `modules/attendance` was fully built but had never been wired to authorization: `attendance.resolver.ts` was the only module resolver carrying no `@UseGuards`/`@RequirePermissions`, there is no `APP_GUARD`, and `PERMISSIONS` had no attendance entries at all. Because `PermissionsGuard` returns `true` when a handler has no metadata, every clock and timesheet operation was reachable by any caller, for any `employeeId`.

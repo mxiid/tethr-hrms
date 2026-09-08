@@ -103,6 +103,7 @@ export const AppRouter = () => (
             <Route path="/me/profile" element={<MyProfilePage />} />
             {/* Each employee tool is its own page; the shared component reads the
                 segment so back/forward and shared links behave. */}
+            <Route path="/me/attendance" element={<EmployeeWorkspacePage />} />
             <Route path="/me/leave" element={<EmployeeWorkspacePage />} />
             <Route path="/me/payslips" element={<EmployeeWorkspacePage />} />
             <Route path="/me/holidays" element={<EmployeeWorkspacePage />} />
