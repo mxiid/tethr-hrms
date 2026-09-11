@@ -5,7 +5,7 @@ import type { WorkspaceBrandColor } from '@hrms/shared';
 // checks pass; cyan<->pink carries a CVD floor-band warning, mitigated by
 // always shipping a legend + direct labels alongside it). Never reorder this
 // per chart, and never cycle past it — a 7th series folds into "Other".
-export const CATEGORICAL_ORDER: readonly WorkspaceBrandColor[] = [
+const CATEGORICAL_ORDER: readonly WorkspaceBrandColor[] = [
   'blue',
   'green',
   'tomato',
@@ -14,7 +14,7 @@ export const CATEGORICAL_ORDER: readonly WorkspaceBrandColor[] = [
   'cyan',
 ];
 
-export const categoricalColorAt = (index: number): WorkspaceBrandColor =>
+const categoricalColorAt = (index: number): WorkspaceBrandColor =>
   CATEGORICAL_ORDER[index % CATEGORICAL_ORDER.length] ?? 'gray';
 
 export const categoricalColorVarAt = (index: number): string =>

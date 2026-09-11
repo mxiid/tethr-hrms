@@ -45,7 +45,7 @@ import { SalaryRevision } from './entities/salary-revision.entity';
 import { SalaryStructureComponent } from './entities/salary-structure-component.entity';
 import { SalaryStructure } from './entities/salary-structure.entity';
 
-export type CreatePayComponentData = {
+type CreatePayComponentData = {
   readonly name: string;
   readonly code: string;
   readonly category: PayComponentCategory;
@@ -54,7 +54,7 @@ export type CreatePayComponentData = {
   readonly dependsOnPaymentDays?: boolean;
 };
 
-export type CreateSalaryStructureData = {
+type CreateSalaryStructureData = {
   readonly name: string;
   readonly code: string;
   readonly gradeId?: GradeId | null;
@@ -65,7 +65,7 @@ export type CreateSalaryStructureData = {
 
 // One line of a structure's gross-split composition. Replaces the whole
 // composition on write (simple, auditable, no partial-state drift).
-export type StructureComponentData = {
+type StructureComponentData = {
   readonly componentId: PayComponentId;
   readonly calcType: StructureComponentCalcType;
   readonly value: number;
@@ -85,7 +85,7 @@ export type StructureBreakdownLine = {
   readonly amount: number;
 };
 
-export type ReviseSalaryData = {
+type ReviseSalaryData = {
   readonly employeeId: EmployeeId;
   readonly salaryStructureId: SalaryStructureId;
   readonly effectiveDate: IsoDate;
@@ -95,7 +95,7 @@ export type ReviseSalaryData = {
   readonly note?: string | null;
 };
 
-export type CreatePayAdjustmentData = {
+type CreatePayAdjustmentData = {
   readonly employeeId: EmployeeId;
   readonly componentId: PayComponentId;
   readonly amount: number;
@@ -114,7 +114,7 @@ export type CreatePayAdjustmentData = {
 
 // A period adjustment resolved to the display facts payroll snapshots onto a run
 // line component (and thus a payslip), carrying its provenance.
-export type ResolvedAdjustment = {
+type ResolvedAdjustment = {
   readonly componentId: PayComponentId;
   readonly componentCode: string;
   readonly componentName: string;
@@ -129,7 +129,7 @@ export type ResolvedAdjustment = {
   readonly note: string | null;
 };
 
-export type AwardBonusData = {
+type AwardBonusData = {
   readonly employeeId: EmployeeId;
   readonly awardDate: IsoDate;
   readonly currency: string;

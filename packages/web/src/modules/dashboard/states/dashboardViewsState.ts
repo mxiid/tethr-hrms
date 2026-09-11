@@ -8,7 +8,7 @@ export type DashboardView = {
   readonly widgets: readonly WidgetLayout[];
 };
 
-export type DashboardViewsState = {
+type DashboardViewsState = {
   readonly views: readonly DashboardView[];
   readonly activeViewId: string;
 };

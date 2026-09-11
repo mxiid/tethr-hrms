@@ -3,7 +3,7 @@
 // finalization snapshotting call this exact function, so what finance reviewed
 // is byte-for-byte what lands on the payslip. All arithmetic stays at 2 dp.
 
-export type CategorizedComponent = {
+type CategorizedComponent = {
   readonly category: string;
   readonly taxable: boolean;
   readonly amount: number;
@@ -18,7 +18,7 @@ export type DerivedLineTotals = {
 
 const toMoney = (value: number): number => Math.round(value * 100) / 100;
 
-export type ResolvedComponentAmount = {
+type ResolvedComponentAmount = {
   readonly defaultAmount: number;
   readonly amount: number;
   readonly dependsOnPaymentDays: boolean;

@@ -28,7 +28,7 @@ import { LeaveType } from './entities/leave-type.entity';
 import { HolidayService } from './holiday.service';
 import { LEAVE_REQUEST_REPOSITORY, LEAVE_TYPE_REPOSITORY } from './leave.tokens';
 
-export type SubmitLeaveRequestData = {
+type SubmitLeaveRequestData = {
   readonly employeeId: EmployeeId;
   readonly leaveTypeId: LeaveTypeId;
   readonly startDate: IsoDate;

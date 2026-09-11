@@ -24,7 +24,7 @@ import { EmployeeOffboardingTask } from './entities/employee-offboarding-task.en
 import { EmployeeSeparation } from './entities/employee-separation.entity';
 import { Employee } from './entities/employee.entity';
 
-export type CreateEmployeeData = {
+type CreateEmployeeData = {
   readonly employeeNumber: string;
   readonly firstName: string;
   readonly lastName: string;
@@ -44,7 +44,7 @@ export type CreateEmployeeData = {
   readonly workerType?: WorkerType;
 };
 
-export type UpdateEmployeeData = {
+type UpdateEmployeeData = {
   readonly firstName?: string | null;
   readonly middleName?: string | null;
   readonly lastName?: string | null;
@@ -63,7 +63,7 @@ export type UpdateEmployeeData = {
   readonly workerType?: WorkerType | null;
 };
 
-export type SeparateEmployeeData = {
+type SeparateEmployeeData = {
   readonly employeeId: EmployeeId;
   readonly type: SeparationType;
   readonly effectiveDate: IsoDate;

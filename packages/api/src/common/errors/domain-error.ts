@@ -56,13 +56,6 @@ export class TenantContextMissingError extends DomainError {
   }
 }
 
-// Thrown on an attempt to mutate an immutable snapshot (payslip, closed review).
-export class ImmutableRecordError extends DomainError {
-  constructor(message: string, details?: Readonly<Record<string, unknown>>) {
-    super('IMMUTABLE_RECORD', message, details);
-  }
-}
-
 // Thrown when an effective-dated write would overlap an existing record.
 export class EffectiveDatingError extends DomainError {
   constructor(message: string, details?: Readonly<Record<string, unknown>>) {

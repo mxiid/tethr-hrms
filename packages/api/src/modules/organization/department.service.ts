@@ -6,7 +6,7 @@ import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.reposit
 import { Department } from './entities/department.entity';
 import { DEPARTMENT_REPOSITORY } from './organization.tokens';
 
-export type CreateDepartmentInput = {
+type CreateDepartmentInput = {
   readonly name: string;
   readonly parentDepartmentId?: DepartmentId | null;
   readonly costCenterId?: CostCenterId | null;

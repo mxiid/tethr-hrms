@@ -11,7 +11,7 @@ import { useAuth } from '../../auth/hooks/useAuth';
 
 // A single "explore the product" step: a titled, linked action whose completion
 // is computed from real workspace data. `locked` steps render disabled.
-export type GettingStartedStep = {
+type GettingStartedStep = {
   readonly id: string;
   readonly title: string;
   readonly detail: string;
@@ -21,7 +21,7 @@ export type GettingStartedStep = {
   readonly locked?: boolean;
 };
 
-export type GettingStartedSteps = {
+type GettingStartedSteps = {
   readonly steps: readonly GettingStartedStep[];
   readonly loading: boolean;
   readonly error: boolean;

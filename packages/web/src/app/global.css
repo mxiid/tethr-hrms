@@ -43,16 +43,6 @@ button {
   background: var(--hrms-color-background-primary);
 }
 
-.app-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--hrms-space-6);
-  min-width: 0;
-  padding: var(--hrms-space-4);
-  background: var(--hrms-color-background-secondary);
-  border-right: 1px solid var(--hrms-color-border-light);
-}
-
 .brand-lockup {
   display: flex;
   align-items: center;
@@ -79,58 +69,19 @@ button {
   line-height: var(--hrms-line-height-md);
 }
 
-.brand-context,
-.sidebar-section-label,
 .employee-meta,
 .metric-label,
 .field-label,
-.panel-kicker,
-.activity-time {
+.panel-kicker {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xxs);
   font-weight: var(--hrms-font-weight-medium);
   line-height: var(--hrms-line-height-md);
 }
 
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--hrms-between-siblings-gap);
-}
-
-.sidebar-section-label {
-  padding: var(--hrms-space-4) var(--hrms-space-2) var(--hrms-space-1);
-  text-transform: uppercase;
-}
-
-.sidebar-nav-item {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  width: 100%;
-  min-height: 32px;
-  gap: var(--hrms-space-2);
-  padding: var(--hrms-space-2);
-  color: var(--hrms-color-text-secondary);
-  background: transparent;
-  border-radius: var(--hrms-radius-sm);
-  cursor: pointer;
-  text-align: left;
-  text-decoration: none;
-  transition: var(--hrms-animation-clickable-background-transition);
-}
-
-.sidebar-nav-item:hover,
-.sidebar-nav-item.is-active {
-  color: var(--hrms-color-text-primary);
-  background: var(--hrms-color-background-tertiary);
-}
-
-.sidebar-nav-item:focus-visible,
 .icon-button:focus-visible,
 .account-button:focus-visible,
-.button:focus-visible,
-.segmented-button:focus-visible {
+.button:focus-visible {
   outline: 3px solid var(--hrms-color-border-blue);
   outline-offset: 1px;
 }
@@ -143,65 +94,15 @@ button {
   outline-offset: 1px;
 }
 
-.sidebar-nav-item.is-disabled {
-  cursor: default;
-  opacity: 0.58;
-}
-
-.sidebar-nav-item.is-disabled:hover {
-  color: var(--hrms-color-text-secondary);
-  background: transparent;
-}
-
-.sidebar-nav-count {
-  color: var(--hrms-color-text-tertiary);
-  font-size: var(--hrms-font-size-xxs);
-}
-
-.app-main {
-  display: grid;
-  grid-template-rows: var(--hrms-layout-top-bar-height) minmax(0, 1fr);
-  min-width: 0;
-  min-height: 100vh;
-}
-
-.app-topbar {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(220px, 420px) auto;
-  align-items: center;
-  gap: var(--hrms-space-4);
-  padding: 0 var(--hrms-space-4);
-  background: var(--hrms-color-background-primary);
-  border-bottom: 1px solid var(--hrms-color-border-light);
-}
-
-.breadcrumb,
 .topbar-actions,
 .account-button,
 .panel-title-row,
 .employee-name-cell,
 .row-actions,
 .button,
-.segmented-control,
-.field-row,
-.activity-item {
+.field-row {
   display: flex;
   align-items: center;
-}
-
-.breadcrumb {
-  min-width: 0;
-  gap: var(--hrms-space-1);
-  color: var(--hrms-color-text-tertiary);
-  font-size: var(--hrms-font-size-xs);
-  white-space: nowrap;
-}
-
-.breadcrumb strong {
-  overflow: hidden;
-  color: var(--hrms-color-text-primary);
-  font-weight: var(--hrms-font-weight-medium);
-  text-overflow: ellipsis;
 }
 
 .topbar-search {
@@ -303,8 +204,7 @@ button {
 
 .icon-button,
 .account-button,
-.button,
-.segmented-button {
+.button {
   /* Same rounded-pill language as the top nav's pills, carried down to
      every other clickable surface in the app. */
   min-height: 32px;
@@ -323,8 +223,7 @@ button {
 }
 
 .icon-button:hover,
-.account-button:hover,
-.segmented-button:hover {
+.account-button:hover {
   background: var(--hrms-color-background-tertiary);
 }
 
@@ -1036,7 +935,6 @@ button {
 }
 
 .page-actions,
-.toolbar,
 .table-title-row,
 .metric-strip,
 .panel-actions {
@@ -1571,32 +1469,6 @@ button {
   min-width: 240px;
 }
 
-.toolbar {
-  justify-content: space-between;
-  margin-bottom: var(--hrms-space-3);
-}
-
-.segmented-control {
-  gap: var(--hrms-between-siblings-gap);
-  padding: var(--hrms-between-siblings-gap);
-  background: var(--hrms-color-background-secondary);
-  border: 1px solid var(--hrms-color-border-light);
-  border-radius: var(--hrms-radius-sm);
-}
-
-.segmented-button {
-  min-width: 52px;
-  padding: 0 var(--hrms-space-3);
-  color: var(--hrms-color-text-secondary);
-  background: transparent;
-}
-
-.segmented-button.is-active {
-  color: var(--hrms-color-text-primary);
-  background: var(--hrms-color-background-primary);
-  box-shadow: var(--hrms-color-box-shadow-light);
-}
-
 .table-shell {
   min-width: 0;
   background: var(--hrms-color-background-primary);
@@ -1705,10 +1577,6 @@ button {
   background: var(--hrms-color-background-secondary);
 }
 
-.checkbox-cell {
-  width: var(--hrms-layout-table-checkbox-column-width);
-}
-
 .employee-name-cell {
   min-width: 0;
   gap: var(--hrms-space-3);
@@ -1739,20 +1607,6 @@ button {
   margin-top: var(--hrms-between-siblings-gap);
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xs);
-}
-
-.table-title-row-end {
-  display: flex;
-  align-items: center;
-  gap: var(--hrms-space-3);
-}
-
-.segmented-button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--hrms-space-1);
-  font-size: var(--hrms-font-size-xs);
-  font-weight: var(--hrms-font-weight-medium);
 }
 
 /* Org chart — a top-down reporting tree built from each employee's manager.
@@ -2211,11 +2065,6 @@ button {
   white-space: nowrap;
 }
 
-.activity-list {
-  display: grid;
-  gap: var(--hrms-space-3);
-}
-
 .record-list {
   display: grid;
   gap: var(--hrms-space-2);
@@ -2305,29 +2154,6 @@ button {
 
 .onboarding-task-notes textarea {
   min-height: 64px;
-}
-
-.activity-item {
-  align-items: flex-start;
-  gap: var(--hrms-space-3);
-}
-
-.activity-marker {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  margin-top: 6px;
-  background: var(--hrms-color-accent-accent9);
-  border-radius: var(--hrms-radius-rounded);
-}
-
-.activity-title {
-  color: var(--hrms-color-text-primary);
-  font-weight: var(--hrms-font-weight-medium);
-}
-
-.activity-time {
-  margin-top: var(--hrms-between-siblings-gap);
 }
 
 .config-form {
@@ -2440,16 +2266,6 @@ button {
   margin: var(--hrms-space-2) 0 0;
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xs);
-}
-
-.me-hero-link {
-  color: color-mix(in srgb, var(--chip-color, var(--hrms-color-tag-gray)) 70%, var(--hrms-color-text-primary));
-  font-weight: var(--hrms-font-weight-medium);
-  text-decoration: none;
-}
-
-.me-hero-link:hover {
-  text-decoration: underline;
 }
 
 /* A grid, not a flex row: with flex the two buttons size from their own labels,
@@ -2657,24 +2473,6 @@ button {
 
 /* Self-service rail: one form at a time behind tabs, so the panel stops being a
    single long scroll of leave + profile + feedback stacked together. */
-.self-service-tabs {
-  margin: var(--hrms-space-4) 0 0;
-}
-
-.self-service-tabs .profile-tab {
-  padding: var(--hrms-space-2) var(--hrms-space-3);
-  font-size: var(--hrms-font-size-xs);
-}
-
-.self-service-panel .self-service-tabs + .self-service-section {
-  padding-top: var(--hrms-space-4);
-}
-
-.self-service-profile-link {
-  margin-top: var(--hrms-space-4);
-  color: inherit;
-  text-decoration: none;
-}
 
 /* The profile page is one long form rather than a stepped flow, so its footer
    carries a plain save rather than step navigation. */
@@ -3574,21 +3372,6 @@ button {
   }
 }
 
-.field-checkbox-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--hrms-space-2);
-  margin: var(--hrms-space-1) 0 var(--hrms-space-2);
-  font-size: var(--hrms-font-size-xs);
-  color: var(--hrms-color-text-secondary);
-  cursor: pointer;
-}
-
-.field-checkbox-row input[type='checkbox'] {
-  margin-top: 2px;
-  accent-color: var(--hrms-color-accent-accent9);
-}
-
 @media (max-width: 1100px) {
   .page-frame {
     grid-template-columns: minmax(0, 1fr);
@@ -3614,14 +3397,6 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .app-sidebar {
-    display: none;
-  }
-
-  .app-topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
   .topbar-search {
     display: none;
   }
@@ -3634,14 +3409,12 @@ button {
     padding: var(--hrms-space-3);
   }
 
-  .page-header,
-  .toolbar {
+  .page-header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .page-actions,
-  .segmented-control {
+  .page-actions {
     overflow-x: auto;
   }
 
@@ -4061,7 +3834,6 @@ button {
    scrolls) — neither column is its own scroll container, and `align-items:
    start` keeps a short column from being stretched to the taller one, which
    is what produced a stray scrollbar on the side panel. */
-.employee-workspace,
 .client-workspace,
 .workspace-users-page,
 .client-portfolio-page,
@@ -4075,7 +3847,6 @@ button {
   gap: var(--hrms-space-6);
 }
 
-.employee-workspace-content,
 .client-workspace-content,
 .workspace-users-content,
 .client-portfolio-content,
@@ -4087,7 +3858,6 @@ button {
   padding: var(--hrms-space-6);
 }
 
-.self-service-panel,
 .client-workspace-panel,
 .hiring-panel,
 .client-portfolio-panel,
@@ -4102,14 +3872,6 @@ button {
   box-shadow: var(--hrms-box-shadow-light);
 }
 
-.employee-identity {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: var(--hrms-space-3);
-}
-
-.employee-identity-avatar,
 .employee-identity-photo {
   width: 40px;
   height: 40px;
@@ -4182,52 +3944,17 @@ button {
 
 /* Editable profile photo on the employee "My workspace" page — a larger
    preview than the 40px header/detail avatar, with the same camera control. */
-.self-service-photo {
-  display: flex;
-  align-items: center;
-  gap: var(--hrms-space-4);
-}
 
-.self-service-photo .field-hint {
-  margin: 0;
-}
-
-.employee-photo-slot.self-service-photo-slot .employee-avatar,
-.employee-photo-slot.self-service-photo-slot .employee-identity-photo {
-  width: 72px;
-  height: 72px;
-  font-size: var(--hrms-font-size-lg);
-}
-
-.employee-photo-slot.self-service-photo-slot .employee-photo-edit {
-  width: 26px;
-  height: 26px;
-}
-
-.employee-metrics,
-.client-metrics {
+.employee-metrics {
   margin-bottom: var(--hrms-space-4);
-}
-
-.self-service-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
-  gap: var(--hrms-space-4);
-  margin-bottom: var(--hrms-space-4);
-}
-
-.self-service-grid .table-shell {
-  min-width: 0;
 }
 
 /* Consistent vertical rhythm between the stacked cards in the employee and
    client workspace main columns. */
-.employee-workspace-content > .table-shell,
 .client-workspace-content > .table-shell {
   margin-bottom: var(--hrms-space-4);
 }
 
-.employee-workspace-content > .table-shell:last-child,
 .client-workspace-content > .table-shell:last-child {
   margin-bottom: 0;
 }
@@ -4235,29 +3962,6 @@ button {
 /* "Employment facts" fills a wide card, so its key/value list is a two-column
    spec grid with the value stacked directly under its label — no more label
    marooned on the left, value on the far right. */
-.employment-facts .field-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--hrms-space-4) var(--hrms-space-10);
-  padding: var(--hrms-space-4);
-}
-
-.employment-facts .field-row {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-height: 0;
-}
-
-.employment-facts .field-value {
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-@media (max-width: 720px) {
-  .employment-facts .field-list {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
 
 .table-title {
   display: flex;
@@ -4639,14 +4343,6 @@ button {
   white-space: nowrap;
 }
 
-.dashboard-getting-started-meta {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--hrms-space-3);
-  min-width: 0;
-}
-
 .dashboard-getting-started-count {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xs);
@@ -4680,10 +4376,6 @@ button {
   transform: rotate(180deg);
 }
 
-.employment-summary {
-  border-bottom: 0;
-}
-
 .hiring-table tbody tr {
   cursor: pointer;
 }
@@ -4702,10 +4394,6 @@ button {
 
 .leave-triage-table tbody tr.is-selected {
   background: var(--hrms-color-background-secondary);
-}
-
-.bulletin-shell {
-  margin-bottom: var(--hrms-space-4);
 }
 
 .announcement-list {
@@ -4748,10 +4436,6 @@ button {
 .announcement-expiry {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xs);
-}
-
-.compact-announcement-list .announcement-item {
-  padding: var(--hrms-space-3) var(--hrms-space-4);
 }
 
 .request-note {
@@ -4827,7 +4511,6 @@ button {
 }
 
 @media (max-width: 1100px) {
-  .employee-workspace,
   .client-workspace,
   .workspace-users-page,
   .client-portfolio-page,
@@ -4838,7 +4521,6 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .self-service-panel,
   .client-workspace-panel,
   .hiring-panel,
   .client-portfolio-panel,
@@ -4848,14 +4530,9 @@ button {
     border-top: 1px solid var(--hrms-color-border-light);
     border-left: 0;
   }
-
-  .self-service-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 760px) {
-  .employee-workspace-content,
   .client-workspace-content,
   .workspace-users-content,
   .client-portfolio-content,
@@ -4863,7 +4540,6 @@ button {
   .announcements-content,
   .feedback-content,
   .leave-content,
-  .self-service-panel,
   .client-workspace-panel,
   .client-portfolio-panel,
   .hiring-panel,
@@ -4871,10 +4547,6 @@ button {
   .feedback-panel,
   .leave-panel {
     padding: var(--hrms-space-3);
-  }
-
-  .employee-identity {
-    margin-top: var(--hrms-space-2);
   }
 }
 

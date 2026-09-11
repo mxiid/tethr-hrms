@@ -57,7 +57,7 @@ const ONBOARDING_TASK_DEFINITIONS: readonly {
   { taskKey: 'employeeRecordForm', title: 'Employee record form' },
 ];
 
-export type RecordEmployeeAssessmentData = {
+type RecordEmployeeAssessmentData = {
   readonly employeeId: EmployeeId;
   readonly title: string;
   readonly assessmentDate: string;
@@ -67,7 +67,7 @@ export type RecordEmployeeAssessmentData = {
   readonly createdByUserId: UserId;
 };
 
-export type AttachEmployeeDocumentData = {
+type AttachEmployeeDocumentData = {
   readonly employeeId: EmployeeId;
   readonly name: string;
   readonly contentType: string;
@@ -83,7 +83,7 @@ export type AttachEmployeeDocumentData = {
   readonly attachedByUserId: UserId;
 };
 
-export type AddEmployeeDocumentVersionData = {
+type AddEmployeeDocumentVersionData = {
   readonly employeeDocumentLinkId: EmployeeDocumentLinkId;
   readonly contentType: string;
   readonly storageKey: string;
@@ -95,13 +95,13 @@ export type AddEmployeeDocumentVersionData = {
   readonly createdByUserId: UserId;
 };
 
-export type PrepareEmployeeDocumentUploadData = {
+type PrepareEmployeeDocumentUploadData = {
   readonly employeeId: EmployeeId;
   readonly name: string;
   readonly contentType: string;
 };
 
-export type RequestEmployeeDocumentSignatureData = {
+type RequestEmployeeDocumentSignatureData = {
   readonly employeeDocumentLinkId: EmployeeDocumentLinkId;
   readonly signerEmail: string;
   readonly signerName?: string | null;
@@ -124,7 +124,7 @@ export type EmployeeOnboardingTaskRecord = {
   readonly notes: string | null;
 };
 
-export type UpdateEmployeeOnboardingTaskData = {
+type UpdateEmployeeOnboardingTaskData = {
   readonly employeeId: EmployeeId;
   readonly taskKey: EmployeeOnboardingTaskKey;
   readonly status: EmployeeOnboardingTaskStatus;
@@ -133,7 +133,7 @@ export type UpdateEmployeeOnboardingTaskData = {
   readonly updatedByUserId: UserId;
 };
 
-export type UpdateEmployeeHrRecordData = {
+type UpdateEmployeeHrRecordData = {
   readonly employeeId: EmployeeId;
   readonly roleTitle?: string | null;
   readonly salaryBreakdown?: string | null;
@@ -147,14 +147,14 @@ export type UpdateEmployeeHrRecordData = {
   readonly updatedByUserId: UserId;
 };
 
-export type BankDetails = {
+type BankDetails = {
   readonly bankName: string | null;
   readonly bankAccountTitle: string | null;
   readonly bankAccountNumber: string | null;
   readonly bankIban: string | null;
 };
 
-export type RequestBankDetailChangeData = {
+type RequestBankDetailChangeData = {
   readonly employeeId: EmployeeId;
   readonly bankName?: string | null;
   readonly bankAccountTitle?: string | null;
@@ -163,7 +163,7 @@ export type RequestBankDetailChangeData = {
   readonly requestedByUserId?: UserId | null;
 };
 
-export type DecideBankDetailChangeData = {
+type DecideBankDetailChangeData = {
   readonly requestId: string;
   readonly approve: boolean;
   readonly decidedByUserId: UserId;

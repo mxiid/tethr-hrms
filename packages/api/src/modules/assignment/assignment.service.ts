@@ -22,7 +22,7 @@ import { ASSIGNMENT_REPOSITORY } from './assignment.tokens';
 import { Assignment } from './entities/assignment.entity';
 
 
-export type CreateAssignmentInput = {
+type CreateAssignmentInput = {
   readonly employeeId: EmployeeId;
   readonly positionId: PositionId;
   readonly validFrom: IsoDate;
@@ -32,7 +32,7 @@ export type CreateAssignmentInput = {
   readonly isPrimary?: boolean;
 };
 
-export type SetReportingLineInput = {
+type SetReportingLineInput = {
   readonly employeeId: EmployeeId;
   readonly reportsToEmployeeId: EmployeeId | null;
   readonly effectiveDate: IsoDate;

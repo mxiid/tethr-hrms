@@ -2,7 +2,7 @@ import type { DataScope, PortalKind, SystemRoleKey } from '@hrms/shared';
 
 import { ALL_PERMISSIONS, PERMISSIONS, type Permission } from './permissions';
 
-export type SystemRoleDefinition = {
+type SystemRoleDefinition = {
   readonly key: SystemRoleKey;
   readonly name: string;
   readonly portal: PortalKind;

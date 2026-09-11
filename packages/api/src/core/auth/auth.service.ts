@@ -17,7 +17,7 @@ import { User } from './user.entity';
 // lingering credential; long enough for a human to actually pick one.
 const WORKSPACE_SELECTION_TOKEN_TTL = '5m';
 
-export type CreateUserData = {
+type CreateUserData = {
   readonly email: string;
   readonly password: string;
   readonly employeeId?: EmployeeId | null;

@@ -2,7 +2,7 @@ import type { DomainEvent, DomainEventName } from '@hrms/shared';
 import { Injectable, Logger } from '@nestjs/common';
 
 
-export type DomainEventHandler = (event: DomainEvent) => Promise<void>;
+type DomainEventHandler = (event: DomainEvent) => Promise<void>;
 
 // In-process publish/subscribe. The relay dispatches outbox events through here
 // to consumers registered in the same process. When a module is later extracted

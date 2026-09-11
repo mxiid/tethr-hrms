@@ -13,7 +13,7 @@ import { EmployeeDirectoryService } from './employee-directory.service';
 import { EMPLOYEE_EXIT_INTERVIEW_REPOSITORY } from './employee.tokens';
 import { EmployeeExitInterview } from './entities/employee-exit-interview.entity';
 
-export type UpsertExitInterviewData = {
+type UpsertExitInterviewData = {
   readonly employeeId: EmployeeId;
   readonly separationId: EmployeeSeparationId;
   readonly status?: ExitInterviewStatus | null;

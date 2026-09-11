@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useTheme } from '../../../providers/theme/useTheme';
 
-export type FilterOption = {
+type FilterOption = {
   readonly value: string;
   readonly label: string;
 };

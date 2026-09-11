@@ -19,7 +19,7 @@ export const rememberWorkspace = (email: string, organizationId: string): void =
   }
 };
 
-export const getRememberedWorkspace = (email: string): string | null => {
+const getRememberedWorkspace = (email: string): string | null => {
   try {
     return window.localStorage.getItem(keyFor(email));
   } catch {

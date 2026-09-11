@@ -7,7 +7,7 @@ import { TenantScopedEntity } from '../../../../core/database/entities/tenant-sc
 // encashment priced from the leave balance, and any recoveries — with a payable
 // total. Replaces the old `finalSettlement` checkbox with real figures. Computed
 // and stored when the employee is terminated.
-export type FinalSettlementStatus = 'computed' | 'paid';
+type FinalSettlementStatus = 'computed' | 'paid';
 
 @Entity('final_settlements')
 @Index(['organizationId', 'employeeId'])

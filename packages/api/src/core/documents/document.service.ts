@@ -17,7 +17,7 @@ import { DocumentVersion } from './document-version.entity';
 import { Document } from './document.entity';
 import { DOCUMENT_REPOSITORY, DOCUMENT_VERSION_REPOSITORY } from './document.tokens';
 
-export type RegisterDocumentInput = {
+type RegisterDocumentInput = {
   readonly name: string;
   readonly contentType: string;
   readonly storageKey: string;
@@ -30,7 +30,7 @@ export type RegisterDocumentInput = {
   readonly createdByUserId?: UserId | null;
 };
 
-export type AddDocumentVersionInput = {
+type AddDocumentVersionInput = {
   readonly documentId: DocumentId;
   readonly contentType: string;
   readonly storageKey: string;
@@ -42,7 +42,7 @@ export type AddDocumentVersionInput = {
   readonly createdByUserId?: UserId | null;
 };
 
-export type PrepareDocumentUploadInput = {
+type PrepareDocumentUploadInput = {
   readonly name: string;
   readonly contentType: string;
   readonly storagePrefix?: string | null;
@@ -61,7 +61,7 @@ export type DocumentAccessDescriptor = {
   readonly headers: readonly DocumentAccessHeader[];
 };
 
-export type RequestDocumentSignatureInput = {
+type RequestDocumentSignatureInput = {
   readonly documentId: DocumentId;
   readonly signerEmail: string;
   readonly signerName?: string | null;

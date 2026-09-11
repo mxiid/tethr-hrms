@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useTheme } from '../../providers/theme/useTheme';
 
-export type ActionMenuItem = {
+type ActionMenuItem = {
   readonly key: string;
   readonly label: string;
   readonly description?: string;
@@ -11,7 +11,7 @@ export type ActionMenuItem = {
   readonly onSelect: () => void;
 };
 
-export type ActionMenuSection = {
+type ActionMenuSection = {
   readonly key: string;
   /** Optional small caps heading above the group, e.g. "Frequently used". */
   readonly label?: string;

@@ -4,7 +4,7 @@ import { Column, Entity, Index } from 'typeorm';
 import { TenantScopedEntity } from '../../../core/database/entities/tenant-scoped.entity';
 
 
-export type PositionStatus = 'open' | 'filled' | 'frozen' | 'closed';
+type PositionStatus = 'open' | 'filled' | 'frozen' | 'closed';
 
 // A concrete seat. References its job, department, location, and grade by ID
 // (department and location live in the organization module — ID refs, no FK).

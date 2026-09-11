@@ -34,8 +34,7 @@ import { ClientBillingConfig } from './entities/client-billing-config.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
 import { Invoice } from './entities/invoice.entity';
 import { addMonths, monthLabel as formatMonthLabel, prorationShare, proratedAmount } from './month-math';
-
-export type UpdateBillingConfigData = {
+ type UpdateBillingConfigData = {
   readonly feeAmount?: number;
   readonly paymentTermsNetDays?: number;
   readonly anchorDay?: number;
@@ -60,33 +59,28 @@ export type UpdateBillingConfigData = {
   readonly bankAccountNumber?: string | null;
   readonly bankSwift?: string | null;
 };
-
-export type CreateBillingGroupData = {
+ type CreateBillingGroupData = {
   readonly name: string;
   readonly servicesPrefix: string;
   readonly expensesPrefix: string;
 };
-
-export type SetBillingMemberData = {
+ type SetBillingMemberData = {
   readonly employeeId: EmployeeId;
   readonly groupId: BillingGroupId;
   readonly monthlyRate: number;
 };
-
-export type AddInvoiceLineData = {
+ type AddInvoiceLineData = {
   readonly description?: string;
   readonly quantity?: number;
   readonly unitPrice: number;
 };
-
-export type UpdateInvoiceLineData = {
+ type UpdateInvoiceLineData = {
   readonly lineId: string;
   readonly description?: string;
   readonly quantity?: number;
   readonly unitPrice?: number;
 };
-
-export type MarkInvoicePaidData = {
+ type MarkInvoicePaidData = {
   readonly invoiceId: InvoiceId;
   readonly paymentReference?: string | null;
 };
@@ -95,8 +89,7 @@ export type InvoiceDetail = {
   readonly invoice: Invoice;
   readonly lines: readonly InvoiceLine[];
 };
-
-export type ClientCostBreakdown = {
+ type ClientCostBreakdown = {
   readonly totalBilled: number;
   readonly currency: string;
   readonly byEmployee: readonly {
@@ -127,7 +120,7 @@ const round2 = (value: number): number => Math.round(value * 100) / 100;
 const pad2 = (value: number): string => String(value).padStart(2, '0');
 const pad4 = (value: number): string => String(value).padStart(4, '0');
 
-export const todayIso = (): IsoDate => new Date().toISOString().slice(0, 10);
+const todayIso = (): IsoDate => new Date().toISOString().slice(0, 10);
 
 // [anchor day of `year-month`, anchor day of the next month) — the billing
 // window printed on documents, mirroring the sheet's 20th → 19th convention.

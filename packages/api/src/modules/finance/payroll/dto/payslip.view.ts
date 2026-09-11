@@ -1,7 +1,7 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
 
 @ObjectType('PayslipLine')
-export class PayslipLineView {
+class PayslipLineView {
   @Field(() => ID)
   id!: string;
 

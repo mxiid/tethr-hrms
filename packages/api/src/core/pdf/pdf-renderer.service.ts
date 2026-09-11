@@ -4,7 +4,7 @@ import type { Browser } from 'puppeteer';
 // Tailwind v2 compiled CSS, injected into every rendered page — the exact
 // mechanism Invoify uses, so ported templates render pixel-identically without
 // any build-time CSS pipeline in this package.
-export const TAILWIND_CSS_URL =
+const TAILWIND_CSS_URL =
   'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css';
 
 // Generic HTML → PDF rendering over a lazily-launched, reused headless Chromium.

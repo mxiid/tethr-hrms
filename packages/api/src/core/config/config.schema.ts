@@ -12,7 +12,7 @@ const envBoolean = (defaultValue: boolean) =>
 // The single source of truth for environment shape. Validated once at startup;
 // a missing or malformed variable stops boot rather than failing at runtime
 // (architecture.md §12).
-export const configSchema = z.object({
+const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 

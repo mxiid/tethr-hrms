@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom';
 
 import { useTheme } from '../../../../providers/theme/useTheme';
 
-export type PayrollReadinessBlocker = {
+type PayrollReadinessBlocker = {
   readonly code: string;
   readonly severity: string;
   readonly message: string;
 };
 
-export type EmployeePayrollReadiness = {
+type EmployeePayrollReadiness = {
   readonly employeeId: string;
   readonly displayName: string | null;
   readonly blockers: readonly PayrollReadinessBlocker[];

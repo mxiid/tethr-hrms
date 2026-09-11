@@ -35,7 +35,7 @@ export class PayrollRunLineComponentView {
 }
 
 @ObjectType('PayrollRunLine')
-export class PayrollRunLineView {
+class PayrollRunLineView {
   @Field(() => ID)
   id!: string;
 

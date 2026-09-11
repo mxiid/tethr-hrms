@@ -11,7 +11,7 @@ import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.reposit
 import { EmployeeProfile } from './entities/employee-profile.entity';
 import { EMPLOYEE_PROFILE_REPOSITORY } from './employee.tokens';
 
-export type UpdateEmployeeProfileData = {
+type UpdateEmployeeProfileData = {
   readonly photoUrl?: string | null;
   readonly personalEmail?: string | null;
   readonly phone?: string | null;

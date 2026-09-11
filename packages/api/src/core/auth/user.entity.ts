@@ -4,7 +4,7 @@ import { Column, Entity, Index } from 'typeorm';
 import { TenantScopedEntity } from '../database/entities/tenant-scoped.entity';
 
 
-export type UserStatus = 'invited' | 'active' | 'disabled';
+type UserStatus = 'invited' | 'active' | 'disabled';
 
 // A login identity — NOT an HR record (non-negotiable #6). The link to an
 // employee is optional and by ID only (non-negotiable #2: no cross-module FK):

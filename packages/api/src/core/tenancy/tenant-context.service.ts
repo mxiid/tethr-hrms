@@ -6,7 +6,7 @@ import { Injectable } from '@nestjs/common';
 import { TenantContextMissingError } from '../../common/errors';
 
 
-export type TenantContext = {
+type TenantContext = {
   readonly organizationId: OrganizationId;
   readonly userId: UserId | null;
 };

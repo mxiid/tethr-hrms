@@ -2,9 +2,9 @@ import type { UserId } from '@hrms/shared';
 import { Injectable, Logger } from '@nestjs/common';
 
 
-export type NotificationChannel = 'email' | 'inApp' | 'push' | 'sms';
+type NotificationChannel = 'email' | 'inApp' | 'push' | 'sms';
 
-export type SendNotificationInput = {
+type SendNotificationInput = {
   readonly channel: NotificationChannel;
   readonly recipientUserId: UserId;
   readonly templateKey: string;

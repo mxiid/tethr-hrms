@@ -9,7 +9,7 @@ import { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repo
 import { ExchangeRate } from './entities/exchange-rate.entity';
 import { EXCHANGE_RATE_REPOSITORY } from './fx.tokens';
 
-export type SetExchangeRateData = {
+type SetExchangeRateData = {
   readonly baseCurrency: string;
   readonly quoteCurrency: string;
   readonly effectiveDate: IsoDate;

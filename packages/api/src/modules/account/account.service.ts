@@ -11,13 +11,13 @@ import type { Client } from '../clients/entities/client.entity';
 import type { Organization } from '../organization/entities/organization.entity';
 import { OrganizationService } from '../organization/organization.service';
 
-export type SignUpData = {
+type SignUpData = {
   readonly organizationName: string;
   readonly email: string;
   readonly password: string;
 };
 
-export type OnboardClientData = {
+type OnboardClientData = {
   // An existing Client to add this workspace to; omit to found a new Client
   // (named after legalName) alongside it — the common "new company" case.
   readonly clientId?: string | null;
@@ -31,14 +31,14 @@ export type OnboardClientData = {
   readonly hrAdminPassword: string;
 };
 
-export type OnboardClientResult = {
+type OnboardClientResult = {
   readonly client: Client;
   readonly workspace: Organization;
   readonly initialAdmin: Awaited<ReturnType<AuthService['createUser']>>;
   readonly initialHrAdmin: Awaited<ReturnType<AuthService['createUser']>>;
 };
 
-export type LoginOutcome =
+type LoginOutcome =
   | { readonly kind: 'authenticated'; readonly token: string; readonly user: User; readonly access: EffectiveAccess }
   | {
       readonly kind: 'selectWorkspace';

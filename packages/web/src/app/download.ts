@@ -22,7 +22,3 @@ export const downloadBase64File = (
   anchor.remove();
   window.URL.revokeObjectURL(url);
 };
-
-export const downloadCsvFile = (filename: string, contents: string): void => {
-  downloadBase64File(filename, btoa(contents), 'text/csv;charset=utf-8');
-};

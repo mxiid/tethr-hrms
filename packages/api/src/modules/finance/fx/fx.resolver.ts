@@ -10,7 +10,7 @@ import { ExchangeRate } from './entities/exchange-rate.entity';
 import { FxService } from './fx.service';
 
 @ObjectType('ExchangeRate')
-export class ExchangeRateView {
+class ExchangeRateView {
   @Field(() => ID)
   id!: string;
 

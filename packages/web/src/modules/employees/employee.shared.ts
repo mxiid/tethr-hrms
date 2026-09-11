@@ -5,7 +5,7 @@ import type { CSSProperties } from 'react';
 // Types, labels, and formatters shared by the employee directory and the
 // employee profile page, so neither page has to import the other.
 
-export type AssignmentView = {
+type AssignmentView = {
   readonly id: string;
   readonly positionTitle: string | null;
   readonly departmentName: string | null;
@@ -44,9 +44,9 @@ export type EmployeeRecord = {
 export type EmployeesData = { employees: ReadonlyArray<EmployeeRecord> };
 export type CreateEmployeeData = { createEmployee: EmployeeRecord };
 
-export type ChipStyle = CSSProperties & { readonly '--chip-color': string };
+type ChipStyle = CSSProperties & { readonly '--chip-color': string };
 
-export const AVATAR_COLORS: readonly MainColorName[] = [
+const AVATAR_COLORS: readonly MainColorName[] = [
   'blue',
   'green',
   'violet',
@@ -99,24 +99,5 @@ export const formatDate = (value: string): string =>
     new Date(`${value}T00:00:00`),
   );
 
-export const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
-
-export const formatMoney = (value: number, currency: string): string =>
-  new Intl.NumberFormat('en', { style: 'currency', currency, maximumFractionDigits: 0 }).format(
-    value,
-  );
-
 export const daysSince = (value: string): number =>
   Math.max(0, Math.floor((Date.now() - new Date(`${value}T00:00:00`).getTime()) / 86_400_000));
-
-export const daysUntil = (value: string): number =>
-  Math.max(0, Math.ceil((new Date(`${value}T00:00:00`).getTime() - Date.now()) / 86_400_000));
-
-export const today = (): string => new Date().toISOString().slice(0, 10);

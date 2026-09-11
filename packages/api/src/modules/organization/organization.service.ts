@@ -15,7 +15,7 @@ import { TenantContextService } from '../../core/tenancy/tenant-context.service'
 
 import { Organization } from './entities/organization.entity';
 
-export type CreateOrganizationInput = {
+type CreateOrganizationInput = {
   readonly legalName: string;
   readonly kind?: OrganizationKind;
   readonly displayName?: string;

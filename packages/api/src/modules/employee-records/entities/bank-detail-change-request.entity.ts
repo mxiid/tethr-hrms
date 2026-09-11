@@ -3,7 +3,7 @@ import { Column, Entity, Index } from 'typeorm';
 
 import { TenantScopedEntity } from '../../../core/database/entities/tenant-scoped.entity';
 
-export type BankDetailChangeStatus = 'pending' | 'approved' | 'rejected';
+type BankDetailChangeStatus = 'pending' | 'approved' | 'rejected';
 
 // A payment-instruction change request rather than a direct edit: the employee
 // proposes new bank details, HR approves, and only then are the HR record's bank

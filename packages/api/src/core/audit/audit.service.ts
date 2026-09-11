@@ -6,7 +6,7 @@ import { TenantContextService } from '../tenancy/tenant-context.service';
 
 import { AuditEvent } from './audit-event.entity';
 
-export type AuditRecordInput = {
+type AuditRecordInput = {
   readonly action: string;
   readonly resourceType: string;
   readonly resourceId: string;

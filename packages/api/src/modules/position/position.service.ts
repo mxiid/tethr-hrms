@@ -9,7 +9,7 @@ import { Position } from './entities/position.entity';
 import { JOB_REPOSITORY, POSITION_REPOSITORY } from './position.tokens';
 
 
-export type CreatePositionInput = {
+type CreatePositionInput = {
   readonly title: string;
   readonly jobId: JobId;
   readonly departmentId?: DepartmentId | null;

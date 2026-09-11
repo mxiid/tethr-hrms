@@ -4,7 +4,7 @@ import { TenantScopedEntity } from '../../../core/database/entities/tenant-scope
 
 import type { EmployeeId, IsoDate } from '@hrms/shared';
 
-export type TimeEntrySource = 'clock' | 'manual' | 'regularization';
+type TimeEntrySource = 'clock' | 'manual' | 'regularization';
 
 // Worked hours attributed to an employee on a calendar day. The unit a timesheet
 // sums and (once locked) Payroll consumes.

@@ -13,7 +13,7 @@ import { HiringRequestUpdate } from './entities/hiring-request-update.entity';
 import { HiringRequest } from './entities/hiring-request.entity';
 import { HIRING_REQUEST_REPOSITORY, HIRING_REQUEST_UPDATE_REPOSITORY } from './recruitment.tokens';
 
-export type CreateHiringRequestData = {
+type CreateHiringRequestData = {
   readonly positionTitle: string;
   readonly headcount?: number;
   readonly employmentType?: string;
@@ -23,7 +23,7 @@ export type CreateHiringRequestData = {
   readonly requestedByUserId: UserId;
 };
 
-export type UpdateHiringRequestData = {
+type UpdateHiringRequestData = {
   readonly hiringRequestId: HiringRequestId;
   readonly status: HiringRequestStatus;
   readonly tethrNote?: string | null;

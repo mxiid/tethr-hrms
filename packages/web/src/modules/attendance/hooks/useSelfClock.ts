@@ -7,7 +7,7 @@ import {
   MY_TIME_ENTRIES_QUERY,
 } from '../graphql/attendance.operations';
 
-export type MyTimeEntry = {
+type MyTimeEntry = {
   readonly id: string;
   readonly date: string;
   readonly hours: number;
@@ -16,7 +16,7 @@ export type MyTimeEntry = {
 
 type MyTimeEntriesData = { readonly myTimeEntries: readonly MyTimeEntry[] };
 
-export type SelfClock = {
+type SelfClock = {
   /** Most recent day first. */
   readonly entries: readonly MyTimeEntry[];
   readonly todayEntry: MyTimeEntry | null;

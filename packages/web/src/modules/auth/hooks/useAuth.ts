@@ -15,7 +15,7 @@ export type WorkspaceOption = {
   readonly organizationName: string;
 };
 
-export type LoginOutcome =
+type LoginOutcome =
   | { readonly kind: 'authenticated'; readonly session: AuthSession }
   | {
       readonly kind: 'selectWorkspace';

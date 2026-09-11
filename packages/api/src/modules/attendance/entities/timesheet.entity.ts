@@ -4,7 +4,7 @@ import { TenantScopedEntity } from '../../../core/database/entities/tenant-scope
 
 import type { EmployeeId, IsoDate, UserId } from '@hrms/shared';
 
-export type TimesheetStatus = 'open' | 'submitted' | 'approved' | 'locked';
+type TimesheetStatus = 'open' | 'submitted' | 'approved' | 'locked';
 
 // A period of an employee's time, rolled up from TimeEntry rows. Once `locked`
 // it is an immutable input to Payroll (plan.md §5.2: timesheet.locked -> Payroll).

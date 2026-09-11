@@ -4,7 +4,7 @@ import { Column, Entity, Index } from 'typeorm';
 import { TenantScopedEntity } from '../database/entities/tenant-scoped.entity';
 
 
-export type OutboxStatus = 'pending' | 'processed' | 'failed';
+type OutboxStatus = 'pending' | 'processed' | 'failed';
 
 // The transactional outbox. A state change writes its domain event here in the
 // SAME database transaction as the change itself, so the two commit atomically —

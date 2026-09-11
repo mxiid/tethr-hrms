@@ -1,7 +1,7 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
 
 @ObjectType('InvoiceLine')
-export class InvoiceLineView {
+class InvoiceLineView {
   @Field(() => ID)
   id!: string;
 
@@ -95,7 +95,7 @@ export class InvoiceView {
 }
 
 @ObjectType('ClientCostByEmployee')
-export class ClientCostByEmployeeView {
+class ClientCostByEmployeeView {
   @Field(() => ID)
   employeeId!: string;
 
@@ -107,7 +107,7 @@ export class ClientCostByEmployeeView {
 }
 
 @ObjectType('ClientCostByPeriod')
-export class ClientCostByPeriodView {
+class ClientCostByPeriodView {
   @Field(() => Number)
   serviceYear!: number;
 

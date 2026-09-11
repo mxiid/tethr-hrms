@@ -185,42 +185,6 @@ export const UPDATE_MY_EMPLOYEE_PROFILE_MUTATION = gql`
   }
 `;
 
-export const UPDATE_MY_PERSONAL_DETAILS_MUTATION = gql`
-  mutation UpdateMyPersonalDetails($input: UpdateMyPersonalDetailsInput!) {
-    updateMyPersonalDetails(input: $input) {
-      id
-      employeeId
-      passportNumber
-      maritalStatus
-      bloodGroup
-      bio
-    }
-  }
-`;
-
-export const CREATE_MY_EDUCATION_MUTATION = gql`
-  mutation CreateEmployeeEducation($input: CreateEmployeeEducationInput!) {
-    createEmployeeEducation(input: $input) {
-      id
-      schoolOrUniversity
-      qualification
-      level
-      yearOfPassing
-    }
-  }
-`;
-
-export const CREATE_MY_WORK_HISTORY_MUTATION = gql`
-  mutation CreateEmployeeWorkHistory($input: CreateEmployeeWorkHistoryInput!) {
-    createEmployeeWorkHistory(input: $input) {
-      id
-      companyName
-      designation
-      totalExperience
-    }
-  }
-`;
-
 export const UPDATE_MY_EMPLOYEE_PHOTO_MUTATION = gql`
   mutation UpdateMyEmployeePhoto($input: UpdateMyPhotoInput!) {
     updateMyEmployeePhoto(input: $input) {

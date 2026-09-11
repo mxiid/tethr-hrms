@@ -14,7 +14,7 @@ import type { EmployeeId, IsoDate } from '@hrms/shared';
 const MILLISECONDS_PER_HOUR = 3_600_000;
 const toAmount = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
 
-export type RecordTimeEntryData = {
+type RecordTimeEntryData = {
   readonly employeeId: EmployeeId;
   readonly date: IsoDate;
   readonly hours: number;

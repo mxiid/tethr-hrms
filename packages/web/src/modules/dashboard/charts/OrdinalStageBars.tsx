@@ -1,6 +1,6 @@
 import { ordinalAccentVarAt } from './chartPalette';
 
-export type OrdinalStage = {
+type OrdinalStage = {
   readonly id: string;
   readonly label: string;
   readonly value: number;

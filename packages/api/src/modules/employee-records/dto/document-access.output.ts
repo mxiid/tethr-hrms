@@ -1,7 +1,7 @@
 import { Field, ObjectType } from '@nestjs/graphql';
 
 @ObjectType('DocumentAccessHeader')
-export class DocumentAccessHeaderView {
+class DocumentAccessHeaderView {
   @Field()
   name!: string;
 

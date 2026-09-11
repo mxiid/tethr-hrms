@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { categoricalColorVarAt } from './chartPalette';
 
-export type ShareSegment = {
+type ShareSegment = {
   readonly id: string;
   readonly label: string;
   readonly value: number;

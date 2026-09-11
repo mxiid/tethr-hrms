@@ -12,7 +12,7 @@ import { TaxSlab, TaxSlabGroup } from './entities/tax-slab.entities';
 import { TAX_SLAB_GROUP_REPOSITORY, TAX_SLAB_REPOSITORY } from './payroll.tokens';
 import type { TaxSlabInput } from './tax/calculator';
 
-export type CreateTaxSlabGroupData = {
+type CreateTaxSlabGroupData = {
   readonly name: string;
   readonly financialYearLabel: string;
   readonly currency?: string;
@@ -20,7 +20,7 @@ export type CreateTaxSlabGroupData = {
 
 // One ladder row as submitted by finance. upperBound null marks the open top band
 // and is only valid on the last row.
-export type ReplaceTaxSlabData = {
+type ReplaceTaxSlabData = {
   readonly upperBound: number | null;
   readonly ratePercent: number;
   readonly flatAdditive: number;

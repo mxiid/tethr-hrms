@@ -2,8 +2,6 @@ import {
   addIsoDays,
   compareIsoDate,
   countWorkingDays,
-  eachIsoDateInclusive,
-  isWeekend,
   isoMonthRange,
   type IsoDate,
 } from '@hrms/shared';
@@ -27,8 +25,6 @@ export const addMonths = (year: number, month: number, delta: number): { year: n
   const total = year * 12 + (month - 1) + delta;
   return { year: Math.floor(total / 12), month: (total % 12) + 1 };
 };
-
-export const monthStart = (year: number, month: number): IsoDate => isoMonthRange(year, month).start;
 
 // Fraction of `year-month` covered by the half-open span [startDate, endDate]
 // (both inclusive here; null start = month start, null end = month end). A span
@@ -99,12 +95,4 @@ export const monthsFromHireThrough = (
     cursor = addMonths(cursor.year, cursor.month, 1);
   }
   return result;
-};
-
-// Working-day count of a month (Mon–Fri) — used to sanity-check shares.
-export const workingDaysInMonth = (year: number, month: number): number => {
-  const { start, endExclusive } = isoMonthRange(year, month);
-  return eachIsoDateInclusive(start, addIsoDays(endExclusive, -1)).filter(
-    (date) => !isWeekend(date),
-  ).length;
 };

@@ -37,13 +37,13 @@ export type WidgetFieldDefinition = {
 
 export type WidgetFieldValues = Readonly<Record<string, string | number>>;
 
-export type ChartSegment = {
+type ChartSegment = {
   readonly id: string;
   readonly label: string;
   readonly value: number;
 };
 
-export type ChartPoint = {
+type ChartPoint = {
   readonly label: string;
   readonly value: number;
 };

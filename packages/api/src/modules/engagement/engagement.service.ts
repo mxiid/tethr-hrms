@@ -23,7 +23,7 @@ import { ANNOUNCEMENT_REPOSITORY, EMPLOYEE_FEEDBACK_REPOSITORY } from './engagem
 import { Announcement } from './entities/announcement.entity';
 import { EmployeeFeedback } from './entities/employee-feedback.entity';
 
-export type PublishAnnouncementData = {
+type PublishAnnouncementData = {
   readonly title: string;
   readonly body: string;
   readonly audience: AnnouncementAudience;
@@ -32,7 +32,7 @@ export type PublishAnnouncementData = {
   readonly publishedByUserId: UserId;
 };
 
-export type SubmitFeedbackData = {
+type SubmitFeedbackData = {
   readonly employeeId: EmployeeId;
   readonly submittedByUserId: UserId;
   readonly category: FeedbackCategory;
@@ -40,7 +40,7 @@ export type SubmitFeedbackData = {
   readonly body: string;
 };
 
-export type ResolveFeedbackData = {
+type ResolveFeedbackData = {
   readonly employeeFeedbackId: EmployeeFeedbackId;
   readonly status: FeedbackStatus;
   readonly resolutionNote?: string | null;

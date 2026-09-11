@@ -1,7 +1,7 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
 
 @ObjectType('PayrollReadinessBlocker')
-export class PayrollReadinessBlockerView {
+class PayrollReadinessBlockerView {
   @Field()
   code!: string;
 

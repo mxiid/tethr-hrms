@@ -203,26 +203,6 @@ export const TAX_SLAB_GROUPS_QUERY = gql`
   }
 `;
 
-export const TAX_SLAB_GROUP_QUERY = gql`
-  query TaxSlabGroup($groupId: ID!) {
-    taxSlabGroup(groupId: $groupId) {
-      id
-      name
-      financialYearLabel
-      currency
-      isActive
-      slabs {
-        id
-        groupId
-        sortOrder
-        upperBound
-        ratePercent
-        flatAdditive
-      }
-    }
-  }
-`;
-
 export const CREATE_TAX_SLAB_GROUP_MUTATION = gql`
   mutation CreateTaxSlabGroup($input: CreateTaxSlabGroupInput!) {
     createTaxSlabGroup(input: $input) {
@@ -231,19 +211,6 @@ export const CREATE_TAX_SLAB_GROUP_MUTATION = gql`
       financialYearLabel
       currency
       isActive
-    }
-  }
-`;
-
-export const REPLACE_TAX_SLABS_MUTATION = gql`
-  mutation ReplaceTaxSlabs($groupId: ID!, $slabs: [TaxSlabEntryInput!]!) {
-    replaceTaxSlabs(groupId: $groupId, slabs: $slabs) {
-      id
-      groupId
-      sortOrder
-      upperBound
-      ratePercent
-      flatAdditive
     }
   }
 `;

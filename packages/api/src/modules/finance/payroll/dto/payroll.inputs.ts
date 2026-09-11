@@ -104,7 +104,7 @@ export class CreateTaxSlabGroupInput {
 }
 
 @InputType()
-export class TaxSlabEntryInput {
+class TaxSlabEntryInput {
   // Omit for the open top band — only valid on the final entry.
   @Field(() => Number, { nullable: true })
   @IsOptional()

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { useTheme } from '../../providers/theme/useTheme';
 
-export type ModalWidth = 'sm' | 'md' | 'lg' | 'xl';
+type ModalWidth = 'sm' | 'md' | 'lg' | 'xl';
 
 type ModalProps = {
   readonly isOpen: boolean;

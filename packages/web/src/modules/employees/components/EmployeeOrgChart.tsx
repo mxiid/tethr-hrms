@@ -10,7 +10,7 @@ type OrgChartAssignment = {
   readonly reportsToEmployeeId: string | null;
 };
 
-export type OrgChartEmployee = {
+type OrgChartEmployee = {
   readonly id: string;
   readonly employeeNumber: string;
   readonly firstName: string;

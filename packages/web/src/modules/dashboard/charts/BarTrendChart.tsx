@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { roundToNiceStep } from './chartPalette';
 import { ChartTooltip } from './ChartTooltip';
 
-export type TrendPoint = {
+type TrendPoint = {
   readonly label: string;
   readonly value: number;
 };

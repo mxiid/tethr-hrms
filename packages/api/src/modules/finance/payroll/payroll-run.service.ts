@@ -48,13 +48,13 @@ import {
 import { calculateMonthlyWithholding } from './tax/calculator';
 import { TaxSlabService } from './tax-slab.service';
 
-export type CreatePayrollRunData = {
+type CreatePayrollRunData = {
   readonly periodYear: number;
   readonly periodMonth: number;
   readonly holidayCalendarId?: HolidayCalendarId | null;
 };
 
-export type UpdatePayrollRunLineData = {
+type UpdatePayrollRunLineData = {
   readonly lineId: string;
   readonly payableDays?: number | null;
   readonly lopDays?: number | null;
@@ -62,7 +62,7 @@ export type UpdatePayrollRunLineData = {
   readonly note?: string | null;
 };
 
-export type FinalizePayrollRunData = {
+type FinalizePayrollRunData = {
   readonly runId: PayrollRunId;
   readonly payDate?: IsoDate | null;
   readonly finalizedByUserId: UserId;
@@ -101,13 +101,13 @@ export type RunDetail = {
 // Phase 1 readiness spine: what would stop each active employee being paid, and
 // global notes. `hard` blockers should stop a finalize (with an explicit
 // override); `warning` ones are advisory.
-export type ReadinessBlockerCode =
+type ReadinessBlockerCode =
   | 'noPayAssignment'
   | 'structureHasNoComponents'
   | 'missingBankDetails'
   | 'noActiveTaxLadder';
 
-export type ReadinessBlocker = {
+type ReadinessBlocker = {
   readonly code: ReadinessBlockerCode;
   readonly severity: 'hard' | 'warning';
   readonly message: string;
