@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from '@apollo/client';
-import { IconCashBanknote, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconAdjustments, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 
+import { Modal } from '../../../../components/modal/Modal';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   PayrollReadinessBanner,
@@ -57,6 +58,7 @@ export const PayrollPage = () => {
 
   const [periodYear, setPeriodYear] = useState(defaultYear);
   const [periodMonth, setPeriodMonth] = useState(defaultMonth);
+  const [openModal, setOpenModal] = useState<'run' | 'tax' | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const { data: readinessData } = useQuery<{ readonly payrollReadiness: PayrollReadinessRecord }>(
@@ -89,6 +91,7 @@ export const PayrollPage = () => {
         variables: { input: { periodYear, periodMonth } },
         refetchQueries: [{ query: PAYROLL_RUNS_QUERY }],
       });
+      setOpenModal(null);
     } catch (cause) {
       setFormError(cause instanceof Error ? cause.message : 'Could not create the run.');
     }
@@ -109,7 +112,7 @@ export const PayrollPage = () => {
   };
 
   return (
-    <main className="page-frame">
+    <main className="page-frame page-frame-single">
       <div className="employees-content">
         <header className="page-header">
           <div>
@@ -119,24 +122,45 @@ export const PayrollPage = () => {
               payslip snapshots.
             </p>
           </div>
-          <button
-            className="icon-button"
-            onClick={() => refetch()}
-            title="Refresh"
-            type="button"
-          >
-            <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-          </button>
+          <div className="page-actions">
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => {
+                setFormError(null);
+                setOpenModal('tax');
+              }}
+            >
+              <IconAdjustments size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              Manage tax slabs
+            </button>
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => {
+                setFormError(null);
+                setPeriodYear(defaultYear);
+                setPeriodMonth(defaultMonth);
+                setOpenModal('run');
+              }}
+            >
+              <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              New run
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => refetch()}
+              title="Refresh"
+              type="button"
+            >
+              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            </button>
+          </div>
         </header>
 
         {error ? (
           <p className="auth-error" role="alert">
             Could not load payroll runs.
-          </p>
-        ) : null}
-        {formError ? (
-          <p className="auth-error" role="alert">
-            {formError}
           </p>
         ) : null}
 
@@ -209,22 +233,23 @@ export const PayrollPage = () => {
         </section>
       </div>
 
-      <aside className="employee-detail-panel compensation-actions-panel" aria-label="Payroll actions">
-        <div className="panel-title-row">
-          <div>
-            <div className="panel-kicker">Finance operations</div>
-            <h2 className="panel-title">New run</h2>
-          </div>
-          <IconCashBanknote size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
-        </div>
-
+      <Modal
+        isOpen={openModal === 'run'}
+        onClose={() => setOpenModal(null)}
+        title="New payroll run"
+        width="sm"
+      >
+        {formError ? (
+          <p className="auth-error" role="alert">
+            {formError}
+          </p>
+        ) : null}
         <form
           className="config-form"
           onSubmit={(event) => {
             void onCreateRun(event);
           }}
         >
-          <h3 className="section-title">Draft a monthly run</h3>
           <p className="field-hint">
             Computes payable days per employee from the working calendar minus approved unpaid
             leave; salaries pro-rate automatically for mid-month joiners.
@@ -264,14 +289,25 @@ export const PayrollPage = () => {
             {creating ? 'Computing…' : 'Create draft run'}
           </button>
         </form>
+      </Modal>
 
+      <Modal
+        isOpen={openModal === 'tax'}
+        onClose={() => setOpenModal(null)}
+        title="Withholding tax slabs"
+        width="lg"
+      >
+        {formError ? (
+          <p className="auth-error" role="alert">
+            {formError}
+          </p>
+        ) : null}
         <form
           className="config-form"
           onSubmit={(event) => {
             void onCreateTaxGroup(event);
           }}
         >
-          <h3 className="section-title">Withholding slabs</h3>
           <p className="field-hint">
             Active ladder:{' '}
             <strong>{activeTaxGroup ? activeTaxGroup.financialYearLabel : 'none — tax computes as zero'}</strong>
@@ -328,7 +364,7 @@ export const PayrollPage = () => {
             open-ended.
           </p>
         </form>
-      </aside>
+      </Modal>
     </main>
   );
 };

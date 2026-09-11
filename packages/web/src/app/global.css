@@ -934,6 +934,86 @@ button {
   box-shadow: var(--hrms-box-shadow-light);
 }
 
+/* A finance page with no side rail: one column, no reserved panel track. */
+.page-frame-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--hrms-space-8) var(--hrms-space-4);
+  overflow-y: auto;
+  background: var(--hrms-color-background-overlay-primary);
+}
+
+.modal-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100vh - var(--hrms-space-16));
+  margin: auto;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-strong);
+  outline: none;
+}
+
+.modal-dialog-sm {
+  max-width: var(--hrms-layout-modal-width-sm);
+}
+
+.modal-dialog-md {
+  max-width: var(--hrms-layout-modal-width-md);
+}
+
+.modal-dialog-lg {
+  max-width: var(--hrms-layout-modal-width-lg);
+}
+
+.modal-dialog-xl {
+  max-width: var(--hrms-layout-modal-width-xl);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-4);
+  padding: var(--hrms-space-4) var(--hrms-space-5);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.modal-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-lg);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--hrms-space-5);
+}
+
+.modal-body .config-form {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-4) var(--hrms-space-5);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;
@@ -1530,6 +1610,12 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--hrms-space-4);
   margin-bottom: var(--hrms-space-4);
+}
+
+/* The two 4-column summary cards are far narrower than the base 640px floor,
+   which forced a scrollbar on content that already fits. Size to the card. */
+.compensation-grid .data-table {
+  min-width: 0;
 }
 
 .table-title-row {

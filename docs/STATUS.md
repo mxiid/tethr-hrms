@@ -2,6 +2,10 @@
 
 > As of 2026-09-04 (`feat/attendance-module-and-ux-revamp`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## Finance pages: setup forms moved into modals (2026-09-11)
+
+The always-visible right rail on all three Finance pages (`/compensation`, `/payroll`, `/billing`) is gone. Each setup form now opens on demand from a trigger button, via a new shared `Modal` component (`packages/web/src/components/modal/Modal.tsx`) — body portal, backdrop from `--hrms-color-background-overlay-primary`, Escape/backdrop/close-button dismissal, focus return, scroll lock, and `modalWidth` sizes. Compensation: "New component", "New structure", and "Revise salary" buttons; Payroll: "New run" and "Manage tax slabs"; Billing: "Billing settings", "New group", "Assign rate", "Open expenses draft". The Finance `<main>` uses a single-column frame now that there is no rail. Also fixed the two 4-column Compensation summary tables' phantom horizontal scrollbar — `.compensation-grid .data-table { min-width: 0; }` drops the blanket 640px floor that the narrow 2-up cards couldn't meet. Verified headless (puppeteer) at 1440px and 1000px: rail gone on all three pages, every trigger opens its modal, Escape and backdrop-click close, and both Compensation tables report `scrollWidth === clientWidth`. Typecheck/lint/build clean; 152 tests green.
+
 ## Code-review fixes on the finance interconnection work (2026-09-11)
 
 An 8-angle review of the Phases 0–4 diff surfaced ten findings; the money/data-integrity ones are fixed, each with a regression test.

@@ -1,9 +1,10 @@
 import { useMutation, useQuery } from '@apollo/client';
 import type { CompensationChangeReason, PayComponentCategory, PayFrequency } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
-import { IconCashBanknote, IconCurrencyDollar, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconCurrencyDollar, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 
+import { Modal } from '../../../../components/modal/Modal';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   COMPENSATION_SETUP_QUERY,
@@ -179,12 +180,42 @@ export const CompensationPage = () => {
   const [payComponentForm, setPayComponentForm] = useState(emptyPayComponentForm);
   const [salaryStructureForm, setSalaryStructureForm] = useState(emptySalaryStructureForm);
   const [revisionForm, setRevisionForm] = useState(emptyRevisionForm);
+  const [openModal, setOpenModal] = useState<'component' | 'structure' | 'revision' | null>(
+    null,
+  );
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const clearFeedback = (): void => {
     setFormError(null);
     setFormMessage(null);
+  };
+
+  const openComponentModal = (): void => {
+    clearFeedback();
+    setPayComponentForm(emptyPayComponentForm);
+    setOpenModal('component');
+  };
+
+  const openStructureModal = (): void => {
+    clearFeedback();
+    setSalaryStructureForm(emptySalaryStructureForm);
+    setOpenModal('structure');
+  };
+
+  const openRevisionModal = (): void => {
+    clearFeedback();
+    setRevisionForm({
+      ...emptyRevisionForm,
+      employeeId: effectiveEmployeeId ?? '',
+      salaryStructureId: salaryStructures[0]?.id ?? '',
+    });
+    setOpenModal('revision');
+  };
+
+  const closeModal = (): void => {
+    clearFeedback();
+    setOpenModal(null);
   };
 
   const onCreatePayComponent = async (event: FormEvent): Promise<void> => {
@@ -204,6 +235,7 @@ export const CompensationPage = () => {
       });
       await refetch();
       setPayComponentForm(emptyPayComponentForm);
+      setOpenModal(null);
       setFormMessage('Pay component created.');
     } catch (caught) {
       setFormError(caught instanceof Error ? caught.message : 'Could not create pay component');
@@ -230,6 +262,7 @@ export const CompensationPage = () => {
         ...current,
         salaryStructureId: result.data?.createSalaryStructure.id ?? current.salaryStructureId,
       }));
+      setOpenModal(null);
       setFormMessage('Salary structure created.');
     } catch (caught) {
       setFormError(caught instanceof Error ? caught.message : 'Could not create salary structure');
@@ -269,6 +302,7 @@ export const CompensationPage = () => {
         effectiveDate: todayIso(),
         note: '',
       }));
+      setOpenModal(null);
       setFormMessage('Salary revision saved.');
     } catch (caught) {
       setFormError(caught instanceof Error ? caught.message : 'Could not revise salary');
@@ -281,7 +315,7 @@ export const CompensationPage = () => {
   };
 
   return (
-    <main className="page-frame">
+    <main className="page-frame page-frame-single">
       <section className="employees-content" aria-labelledby="compensation-title">
         <header className="page-header">
           <div>
@@ -330,6 +364,7 @@ export const CompensationPage = () => {
             Could not load compensation setup. Confirm the API is running and your session is valid.
           </p>
         ) : null}
+        {formMessage ? <p className="form-success">{formMessage}</p> : null}
 
         <div className="compensation-grid">
           <section className="table-shell" aria-labelledby="pay-components-title">
@@ -337,10 +372,16 @@ export const CompensationPage = () => {
               <div className="table-title" id="pay-components-title">
                 Pay components
               </div>
-              <div className="table-density">
-                {loading
-                  ? 'Loading…'
-                  : `${payComponents.length} component${payComponents.length === 1 ? '' : 's'}`}
+              <div className="panel-actions">
+                <div className="table-density">
+                  {loading
+                    ? 'Loading…'
+                    : `${payComponents.length} component${payComponents.length === 1 ? '' : 's'}`}
+                </div>
+                <button className="button button-secondary" type="button" onClick={openComponentModal}>
+                  <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  New component
+                </button>
               </div>
             </div>
             <div className="data-table-wrap">
@@ -389,10 +430,16 @@ export const CompensationPage = () => {
               <div className="table-title" id="salary-structures-title">
                 Salary structures
               </div>
-              <div className="table-density">
-                {loading
-                  ? 'Loading…'
-                  : `${salaryStructures.length} structure${salaryStructures.length === 1 ? '' : 's'}`}
+              <div className="panel-actions">
+                <div className="table-density">
+                  {loading
+                    ? 'Loading…'
+                    : `${salaryStructures.length} structure${salaryStructures.length === 1 ? '' : 's'}`}
+                </div>
+                <button className="button button-secondary" type="button" onClick={openStructureModal}>
+                  <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  New structure
+                </button>
               </div>
             </div>
             <div className="data-table-wrap">
@@ -442,8 +489,14 @@ export const CompensationPage = () => {
             <div className="table-title" id="salary-history-title">
               Salary history
             </div>
-            <div className="table-density">
-              {selectedEmployee ? fullName(selectedEmployee) : 'No employee selected'}
+            <div className="panel-actions">
+              <div className="table-density">
+                {selectedEmployee ? fullName(selectedEmployee) : 'No employee selected'}
+              </div>
+              <button className="button button-secondary" type="button" onClick={openRevisionModal}>
+                <IconCurrencyDollar size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                Revise salary
+              </button>
             </div>
           </div>
           <div className="data-table-wrap">
@@ -487,27 +540,18 @@ export const CompensationPage = () => {
         </section>
       </section>
 
-      <aside
-        className="employee-detail-panel compensation-actions-panel"
-        aria-label="Compensation actions"
+      <Modal
+        isOpen={openModal === 'component'}
+        onClose={closeModal}
+        title="New pay component"
+        width="md"
       >
-        <div className="panel-title-row">
-          <div>
-            <div className="panel-kicker">Configuration</div>
-            <h2 className="panel-title">Pay setup</h2>
-          </div>
-          <IconCashBanknote size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
-        </div>
-
         {formError ? (
           <p className="auth-error" role="alert">
             {formError}
           </p>
         ) : null}
-        {formMessage ? <p className="form-success">{formMessage}</p> : null}
-
         <form className="config-form" onSubmit={onCreatePayComponent}>
-          <h3 className="section-title">New pay component</h3>
           <div className="field">
             <label htmlFor="component-name">Name</label>
             <input
@@ -578,9 +622,20 @@ export const CompensationPage = () => {
             {creatingComponent ? 'Saving…' : 'Add component'}
           </button>
         </form>
+      </Modal>
 
+      <Modal
+        isOpen={openModal === 'structure'}
+        onClose={closeModal}
+        title="New salary structure"
+        width="md"
+      >
+        {formError ? (
+          <p className="auth-error" role="alert">
+            {formError}
+          </p>
+        ) : null}
         <form className="config-form" onSubmit={onCreateSalaryStructure}>
-          <h3 className="section-title">New salary structure</h3>
           <div className="field">
             <label htmlFor="structure-name">Name</label>
             <input
@@ -648,9 +703,20 @@ export const CompensationPage = () => {
             {creatingStructure ? 'Saving…' : 'Add structure'}
           </button>
         </form>
+      </Modal>
 
+      <Modal
+        isOpen={openModal === 'revision'}
+        onClose={closeModal}
+        title="Revise salary"
+        width="lg"
+      >
+        {formError ? (
+          <p className="auth-error" role="alert">
+            {formError}
+          </p>
+        ) : null}
         <form className="config-form" onSubmit={onReviseSalary}>
-          <h3 className="section-title">Revise salary</h3>
           <div className="field">
             <label htmlFor="revision-employee">Employee</label>
             <select
@@ -759,7 +825,7 @@ export const CompensationPage = () => {
             {revisingSalary ? 'Saving…' : 'Save revision'}
           </button>
         </form>
-      </aside>
+      </Modal>
     </main>
   );
 };

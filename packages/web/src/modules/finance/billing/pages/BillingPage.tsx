@@ -1,8 +1,9 @@
 ﻿import { useMutation, useQuery } from '@apollo/client';
-import { IconBuildingBank, IconFileInvoice, IconRefresh } from '@tabler/icons-react';
+import { IconFileInvoice, IconPlus, IconRefresh, IconSettings } from '@tabler/icons-react';
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 
+import { Modal } from '../../../../components/modal/Modal';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   BILLING_PAGE_DATA_QUERY,
@@ -95,6 +96,9 @@ export const BillingPage = () => {
   const { theme } = useTheme();
   const { data, loading, error, refetch } = useQuery<BillingPageData>(BILLING_PAGE_DATA_QUERY);
   const [formError, setFormError] = useState<string | null>(null);
+  const [openModal, setOpenModal] = useState<'settings' | 'group' | 'rate' | 'expenses' | null>(
+    null,
+  );
 
   const [groupName, setGroupName] = useState('');
   const [servicesPrefix, setServicesPrefix] = useState('SP');
@@ -133,14 +137,21 @@ export const BillingPage = () => {
   const invoices = [...(data?.invoices ?? [])].sort((a, b) => b.serviceYear - a.serviceYear || b.serviceMonth - a.serviceMonth);
   const employees = data?.employees ?? [];
 
-  const run = async (action: () => Promise<unknown>): Promise<void> => {
+  const run = async (action: () => Promise<unknown>): Promise<boolean> => {
     setFormError(null);
     try {
       await action();
       await refetch();
+      return true;
     } catch (cause) {
       setFormError(cause instanceof Error ? cause.message : 'Operation failed.');
+      return false;
     }
+  };
+
+  const openModalWith = (modal: 'settings' | 'group' | 'rate' | 'expenses'): void => {
+    setFormError(null);
+    setOpenModal(modal);
   };
 
   const onSaveConfig = (event: FormEvent): void => {
@@ -162,7 +173,11 @@ export const BillingPage = () => {
         },
         refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
       }),
-    );
+    ).then((ok) => {
+      if (ok) {
+        setOpenModal(null);
+      }
+    });
   };
 
   const readFileAsDataUrl = (file: File, setter: (dataUrl: string) => void): void => {
@@ -182,8 +197,13 @@ export const BillingPage = () => {
       createGroup({
         variables: { input: { name: groupName.trim(), servicesPrefix, expensesPrefix } },
         refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
-      }).then(() => setGroupName('')),
-    );
+      }),
+    ).then((ok) => {
+      if (ok) {
+        setGroupName('');
+        setOpenModal(null);
+      }
+    });
   };
 
   const onAssignMember = (event: FormEvent): void => {
@@ -200,11 +220,18 @@ export const BillingPage = () => {
         },
         refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
       }),
-    );
+    ).then((ok) => {
+      if (ok) {
+        setMemberEmployeeId('');
+        setMemberGroupId('');
+        setMemberRate('');
+        setOpenModal(null);
+      }
+    });
   };
 
   return (
-    <main className="page-frame">
+    <main className="page-frame page-frame-single">
       <div className="employees-content">
         <header className="page-header">
           <div>
@@ -214,18 +241,33 @@ export const BillingPage = () => {
               (auto-drafted when payroll finalizes).
             </p>
           </div>
-          <button className="icon-button" onClick={() => void refetch()} title="Refresh" type="button">
-            <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-          </button>
+          <div className="page-actions">
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => openModalWith('settings')}
+            >
+              <IconSettings size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              Billing settings
+            </button>
+            <button className="icon-button" onClick={() => void refetch()} title="Refresh" type="button">
+              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            </button>
+          </div>
         </header>
 
         {error ? <p className="auth-error" role="alert">Could not load billing data.</p> : null}
-        {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
 
         <section className="table-shell" aria-labelledby="groups-title">
           <div className="table-title-row">
             <div className="table-title" id="groups-title">Billing groups</div>
-            <div className="table-density">{loading ? 'Loading…' : `${groups.length}`}</div>
+            <div className="panel-actions">
+              <div className="table-density">{loading ? 'Loading…' : `${groups.length}`}</div>
+              <button className="button button-secondary" type="button" onClick={() => openModalWith('group')}>
+                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                New group
+              </button>
+            </div>
           </div>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -252,7 +294,13 @@ export const BillingPage = () => {
         <section className="table-shell" aria-labelledby="members-title">
           <div className="table-title-row">
             <div className="table-title" id="members-title">Agreed rates</div>
-            <div className="table-density">{members.length}</div>
+            <div className="panel-actions">
+              <div className="table-density">{members.length}</div>
+              <button className="button button-secondary" type="button" onClick={() => openModalWith('rate')}>
+                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                Assign rate
+              </button>
+            </div>
           </div>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -289,7 +337,13 @@ export const BillingPage = () => {
         <section className="table-shell" aria-labelledby="invoices-title">
           <div className="table-title-row">
             <div className="table-title" id="invoices-title">Invoices</div>
-            <div className="table-density">{invoices.length}</div>
+            <div className="panel-actions">
+              <div className="table-density">{invoices.length}</div>
+              <button className="button button-secondary" type="button" onClick={() => openModalWith('expenses')}>
+                <IconFileInvoice size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                Open expenses draft
+              </button>
+            </div>
           </div>
           <div className="data-table-wrap">
             <table className="data-table">
@@ -326,15 +380,13 @@ export const BillingPage = () => {
         </section>
       </div>
 
-      <aside className="employee-detail-panel compensation-actions-panel" aria-label="Billing actions">
-        <div className="panel-title-row">
-          <div>
-            <div className="panel-kicker">Finance operations</div>
-            <h2 className="panel-title">Setup</h2>
-          </div>
-          <IconBuildingBank size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
-        </div>
-
+      <Modal
+        isOpen={openModal === 'settings'}
+        onClose={() => setOpenModal(null)}
+        title="Billing settings"
+        width="lg"
+      >
+        {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
         <form className="config-form" onSubmit={onSaveConfig}>
           <h3 className="section-title">Commercial terms</h3>
           <p className="field-hint">Current: ${config?.feeAmount ?? '—'} PEPM · Net {config?.paymentTermsNetDays ?? '—'} · anchor day {config?.anchorDay ?? '—'}</p>
@@ -455,9 +507,16 @@ export const BillingPage = () => {
 
           <button className="button button-secondary button-full" type="submit">Save terms</button>
         </form>
+      </Modal>
 
+      <Modal
+        isOpen={openModal === 'group'}
+        onClose={() => setOpenModal(null)}
+        title="New billing group"
+        width="sm"
+      >
+        {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
         <form className="config-form" onSubmit={onCreateGroup}>
-          <h3 className="section-title">New billing group</h3>
           <div className="field"><label htmlFor="group-name">Name</label>
             <input id="group-name" placeholder="PowerTech" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
           </div>
@@ -469,9 +528,16 @@ export const BillingPage = () => {
           </div>
           <button className="button button-secondary button-full" type="submit">Create group</button>
         </form>
+      </Modal>
 
+      <Modal
+        isOpen={openModal === 'rate'}
+        onClose={() => setOpenModal(null)}
+        title="Assign rate"
+        width="md"
+      >
+        {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
         <form className="config-form" onSubmit={onAssignMember}>
-          <h3 className="section-title">Assign rate</h3>
           <div className="field"><label htmlFor="member-employee">Employee</label>
             <select id="member-employee" value={memberEmployeeId} onChange={(e) => setMemberEmployeeId(e.target.value)}>
               <option value="">Select…</option>
@@ -491,7 +557,15 @@ export const BillingPage = () => {
           </div>
           <button className="button button-primary button-full" type="submit">Save rate</button>
         </form>
+      </Modal>
 
+      <Modal
+        isOpen={openModal === 'expenses'}
+        onClose={() => setOpenModal(null)}
+        title="Open expenses draft"
+        width="sm"
+      >
+        {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
         <form
           className="config-form"
           onSubmit={(event) => {
@@ -502,10 +576,13 @@ export const BillingPage = () => {
                 variables: { groupId: expenseGroupId, serviceYear: expenseYear, serviceMonth: expenseMonth },
                 refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
               }),
-            );
+            ).then((ok) => {
+              if (ok) {
+                setOpenModal(null);
+              }
+            });
           }}
         >
-          <h3 className="section-title">Expenses pass-through</h3>
           <div className="field"><label htmlFor="expense-group">Group</label>
             <select id="expense-group" value={expenseGroupId} onChange={(e) => setExpenseGroupId(e.target.value)}>
               <option value="">Select…</option>
@@ -527,7 +604,7 @@ export const BillingPage = () => {
             Open draft
           </button>
         </form>
-      </aside>
+      </Modal>
     </main>
   );
 };
