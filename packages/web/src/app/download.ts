@@ -15,7 +15,11 @@ export const downloadBase64File = (
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
+  // The anchor must be in the document for the click to trigger a download in
+  // all browsers (detached clicks are ignored by headless Chromium).
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
   window.URL.revokeObjectURL(url);
 };
 

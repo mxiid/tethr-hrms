@@ -17,15 +17,15 @@ import {
 import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
-import { useTheme } from '../../../providers/theme/useTheme';
 import { downloadBase64File } from '../../../app/download';
+import { useTheme } from '../../../providers/theme/useTheme';
 import { ClockInOutCard } from '../../attendance/components/ClockInOutCard';
 import { useSelfClock } from '../../attendance/hooks/useSelfClock';
+import { SUBMIT_MY_FEEDBACK_MUTATION } from '../../engagement/graphql/engagement.operations';
 import {
   MY_PAYSLIP_PDF_QUERY,
   MY_PAYSLIPS_QUERY,
-} from '../../payroll/graphql/payroll.operations';
-import { SUBMIT_MY_FEEDBACK_MUTATION } from '../../engagement/graphql/engagement.operations';
+} from '../../finance/payroll/graphql/payroll.operations';
 import {
   MY_WORKSPACE_QUERY,
   SUBMIT_MY_LEAVE_REQUEST_MUTATION,

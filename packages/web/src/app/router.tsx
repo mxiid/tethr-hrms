@@ -6,19 +6,19 @@ import { useAuth } from '../modules/auth/hooks/useAuth';
 import { AccessPendingPage } from '../modules/auth/pages/AccessPendingPage';
 import { LoginPage } from '../modules/auth/pages/LoginPage';
 import { SignUpPage } from '../modules/auth/pages/SignUpPage';
-import { BillingPage } from '../modules/billing/pages/BillingPage';
-import { InvoiceDetailPage } from '../modules/billing/pages/InvoiceDetailPage';
 import { ClientWorkspacePage } from '../modules/client/pages/ClientWorkspacePage';
 import { ClientPortfolioPage } from '../modules/clients/pages/ClientPortfolioPage';
-import { CompensationPage } from '../modules/compensation/pages/CompensationPage';
+import { CompensationPage } from '../modules/finance/compensation/pages/CompensationPage';
 import { DashboardPage } from '../modules/dashboard/pages/DashboardPage';
 import { EmployeeProfilePage } from '../modules/employees/pages/EmployeeProfilePage';
 import { EmployeesListPage } from '../modules/employees/pages/EmployeesListPage';
 import { AnnouncementsPage } from '../modules/engagement/pages/AnnouncementsPage';
 import { FeedbackInboxPage } from '../modules/engagement/pages/FeedbackInboxPage';
+import { BillingPage } from '../modules/finance/billing/pages/BillingPage';
+import { InvoiceDetailPage } from '../modules/finance/billing/pages/InvoiceDetailPage';
+import { PayrollPage } from '../modules/finance/payroll/pages/PayrollPage';
+import { PayrollRunDetailPage } from '../modules/finance/payroll/pages/PayrollRunDetailPage';
 import { LeaveTriagePage } from '../modules/leave/pages/LeaveTriagePage';
-import { PayrollPage } from '../modules/payroll/pages/PayrollPage';
-import { PayrollRunDetailPage } from '../modules/payroll/pages/PayrollRunDetailPage';
 import { HiringRequestsPage } from '../modules/recruitment/pages/HiringRequestsPage';
 import { EmployeeWorkspacePage } from '../modules/self-service/pages/EmployeeWorkspacePage';
 import { MyProfilePage } from '../modules/self-service/pages/MyProfilePage';
@@ -79,7 +79,7 @@ export const AppRouter = () => (
             element={
               <RequirePortal
                 portals={['tethr', 'client']}
-                roleKeys={['tethrAdmin', 'tethrHr', 'clientAdmin']}
+                roleKeys={['tethrAdmin', 'tethrHr', 'tethrFinance', 'clientAdmin']}
               />
             }
           >

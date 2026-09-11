@@ -6,14 +6,14 @@ import { AuthResolver } from './core/auth/auth.resolver';
 import { HealthResolver } from './health/health.resolver';
 import { AccountResolver } from './modules/account/account.resolver';
 import { AttendanceResolver } from './modules/attendance/attendance.resolver';
-import { BillingResolver } from './modules/billing/billing.resolver';
 import { ClientResolver } from './modules/clients/client.resolver';
-import { CompensationResolver } from './modules/compensation/compensation.resolver';
+import { CompensationResolver } from './modules/finance/compensation/compensation.resolver';
 import { EmployeeResolver } from './modules/employee/employee.resolver';
 import { EmployeeRecordsResolver } from './modules/employee-records/employee-records.resolver';
 import { EngagementResolver } from './modules/engagement/engagement.resolver';
+import { BillingResolver } from './modules/finance/billing/billing.resolver';
+import { PayrollResolver } from './modules/finance/payroll/payroll.resolver';
 import { LeaveResolver } from './modules/leave/leave.resolver';
-import { PayrollResolver } from './modules/payroll/payroll.resolver';
 import { RecruitmentResolver } from './modules/recruitment/recruitment.resolver';
 
 // Builds the code-first GraphQL schema from the resolver/type decorators without

@@ -18,15 +18,13 @@ import { HealthResolver } from './health/health.resolver';
 import { AccountModule } from './modules/account/account.module';
 import { AssignmentModule } from './modules/assignment/assignment.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
-import { BillingModule } from './modules/billing';
 import { ClientsModule } from './modules/clients/clients.module';
-import { CompensationModule } from './modules/compensation/compensation.module';
 import { EmployeeModule } from './modules/employee/employee.module';
 import { EmployeeRecordsModule } from './modules/employee-records/employee-records.module';
 import { EngagementModule } from './modules/engagement/engagement.module';
+import { FinanceModule } from './modules/finance';
 import { LeaveModule } from './modules/leave/leave.module';
 import { OrganizationModule } from './modules/organization/organization.module';
-import { PayrollModule } from './modules/payroll';
 import { PositionModule } from './modules/position/position.module';
 import { RecruitmentModule } from './modules/recruitment/recruitment.module';
 
@@ -65,9 +63,7 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
     AssignmentModule,
     LeaveModule,
     AttendanceModule,
-    CompensationModule,
-    PayrollModule,
-    BillingModule,
+    FinanceModule,
     RecruitmentModule,
     EngagementModule,
     EmployeeRecordsModule,

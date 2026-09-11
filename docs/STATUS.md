@@ -2,6 +2,10 @@
 
 > As of 2026-09-04 (`feat/attendance-module-and-ux-revamp`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## Payroll, Billing, and Compensation nested under Finance (2026-09-11)
+
+The Finance group now lives under `modules/finance/` and holds **Compensation (the nav's "Pay"), Payroll, and Billing** — each still a separate self-contained module, composed by a thin `FinanceModule` wrapper, matching the nav's existing "Finance" dropdown. "Pay" moved from a standalone nav pill into that dropdown for the Tethr portal; the client portal's standalone "Pay" link is unchanged, since clients don't see Payroll/Billing. Also fixed two bugs found while smoke-testing the reorg: `pdf-renderer.service.ts` now recovers from a dead cached Chromium instance instead of failing every render forever, and `download.ts`'s anchor-click download no longer silently no-ops on browsers that ignore a detached anchor.
+
 ## Employee portal reduced to a phone app (2026-09-09)
 
 The employee surface is now the smallest one in the product, on the principle that an employee should never see the shape of the rest of it.

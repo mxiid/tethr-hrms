@@ -23,7 +23,7 @@ import {
   CLIENT_INVOICES_QUERY,
   CLIENT_INVOICE_ADDENDUM_PDF_QUERY,
   CLIENT_INVOICE_PDF_QUERY,
-} from '../../billing/graphql/billing.operations';
+} from '../../finance/billing/graphql/billing.operations';
 import { DashboardWidgetBoard } from '../../dashboard/components/DashboardWidgetBoard';
 import { CLIENT_WORKSPACE_QUERY } from '../graphql/client-workspace.operations';
 

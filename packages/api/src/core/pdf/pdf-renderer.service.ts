@@ -17,6 +17,20 @@ export class PdfRendererService implements OnModuleDestroy {
   private launching: Promise<Browser> | null = null;
 
   async renderHtmlToPdf(html: string): Promise<Buffer> {
+    try {
+      return await this.renderOnce(html);
+    } catch (error) {
+      // The shared browser can die underneath us (OOM, external kill, crash).
+      // Drop it and retry exactly once against a fresh launch instead of
+      // failing every render from here on.
+      if (!isConnectionError(error)) throw error;
+      this.logger.warn('PDF browser connection lost; relaunching for retry');
+      await this.discardBrowser();
+      return this.renderOnce(html);
+    }
+  }
+
+  private async renderOnce(html: string): Promise<Buffer> {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
     try {
@@ -40,15 +54,26 @@ export class PdfRendererService implements OnModuleDestroy {
   }
 
   // Launch once on first use so booting/tests never pay the Chromium cost.
+  // A cached browser that has since disconnected is discarded — callers must
+  // never hold a dead connection.
   private async getBrowser(): Promise<Browser> {
-    if (this.browser) {
+    if (this.browser && this.browser.connected) {
       return this.browser;
+    }
+    if (this.browser) {
+      await this.discardBrowser();
     }
     this.launching ??= (async () => {
       const puppeteer = (await import('puppeteer')).default;
       const launched = await puppeteer.launch({
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         headless: true,
+      });
+      launched.on('disconnected', () => {
+        if (this.browser === launched) {
+          this.browser = null;
+          this.launching = null;
+        }
       });
       this.logger.log('Headless browser ready for PDF rendering');
       return launched;
@@ -62,11 +87,24 @@ export class PdfRendererService implements OnModuleDestroy {
     }
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close().catch(() => undefined);
-      this.browser = null;
-      this.launching = null;
+  private async discardBrowser(): Promise<void> {
+    this.launching = null;
+    const stale = this.browser;
+    this.browser = null;
+    if (stale) {
+      await stale.close().catch(() => undefined);
     }
   }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.discardBrowser();
+  }
 }
+
+// Puppeteer surfaces dead connections as ConnectionClosedError, or as generic
+// errors mentioning the closed connection/target/session.
+const isConnectionError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'ConnectionClosedError') return true;
+  return /connection closed|target closed|session closed/i.test(error.message);
+};

@@ -87,12 +87,12 @@ const tethrNavigation: readonly NavigationEntry[] = [
       { label: 'Leave triage', to: '/leave', icon: IconPlaneDeparture },
     ],
   },
-  { kind: 'link', label: 'Pay', to: '/compensation', icon: IconCurrencyDollar },
   {
     kind: 'group',
     label: 'Finance',
     icon: IconReportMoney,
     items: [
+      { label: 'Pay', to: '/compensation', icon: IconCurrencyDollar },
       { label: 'Payroll', to: '/payroll', icon: IconReportMoney },
       { label: 'Billing', to: '/billing', icon: IconFileInvoice },
     ],
@@ -243,24 +243,36 @@ export const AppShell = () => {
   const canManagePayroll =
     user?.roleKeys?.includes('tethrAdmin') === true ||
     user?.roleKeys?.includes('tethrFinance') === true;
-  const canManageCompensation =
-    portal === 'tethr' || user?.roleKeys?.includes('clientAdmin') === true;
+  // Compensation ("Pay") is a third gate inside the Finance group. Keep this
+  // role list aligned with the /compensation route's RequirePortal gate so the
+  // nav never shows a link the route would reject — and never hides one it
+  // admits. Gate per item, never per group: a whole-group Finance gate would
+  // hide Pay from tethrHr/tethrFinance.
+  const canViewCompensation =
+    user?.roleKeys?.includes('tethrAdmin') === true ||
+    user?.roleKeys?.includes('tethrHr') === true ||
+    user?.roleKeys?.includes('tethrFinance') === true ||
+    user?.roleKeys?.includes('clientAdmin') === true;
   const canManageClients = user?.roleKeys?.includes('tethrAdmin') === true;
   const canManageOrganization =
     user?.roleKeys?.includes('tethrAdmin') || user?.roleKeys?.includes('clientAdmin');
+  const isVisibleItem = (item: NavigationItem): boolean => {
+    if (item.to === '/compensation') return canViewCompensation;
+    if (item.to === '/payroll' || item.to === '/billing') return canManagePayroll;
+    return true;
+  };
   const visibleNavigation: readonly NavigationEntry[] = navigation
     .filter((entry) => entry.kind !== 'link' || entry.to !== '/clients' || canManageClients)
-    .filter((entry) => entry.kind !== 'link' || entry.to !== '/compensation' || canManageCompensation)
-    // The Finance group (payroll runs + client invoicing) is finance-role only.
-    .filter((entry) => entry.kind !== 'group' || entry.label !== 'Finance' || canManagePayroll)
+    .filter((entry) => entry.kind !== 'link' || entry.to !== '/compensation' || canViewCompensation)
     .map((entry): NavigationEntry => {
       if (entry.kind === 'link') return entry;
       const items = [
-        ...entry.items,
+        ...entry.items.filter(isVisibleItem),
         ...(entry.label === 'People' && canManageUsers ? [workspaceUsersItem] : []),
       ];
       return { ...entry, items };
     })
+    // A group whose items all filtered out disappears entirely.
     .filter((entry) => entry.kind === 'link' || entry.items.length > 0);
 
   // The group whose own sub-pages the user is currently on, if any — drives

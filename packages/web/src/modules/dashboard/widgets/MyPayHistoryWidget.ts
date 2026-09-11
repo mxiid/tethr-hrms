@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client';
 
-import { MY_PAYSLIPS_QUERY } from '../../payroll/graphql/payroll.operations';
+import { MY_PAYSLIPS_QUERY } from '../../finance/payroll/graphql/payroll.operations';
 
 import type { WidgetData, WidgetFieldDefinition } from './types';
 
