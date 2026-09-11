@@ -516,29 +516,31 @@ export const AppShell = () => {
                     </div>
                   </div>
 
-                  <div className="account-dropdown-section">
-                    <div className="account-dropdown-label">Workspace color</div>
-                    <div className="color-swatch-grid">
-                      {WORKSPACE_BRAND_COLORS.map((color) => (
-                        <button
-                          key={color}
-                          aria-label={color}
-                          aria-pressed={brandColor === color}
-                          className={`color-swatch${brandColor === color ? ' is-selected' : ''}`}
-                          disabled={!canManageOrganization || savingColor}
-                          style={
-                            { '--swatch-color': `var(--hrms-color-tag-${color})` } as CSSProperties
-                          }
-                          title={color}
-                          type="button"
-                          onClick={() => void onSelectColor(color)}
-                        />
-                      ))}
+                  {/* Only admins can repaint the workspace, so the swatches are
+                      hidden outright for everyone else rather than shown greyed
+                      out next to a note explaining why they don't work. */}
+                  {canManageOrganization ? (
+                    <div className="account-dropdown-section">
+                      <div className="account-dropdown-label">Workspace color</div>
+                      <div className="color-swatch-grid">
+                        {WORKSPACE_BRAND_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            aria-label={color}
+                            aria-pressed={brandColor === color}
+                            className={`color-swatch${brandColor === color ? ' is-selected' : ''}`}
+                            disabled={savingColor}
+                            style={
+                              { '--swatch-color': `var(--hrms-color-tag-${color})` } as CSSProperties
+                            }
+                            title={color}
+                            type="button"
+                            onClick={() => void onSelectColor(color)}
+                          />
+                        ))}
+                      </div>
                     </div>
-                    {!canManageOrganization ? (
-                      <p className="account-dropdown-hint">Only workspace admins can change this.</p>
-                    ) : null}
-                  </div>
+                  ) : null}
 
                   <button
                     className="account-dropdown-signout"
