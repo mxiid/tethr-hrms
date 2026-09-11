@@ -18,6 +18,44 @@ export type DerivedLineTotals = {
 
 const toMoney = (value: number): number => Math.round(value * 100) / 100;
 
+export type ResolvedComponentAmount = {
+  readonly defaultAmount: number;
+  readonly amount: number;
+  readonly dependsOnPaymentDays: boolean;
+};
+
+// Pro-rate one component's full-period amount by payable days (Frappe's
+// depends_on_payment_days). Day-independent components pass through untouched;
+// day-dependent ones scale by payable/standard, capped at 1 so an over-count
+// can never inflate pay. A zero denominator yields zero rather than unbounded.
+export const prorateComponent = (
+  defaultAmount: number,
+  dependsOnPaymentDays: boolean,
+  payableDays: number,
+  standardWorkingDays: number,
+): ResolvedComponentAmount => {
+  const full = toMoney(defaultAmount);
+  if (!dependsOnPaymentDays) {
+    return { defaultAmount: full, amount: full, dependsOnPaymentDays };
+  }
+  if (standardWorkingDays <= 0) {
+    return { defaultAmount: full, amount: 0, dependsOnPaymentDays };
+  }
+  const share = Math.min(1, Math.max(0, payableDays) / standardWorkingDays);
+  return { defaultAmount: full, amount: toMoney(full * share), dependsOnPaymentDays };
+};
+
+// Gross payable for a line: the sum of its pro-rated earning components. Never
+// the raw monthly gross — a mid-month joiner or an unpaid-leave month is less.
+export const sumEarnings = (
+  components: readonly { readonly category: string; readonly amount: number }[],
+): number =>
+  toMoney(
+    components
+      .filter((component) => component.category === 'earning')
+      .reduce((sum, component) => sum + component.amount, 0),
+  );
+
 export const deriveLineTotals = (
   components: readonly CategorizedComponent[],
   incomeTax: number,

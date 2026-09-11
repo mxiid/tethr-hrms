@@ -52,6 +52,11 @@ export class Payslip extends TenantScopedEntity {
   @Column({ type: 'numeric', precision: 7, scale: 2, default: '0' })
   lopDays!: string;
 
+  // Denominator for the paid-day fraction ("18 of 22 days"); the employee's own
+  // working-day count for the period.
+  @Column({ type: 'int', default: 0 })
+  standardWorkingDays!: number;
+
   // --- Money snapshot (numeric-as-string) ---
   @Column({ type: 'numeric', precision: 14, scale: 2 })
   grossAmount!: string;

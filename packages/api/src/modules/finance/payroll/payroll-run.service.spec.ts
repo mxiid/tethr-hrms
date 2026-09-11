@@ -50,6 +50,7 @@ const breakdownFixture = [
     componentName: 'Basic salary',
     category: 'earning' as const,
     taxable: true,
+    dependsOnPaymentDays: true,
     amount: 60000,
   },
   {
@@ -57,6 +58,7 @@ const breakdownFixture = [
     componentName: 'Fuel reimbursement',
     category: 'earning' as const,
     taxable: false,
+    dependsOnPaymentDays: false,
     amount: 5000,
   },
 ];
@@ -121,6 +123,7 @@ const buildService = (options: Options = {}) => {
               employeeId: 'emp-1',
               payableDays: '8.00',
               lopDays: '0.00',
+              standardWorkingDays: 21,
               grossAmount: '100000.00',
               taxOverrideAmount: null,
               note: null,
@@ -175,6 +178,7 @@ const buildService = (options: Options = {}) => {
     getStructureComponentBreakdown: jest
       .fn()
       .mockResolvedValue(breakdownFixture) as jest.Mock,
+    getAdjustmentsForPeriod: jest.fn().mockResolvedValue([]) as jest.Mock,
   };
   const leaveRequests = {
     getApprovedUnpaidWorkDays: jest.fn(async () => options.unpaidDays ?? 0) as jest.Mock,
@@ -222,7 +226,7 @@ const buildService = (options: Options = {}) => {
 };
 
 describe('PayrollRunService.createRun', () => {
-  it('pro-rates payable days for a mid-month joiner and snapshots the breakdown', async () => {
+  it('pro-rates day-dependent components for a mid-month joiner and snapshots the full amount', async () => {
     const { service, mocks } = buildService();
     await service.createRun({ periodYear: 2026, periodMonth: 8 });
 
@@ -233,13 +237,22 @@ describe('PayrollRunService.createRun', () => {
     expect(lineCall).toBeDefined();
     const attrs = lineCall![1] as Record<string, string>;
     expect(attrs.payableDays).toBe('8.00');
-    expect(attrs.grossAmount).toBe('100000.00');
+    expect(attrs.standardWorkingDays).toBe(21);
+    // Basic (day-dependent) scales 60000 × 8/21; fuel (day-independent) is full.
+    expect(attrs.grossAmount).toBe('27857.14');
 
     const componentTargets = mocks.manager.create.mock.calls.filter(
       ([target]) => target === PayrollRunLineComponent,
     );
     expect(componentTargets).toHaveLength(breakdownFixture.length);
-    expect((componentTargets[0][1] as Record<string, string>).amount).toBe('60000.00');
+    const basic = componentTargets[0][1] as Record<string, string | boolean>;
+    expect(basic.amount).toBe('22857.14');
+    expect(basic.defaultAmount).toBe('60000.00');
+    expect(basic.dependsOnPaymentDays).toBe(true);
+    const fuel = componentTargets[1][1] as Record<string, string | boolean>;
+    expect(fuel.amount).toBe('5000.00');
+    expect(fuel.defaultAmount).toBe('5000.00');
+    expect(fuel.dependsOnPaymentDays).toBe(false);
   });
 
   it('reduces payable days by approved unpaid leave', async () => {
@@ -252,7 +265,59 @@ describe('PayrollRunService.createRun', () => {
     expect((lineCall![1] as Record<string, string>).payableDays).toBe('5.00');
   });
 
-  it('flags employees without an active salary revision instead of skipping them', async () => {
+  it('leaves a full clean month unchanged (payable days = standard, full amounts)', async () => {
+    const { service, mocks } = buildService({
+      employees: [employeeFixture({ hireDate: '2026-01-05' })],
+    });
+    await service.createRun({ periodYear: 2026, periodMonth: 8 });
+
+    const attrs = mocks.manager.create.mock.calls.find(
+      ([target]) => target === PayrollRunLine,
+    )![1] as Record<string, string>;
+    expect(attrs.payableDays).toBe('21.00');
+    expect(attrs.grossAmount).toBe('65000.00');
+    const basic = mocks.manager.create.mock.calls.filter(
+      ([target]) => target === PayrollRunLineComponent,
+    )[0][1] as Record<string, string>;
+    expect(basic.amount).toBe('60000.00');
+  });
+
+  it('emits a period adjustment as a component with provenance and no pro-rata', async () => {
+    const { service, mocks } = buildService();
+    mocks.compensation.getAdjustmentsForPeriod.mockResolvedValue([
+      {
+        componentId: 'comp-bonus',
+        componentCode: 'bonus',
+        componentName: 'Bonus',
+        category: 'earning',
+        taxable: true,
+        dependsOnPaymentDays: false,
+        amount: 10000,
+        kind: 'bonus',
+        sourceType: 'bonusAward',
+        sourceId: 'award-1',
+        overwritesStructureAmount: false,
+        note: null,
+      },
+    ]);
+    await service.createRun({ periodYear: 2026, periodMonth: 8 });
+
+    const line = mocks.manager.create.mock.calls.find(
+      ([target]) => target === PayrollRunLine,
+    )![1] as Record<string, string>;
+    // Basic 22857.14 + fuel 5000 + full bonus 10000.
+    expect(line.grossAmount).toBe('37857.14');
+    const bonus = mocks.manager.create.mock.calls
+      .filter(([target]) => target === PayrollRunLineComponent)
+      .map(([, attrs]) => attrs as Record<string, string>)
+      .find((attrs) => attrs.componentCode === 'bonus');
+    expect(bonus).toBeDefined();
+    expect(bonus!.amount).toBe('10000.00');
+    expect(bonus!.sourceType).toBe('bonusAward');
+    expect(bonus!.sourceId).toBe('award-1');
+  });
+
+  it('excludes employees without an active salary assignment from the run', async () => {
     const { service, mocks } = buildService({
       revision: null,
       employees: [employeeFixture({ hireDate: '2026-01-05' })],
@@ -262,9 +327,7 @@ describe('PayrollRunService.createRun', () => {
     const lineCall = mocks.manager.create.mock.calls.find(
       ([target]) => target === PayrollRunLine,
     );
-    const attrs = lineCall![1] as Record<string, string>;
-    expect(attrs.grossAmount).toBe('0.00');
-    expect(String(attrs.note)).toContain('No active salary revision');
+    expect(lineCall).toBeUndefined();
   });
 
   it('rejects a second run for the same period', async () => {
@@ -337,6 +400,52 @@ describe('PayrollRunService.finalizeRun', () => {
       service.finalizeRun({ runId: RUN_ID, finalizedByUserId: toId('user-1') }),
     ).rejects.toThrow(/already finalized/);
   });
+
+  it('refuses to finalize a line with no earning components (silent zero guard)', async () => {
+    const { service, mocks } = buildService();
+    (mocks.manager.findOne as jest.Mock).mockImplementation(async (target: unknown) =>
+      target === PayrollRun ? draftRun : null,
+    );
+    (mocks.lineComponents.find as jest.Mock).mockResolvedValue([
+      {
+        id: 'comp-1',
+        lineId: 'line-1',
+        componentCode: 'loan',
+        componentName: 'Loan repayment',
+        category: 'deduction',
+        taxable: false,
+        amount: '500.00',
+        sortOrder: 0,
+      },
+    ]);
+
+    await expect(
+      service.finalizeRun({ runId: RUN_ID, finalizedByUserId: toId('user-1') }),
+    ).rejects.toThrow(/no earning components/);
+  });
+
+  it('refuses to finalize a line with payable days but zero earnings (finding 10)', async () => {
+    const { service, mocks } = buildService();
+    (mocks.manager.findOne as jest.Mock).mockImplementation(async (target: unknown) =>
+      target === PayrollRun ? draftRun : null,
+    );
+    (mocks.lineComponents.find as jest.Mock).mockResolvedValue([
+      {
+        id: 'comp-1',
+        lineId: 'line-1',
+        componentCode: 'basic',
+        componentName: 'Basic',
+        category: 'earning',
+        taxable: true,
+        amount: '0.00',
+        sortOrder: 0,
+      },
+    ]);
+
+    await expect(
+      service.finalizeRun({ runId: RUN_ID, finalizedByUserId: toId('user-1') }),
+    ).rejects.toThrow(/zero earnings/);
+  });
 });
 
 describe('PayrollRunService.updateRunLine', () => {
@@ -368,5 +477,146 @@ describe('PayrollRunService.updateRunLine', () => {
       string | null
     >;
     expect(savedLine.taxOverrideAmount).toBe('1500.00');
+  });
+
+  it('re-pro-rates components and gross when payable days change', async () => {
+    const { service, mocks } = buildService();
+    (mocks.manager.findOne as jest.Mock).mockImplementation(async (target: unknown) =>
+      target === PayrollRun
+        ? { id: RUN_ID, status: 'draft', standardWorkingDays: 21 }
+        : {
+            id: 'line-1',
+            runId: RUN_ID,
+            organizationId: ORG,
+            payableDays: '8.00',
+            lopDays: '0.00',
+            standardWorkingDays: 21,
+            grossAmount: '27857.14',
+          },
+    );
+    (mocks.manager.find as jest.Mock).mockImplementation(async (target: unknown) =>
+      target === PayrollRunLineComponent
+        ? [
+            {
+              id: 'comp-1',
+              lineId: 'line-1',
+              category: 'earning',
+              amount: '22857.14',
+              defaultAmount: '60000.00',
+              dependsOnPaymentDays: true,
+              sortOrder: 0,
+            },
+            {
+              id: 'comp-2',
+              lineId: 'line-1',
+              category: 'earning',
+              amount: '5000.00',
+              defaultAmount: '5000.00',
+              dependsOnPaymentDays: false,
+              sortOrder: 1,
+            },
+          ]
+        : [],
+    );
+
+    await service.updateRunLine({ lineId: 'line-1', payableDays: 21 });
+
+    const savedLine = (mocks.manager.save as jest.Mock).mock.calls.at(-1)![0] as Record<
+      string,
+      string
+    >;
+    expect(savedLine.grossAmount).toBe('65000.00');
+    expect(savedLine.payableDays).toBe('21.00');
+  });
+
+  it('shifts payable days by the delta when unpaid days are edited', async () => {
+    const { service, mocks } = buildService();
+    (mocks.manager.findOne as jest.Mock).mockImplementation(async (target: unknown) =>
+      target === PayrollRun
+        ? { id: RUN_ID, status: 'draft', standardWorkingDays: 21 }
+        : {
+            id: 'line-1',
+            runId: RUN_ID,
+            organizationId: ORG,
+            payableDays: '21.00',
+            lopDays: '0.00',
+            standardWorkingDays: 21,
+            grossAmount: '65000.00',
+          },
+    );
+    (mocks.manager.find as jest.Mock).mockResolvedValue([]);
+
+    await service.updateRunLine({ lineId: 'line-1', lopDays: 3 });
+
+    const savedLine = (mocks.manager.save as jest.Mock).mock.calls.at(-1)![0] as Record<
+      string,
+      string
+    >;
+    expect(savedLine.lopDays).toBe('3.00');
+    expect(savedLine.payableDays).toBe('18.00');
+  });
+
+  it('does not double-apply the delta when payableDays and lopDays are edited together', async () => {
+    const { service, mocks } = buildService();
+    (mocks.manager.findOne as jest.Mock).mockImplementation(async (target: unknown) =>
+      target === PayrollRun
+        ? { id: RUN_ID, status: 'draft', standardWorkingDays: 21 }
+        : {
+            id: 'line-1',
+            runId: RUN_ID,
+            organizationId: ORG,
+            payableDays: '21.00',
+            lopDays: '0.00',
+            standardWorkingDays: 21,
+            grossAmount: '65000.00',
+          },
+    );
+    (mocks.manager.find as jest.Mock).mockResolvedValue([]);
+
+    await service.updateRunLine({ lineId: 'line-1', payableDays: 18, lopDays: 3 });
+
+    const savedLine = (mocks.manager.save as jest.Mock).mock.calls.at(-1)![0] as Record<
+      string,
+      string
+    >;
+    // payableDays is authoritative; without the fix it would become 18 − 3 = 15.
+    expect(savedLine.payableDays).toBe('18.00');
+    expect(savedLine.lopDays).toBe('3.00');
+  });
+});
+
+describe('PayrollRunService.getReadiness', () => {
+  it('lists warnings for missing bank details and no tax ladder', async () => {
+    const { service } = buildService();
+    const readiness = await service.getReadiness(2026, 8);
+    expect(readiness.hardBlockerCount).toBe(0);
+    expect(readiness.warningCount).toBe(2);
+    const codes = readiness.employees[0].blockers.map((blocker) => blocker.code).sort();
+    expect(codes).toEqual(['missingBankDetails', 'noActiveTaxLadder']);
+  });
+
+  it('flags a missing pay assignment as a hard blocker', async () => {
+    const { service } = buildService({ revision: null });
+    const readiness = await service.getReadiness(2026, 8);
+    expect(readiness.hardBlockerCount).toBe(1);
+    expect(readiness.employees[0].blockers[0].code).toBe('noPayAssignment');
+  });
+
+  it('flags a structure with no earning components as a hard blocker', async () => {
+    const { service, mocks } = buildService();
+    mocks.compensation.getStructureComponentBreakdown.mockResolvedValue([
+      {
+        componentCode: 'loan',
+        componentName: 'Loan repayment',
+        category: 'deduction',
+        taxable: false,
+        dependsOnPaymentDays: false,
+        amount: 500,
+      },
+    ]);
+    const readiness = await service.getReadiness(2026, 8);
+    expect(
+      readiness.employees[0].blockers.some((blocker) => blocker.code === 'structureHasNoComponents'),
+    ).toBe(true);
   });
 });

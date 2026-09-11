@@ -230,6 +230,72 @@ export const UPDATE_MY_EMPLOYEE_PHOTO_MUTATION = gql`
   }
 `;
 
+export const MY_SALARY_HISTORY_QUERY = gql`
+  query MySalaryHistory {
+    mySalaryRevisions {
+      id
+      validFrom
+      validTo
+      currency
+      annualAmount
+      reason
+      note
+    }
+  }
+`;
+
+export const MY_BONUS_AWARDS_QUERY = gql`
+  query MyBonusAwards {
+    myBonusAwards {
+      id
+      awardDate
+      currency
+      amount
+      reason
+    }
+  }
+`;
+
+export const MY_PAY_ADJUSTMENTS_QUERY = gql`
+  query MyPayAdjustments {
+    myPayAdjustments {
+      id
+      amount
+      currency
+      periodYear
+      periodMonth
+      kind
+      sourceType
+    }
+  }
+`;
+
+export const MY_BANK_DETAILS_QUERY = gql`
+  query MyBankDetails {
+    myBankDetails {
+      bankName
+      bankAccountTitle
+      bankAccountNumber
+      bankIban
+    }
+    myBankDetailChangeRequests {
+      id
+      status
+      createdAt
+      decisionNote
+    }
+  }
+`;
+
+export const REQUEST_MY_BANK_CHANGE_MUTATION = gql`
+  mutation RequestMyBankChange($input: RequestBankDetailChangeInput!) {
+    requestMyBankDetailChange(input: $input) {
+      id
+      status
+    }
+  }
+`;
+
 // Just the employee identity plus the editable profile — the profile page has no
 // use for leave balances, payslips, or holidays, so it does not pull them.
 export const MY_PROFILE_QUERY = gql`

@@ -75,6 +75,13 @@ export class FinalizePayrollRunArgs {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'payDate must be an ISO date (YYYY-MM-DD)' })
   payDate?: string;
+
+  // Required only when the run has hard readiness blockers; recorded on the run.
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  overrideReason?: string;
 }
 
 @InputType()

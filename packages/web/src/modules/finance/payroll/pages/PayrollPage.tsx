@@ -5,9 +5,14 @@ import { Link } from 'react-router-dom';
 
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
+  PayrollReadinessBanner,
+  type PayrollReadinessRecord,
+} from '../components/PayrollReadinessBanner';
+import {
   ACTIVATE_TAX_SLAB_GROUP_MUTATION,
   CREATE_PAYROLL_RUN_MUTATION,
   CREATE_TAX_SLAB_GROUP_MUTATION,
+  PAYROLL_READINESS_QUERY,
   PAYROLL_RUNS_QUERY,
   TAX_SLAB_GROUPS_QUERY,
 } from '../graphql/payroll.operations';
@@ -53,6 +58,11 @@ export const PayrollPage = () => {
   const [periodYear, setPeriodYear] = useState(defaultYear);
   const [periodMonth, setPeriodMonth] = useState(defaultMonth);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const { data: readinessData } = useQuery<{ readonly payrollReadiness: PayrollReadinessRecord }>(
+    PAYROLL_READINESS_QUERY,
+    { variables: { periodYear, periodMonth } },
+  );
 
   const [taxGroupName, setTaxGroupName] = useState('');
   const [taxGroupYear, setTaxGroupYear] = useState(`FY ${defaultYear}-${defaultYear + 1}`);
@@ -128,6 +138,10 @@ export const PayrollPage = () => {
           <p className="auth-error" role="alert">
             {formError}
           </p>
+        ) : null}
+
+        {readinessData?.payrollReadiness ? (
+          <PayrollReadinessBanner readiness={readinessData.payrollReadiness} />
         ) : null}
 
         <section className="table-shell" aria-labelledby="runs-title">

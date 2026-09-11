@@ -20,6 +20,7 @@ import { downloadBase64File } from '../../../app/download';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
+  CLIENT_COST_BREAKDOWN_QUERY,
   CLIENT_INVOICES_QUERY,
   CLIENT_INVOICE_ADDENDUM_PDF_QUERY,
   CLIENT_INVOICE_PDF_QUERY,
@@ -297,6 +298,7 @@ export const ClientWorkspacePage = () => {
         </section>
 
         <ClientInvoicesSection />
+        <ClientSpendSection />
       </section>
 
       <aside className="client-workspace-panel client-actions-panel" aria-label="Client actions">
@@ -468,6 +470,101 @@ function ClientInvoicesSection() {
         </table>
       </div>
       {error ? <p className="auth-error" role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
+type ClientCostBreakdown = {
+  readonly totalBilled: number;
+  readonly currency: string;
+  readonly byEmployee: readonly {
+    readonly employeeId: string;
+    readonly employeeName: string | null;
+    readonly total: number;
+  }[];
+  readonly byPeriod: readonly {
+    readonly serviceYear: number;
+    readonly serviceMonth: number;
+    readonly total: number;
+  }[];
+};
+
+// Per-employee cost and spend trend, previously only inside the addendum PDF.
+function ClientSpendSection() {
+  const { data, loading } = useQuery<{ readonly clientCostBreakdown: ClientCostBreakdown }>(
+    CLIENT_COST_BREAKDOWN_QUERY,
+  );
+  const breakdown = data?.clientCostBreakdown;
+  const money = (value: number, currency: string): string =>
+    new Intl.NumberFormat('en', { currency, style: 'currency' }).format(value);
+
+  if (!breakdown || (breakdown.byEmployee.length === 0 && breakdown.byPeriod.length === 0)) {
+    return null;
+  }
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const maxPeriod = Math.max(...breakdown.byPeriod.map((period) => period.total), 1);
+
+  return (
+    <section className="table-shell" aria-labelledby="client-spend-title">
+      <div className="table-title-row">
+        <div className="table-title" id="client-spend-title">
+          Spend by employee
+        </div>
+        <div className="table-density">
+          {loading ? 'Loading…' : `${money(breakdown.totalBilled, breakdown.currency)} total`}
+        </div>
+      </div>
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Billed to date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {breakdown.byEmployee.map((entry) => (
+              <tr key={entry.employeeId}>
+                <td>
+                  <Link className="table-link" to={`/employees/${entry.employeeId}`}>
+                    {entry.employeeName ?? entry.employeeId}
+                  </Link>
+                </td>
+                <td>{money(entry.total, breakdown.currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {breakdown.byPeriod.length > 0 ? (
+        <div className="field-list">
+          <div className="field-row">
+            <span className="field-label">Spend trend</span>
+            <span className="field-value">{breakdown.byPeriod.length} month(s)</span>
+          </div>
+          {breakdown.byPeriod.map((period) => (
+            <div className="field-row" key={`${period.serviceYear}-${period.serviceMonth}`}>
+              <span className="field-label">
+                {months[period.serviceMonth - 1]} {period.serviceYear}
+              </span>
+              <span className="field-value">
+                <span
+                  style={{
+                    display: 'inline-block',
+                    height: 8,
+                    width: `${Math.round((period.total / maxPeriod) * 120) + 4}px`,
+                    marginRight: 'var(--hrms-space-2)',
+                    background: 'var(--hrms-color-accent-accent9)',
+                    borderRadius: 4,
+                    verticalAlign: 'middle',
+                  }}
+                />
+                {money(period.total, breakdown.currency)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

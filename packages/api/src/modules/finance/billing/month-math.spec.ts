@@ -32,6 +32,16 @@ describe('billing month math', () => {
     expect(proratedAmount(900, null, 2026, 8)).toBe(900);
   });
 
+  it('prorates the final month through a termination date', () => {
+    // August 2026: 21 working days; leaving after the 14th → 10 worked days.
+    expect(prorationShare('2026-08-01', 2026, 8, '2026-08-14')).toBeCloseTo(10 / 21, 4);
+    expect(proratedAmount(900, '2026-08-01', 2026, 8, '2026-08-14')).toBe(428.57);
+    // Termination after the month end is still a full month.
+    expect(prorationShare('2026-01-01', 2026, 8, '2026-09-30')).toBe(1);
+    // Termination before the month begins bills nothing.
+    expect(prorationShare('2026-01-01', 2026, 8, '2026-07-31')).toBe(0);
+  });
+
   it('lists months from hire through the end boundary inclusively', () => {
     const months = monthsFromHireThrough('2026-07-15', 2026, 9);
     expect(months).toEqual([

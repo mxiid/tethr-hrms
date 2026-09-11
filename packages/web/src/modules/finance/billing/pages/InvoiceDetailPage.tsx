@@ -18,6 +18,7 @@ import {
 type InvoiceLineRecord = {
   readonly id: string;
   readonly kind: string;
+  readonly employeeId: string | null;
   readonly employeeName: string | null;
   readonly monthLabel: string | null;
   readonly description: string;
@@ -223,7 +224,15 @@ export const InvoiceDetailPage = () => {
                 ) : (
                   lines.map((line) => (
                     <tr key={line.id}>
-                      <td><span className="employee-primary">{line.employeeName ?? '—'}</span></td>
+                      <td>
+                        {line.employeeId ? (
+                          <Link className="table-link" to={`/employees/${line.employeeId}`}>
+                            {line.employeeName ?? '—'}
+                          </Link>
+                        ) : (
+                          <span className="employee-primary">{line.employeeName ?? '—'}</span>
+                        )}
+                      </td>
                       <td>{line.monthLabel ?? '—'}</td>
                       <td>{line.description}</td>
                       <td>{line.quantity}</td>

@@ -8,7 +8,10 @@ import { provideTenantScopedRepository } from '../../../core/tenancy/tenant-repo
 import { EmployeeModule } from '../../employee';
 import { PayrollModule } from '../payroll';
 
-import { PayrollFinalizedBillingConsumer } from './billing.consumer';
+import {
+  EmployeeTerminatedBillingConsumer,
+  PayrollFinalizedBillingConsumer,
+} from './billing.consumer';
 import { BillingResolver } from './billing.resolver';
 import {
   BILLING_GROUP_MEMBER_REPOSITORY,
@@ -45,6 +48,7 @@ import { InvoicePdfService } from './pdf/invoice-pdf.service';
     InvoiceService,
     InvoicePdfService,
     PayrollFinalizedBillingConsumer,
+    EmployeeTerminatedBillingConsumer,
     BillingResolver,
     provideTenantScopedRepository(CLIENT_BILLING_CONFIG_REPOSITORY, ClientBillingConfig),
     provideTenantScopedRepository(BILLING_GROUP_REPOSITORY, BillingGroup),

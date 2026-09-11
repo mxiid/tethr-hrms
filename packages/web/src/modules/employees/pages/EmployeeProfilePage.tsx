@@ -52,6 +52,7 @@ import {
   UPDATE_OFFBOARDING_TASK_MUTATION,
   UPSERT_EXIT_INTERVIEW_MUTATION,
 } from '../graphql/employee.operations';
+import { EmployeeJobPayHub } from '../components/EmployeeJobPayHub';
 
 type AssignmentView = {
   readonly id: string;
@@ -607,6 +608,16 @@ export const EmployeeProfilePage = () => {
     user?.roleKeys.includes('tethrAdmin') ||
     user?.roleKeys.includes('tethrHr') ||
     user?.roleKeys.includes('clientAdmin'),
+  );
+  const roleKeys = user?.roleKeys ?? [];
+  const canViewPayroll = roleKeys.includes('tethrAdmin') || roleKeys.includes('tethrFinance');
+  const canViewBilling = canViewPayroll;
+  const canViewCompensationHistory = Boolean(
+    roleKeys.includes('tethrAdmin') ||
+      roleKeys.includes('tethrHr') ||
+      roleKeys.includes('tethrFinance') ||
+      roleKeys.includes('clientAdmin') ||
+      roleKeys.includes('clientMember'),
   );
   const detailVariables = useMemo(() => ({ employeeId, asOf: today() }), [employeeId]);
   const {
@@ -1678,6 +1689,14 @@ export const EmployeeProfilePage = () => {
 
           {tab === 'pay' ? (
             <>
+            <EmployeeJobPayHub
+              canApproveBankChanges={canEditHrRecord}
+              canViewBilling={canViewBilling}
+              canViewPayroll={canViewPayroll}
+              canViewSalaryHistory={canViewCompensationHistory}
+              currency={salary?.currency ?? 'PKR'}
+              employeeId={employeeId}
+            />
             {canEditHrRecord ? (
               <DetailSection title="Tethr HR record">
                 {hrRecordLoading ? (
@@ -1877,6 +1896,14 @@ export const EmployeeProfilePage = () => {
                           </option>
                         ))}
                       </select>
+                      {!loadingSalaryStructures && availableSalaryStructures.length === 0 ? (
+                        <p className="field-hint field-hint-warning">
+                          No salary structures are configured yet.{' '}
+                          <Link className="table-link" to="/compensation">
+                            Create one in Pay
+                          </Link>
+                        </p>
+                      ) : null}
                     </div>
                     <div className="field">
                       <label htmlFor="salary-annual">New annual salary</label>

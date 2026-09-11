@@ -1,23 +1,26 @@
 import type { EmployeeId } from '@hrms/shared';
 import { Column, Entity, Index } from 'typeorm';
 
-import { TenantScopedEntity } from '../../../../core/database/entities/tenant-scoped.entity';
+import { TemporalEntity } from '../../../../core/database/entities/temporal.entity';
 
-// Which billing group an employee currently belongs to and the agreed fixed USD
-// monthly rate Tethr bills for them. The employee is referenced by ID only
-// (non-negotiable #2); hire dates for pro-rating come from the published
-// directory at invoice-drafting time.
-//
-// Deliberate V1 scope: this is the CURRENT membership, not an effective-dated
-// history. Catch-up logic derives past entitlements from hire date plus which
-// months were already invoiced, so a team move does not double-bill. If real
-// membership history becomes load-bearing (mid-month transfers between groups),
-// promote this row to TemporalEntity then — the table is private to this module
-// so that is a local change.
+// Effective-dated membership: which billing group an employee belonged to and the
+// agreed fixed USD monthly rate for that span. Rows are never overwritten — a
+// group/rate change closes the open row and opens the next, and a termination
+// closes it at the termination date (so a departed employee stops being billed
+// the following month, and a partial final month is billed pro-rata). Employee
+// and group are ID references only (non-negotiable #2); hire/termination dates
+// come through the published directory.
 @Entity('billing_group_members')
-@Index('billing_members_org_emp_unique', ['organizationId', 'employeeId'], { unique: true })
+@Index(['organizationId', 'employeeId', 'validFrom'])
 @Index('billing_members_org_group_idx', ['organizationId', 'groupId'])
-export class BillingGroupMember extends TenantScopedEntity {
+// At most one OPEN membership per employee. The effective-dating move dropped
+// the old (org, employee) unique index; this partial unique index replaces it
+// and closes the concurrent-setMember race at the database level.
+@Index('billing_members_org_emp_open_unique', ['organizationId', 'employeeId'], {
+  unique: true,
+  where: '"validTo" IS NULL',
+})
+export class BillingGroupMember extends TemporalEntity {
   @Column({ type: 'uuid' })
   employeeId!: EmployeeId;
 

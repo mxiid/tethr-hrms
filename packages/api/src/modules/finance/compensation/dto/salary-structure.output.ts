@@ -14,6 +14,9 @@ export class SalaryStructureView {
   @Field(() => ID, { nullable: true })
   gradeId!: string | null;
 
+  @Field(() => Number, { nullable: true })
+  defaultAnnualAmount!: number | null;
+
   @Field()
   currency!: string;
 

@@ -1,5 +1,5 @@
 import { Field, ID, InputType } from '@nestjs/graphql';
-import { IsIn, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, IsUUID, Length, MaxLength, Min } from 'class-validator';
 
 @InputType()
 export class CreateSalaryStructureInput {
@@ -17,6 +17,12 @@ export class CreateSalaryStructureInput {
   @IsOptional()
   @IsUUID()
   gradeId?: string;
+
+  @Field(() => Number, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultAnnualAmount?: number;
 
   @Field()
   @IsString()

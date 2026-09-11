@@ -26,4 +26,9 @@ export class CreatePayComponentInput {
   @IsOptional()
   @IsBoolean()
   recurring?: boolean;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  dependsOnPaymentDays?: boolean;
 }

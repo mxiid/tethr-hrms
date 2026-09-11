@@ -17,8 +17,21 @@ export class PayrollRunLineComponentView {
   @Field()
   taxable!: boolean;
 
+  @Field()
+  dependsOnPaymentDays!: boolean;
+
+  // Full-period entitlement; `amount` is what was actually paid after pro-rating.
+  @Field(() => Number)
+  defaultAmount!: number;
+
   @Field(() => Number)
   amount!: number;
+
+  @Field(() => String, { nullable: true })
+  sourceType!: string | null;
+
+  @Field(() => String, { nullable: true })
+  sourceId!: string | null;
 }
 
 @ObjectType('PayrollRunLine')
@@ -35,11 +48,24 @@ export class PayrollRunLineView {
   @Field(() => String, { nullable: true })
   displayName!: string | null;
 
+  @Field(() => String, { nullable: true })
+  roleTitle!: string | null;
+
+  @Field(() => String, { nullable: true })
+  hireDate!: string | null;
+
+  @Field(() => String, { nullable: true })
+  employmentStatus!: string | null;
+
   @Field(() => Number)
   payableDays!: number;
 
   @Field(() => Number)
   lopDays!: number;
+
+  // The line's own working-day denominator (per-employee calendar when set).
+  @Field(() => Number)
+  standardWorkingDays!: number;
 
   @Field(() => Number)
   grossAmount!: number;
@@ -92,6 +118,15 @@ export class PayrollRunView {
 
   @Field(() => Date, { nullable: true })
   finalizedAt!: Date | null;
+
+  @Field(() => String, { nullable: true })
+  finalizeOverrideReason!: string | null;
+
+  @Field()
+  isStale!: boolean;
+
+  @Field(() => String, { nullable: true })
+  staleReason!: string | null;
 
   @Field(() => [PayrollRunLineView], { nullable: true })
   lines?: PayrollRunLineView[];

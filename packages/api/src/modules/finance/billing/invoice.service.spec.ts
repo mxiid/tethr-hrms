@@ -60,6 +60,8 @@ const memberFixture = (): BillingGroupMember =>
     groupId: GROUP,
     monthlyRate: '900.00',
     rateCurrency: 'USD',
+    validFrom: '2026-08-12',
+    validTo: null,
   }) as unknown as BillingGroupMember;
 
 const employeeFixture = () => ({
@@ -107,7 +109,7 @@ const buildService = () => {
   };
   const lines = { find: jest.fn(async () => []) as jest.Mock, count: jest.fn(async () => 0), save: jest.fn(async (v: unknown) => v) };
   const employeeDirectory = {
-    getById: jest.fn(async () => employeeFixture()),
+    getById: jest.fn(async () => employeeFixture()) as jest.Mock,
     exists: jest.fn(async () => true),
     getDisplayName: jest.fn(async () => 'Waheed Ali'),
   };
@@ -169,6 +171,28 @@ describe('InvoiceService.draftInvoicesFromRun', () => {
     mocks.invoices.findOne.mockResolvedValue({ id: 'existing' });
     const created = await service.draftInvoicesFromRun('run-1');
     expect(created).toHaveLength(0);
+  });
+
+  it('bills a terminated-mid-month employee for the partial month only', async () => {
+    const { service, mocks } = buildService();
+    // Hired 12 Aug, terminated 20 Aug; drafted on 20 Aug (service month Sep).
+    mocks.employeeDirectory.getById.mockResolvedValue({
+      ...employeeFixture(),
+      terminationDate: '2026-08-20',
+      employmentStatus: 'terminated',
+    });
+
+    const created = await service.draftInvoicesFromRun('run-1');
+
+    expect(created).toHaveLength(1);
+    const lineCalls = mocks.manager.create.mock.calls.filter(
+      ([target]) => target === InvoiceLine,
+    );
+    const kinds = lineCalls.map(([, attrs]) => (attrs as Record<string, unknown>).kind);
+    // No September salary line (terminated before it) and no PEPM fee; only the
+    // partial August catch-up, pro-rated through the termination date.
+    expect(kinds).toEqual(['catchup']);
+    expect((lineCalls[0][1] as Record<string, string>).total).toBe('300.00');
   });
 });
 
@@ -258,6 +282,31 @@ describe('InvoiceService.markInvoicePaid', () => {
     await expect(service.markInvoicePaid({ invoiceId: INVOICE_ID })).rejects.toThrow(
       /Only issued/,
     );
+  });
+});
+
+describe('InvoiceService.setMember', () => {
+  it('rejects a membership whose range overlaps an existing one (finding 3)', async () => {
+    const { service, mocks } = buildService();
+    // A closed historical row that still covers today, plus the open row that
+    // will be closed by this call.
+    mocks.members.find = jest.fn(async () => [
+      memberFixture(),
+      {
+        id: 'member-old',
+        organizationId: ORG,
+        employeeId: EMPLOYEE,
+        groupId: GROUP,
+        monthlyRate: '800.00',
+        rateCurrency: 'USD',
+        validFrom: '2026-01-01',
+        validTo: '2026-12-31',
+      } as unknown as BillingGroupMember,
+    ]);
+
+    await expect(
+      service.setMember({ employeeId: EMPLOYEE, groupId: GROUP, monthlyRate: 1000 }),
+    ).rejects.toThrow(/already covers this period/);
   });
 });
 

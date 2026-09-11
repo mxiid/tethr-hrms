@@ -6,7 +6,11 @@ const RUN_LINE_COMPONENT_FIELDS = `
   componentName
   category
   taxable
+  dependsOnPaymentDays
+  defaultAmount
   amount
+  sourceType
+  sourceId
 `;
 
 const RUN_LINE_FIELDS = `
@@ -14,8 +18,12 @@ const RUN_LINE_FIELDS = `
   runId
   employeeId
   displayName
+  roleTitle
+  hireDate
+  employmentStatus
   payableDays
   lopDays
+  standardWorkingDays
   grossAmount
   taxOverrideAmount
   note
@@ -37,6 +45,47 @@ const RUN_FIELDS = `
   standardWorkingDays
   holidayCalendarId
   finalizedAt
+  finalizeOverrideReason
+  isStale
+  staleReason
+`;
+
+export const EMPLOYEE_PAYROLL_READINESS_QUERY = gql`
+  query EmployeePayrollReadiness($employeeId: ID!, $periodYear: Float!, $periodMonth: Float!) {
+    employeePayrollReadiness(
+      employeeId: $employeeId
+      periodYear: $periodYear
+      periodMonth: $periodMonth
+    ) {
+      employeeId
+      displayName
+      blockers {
+        code
+        severity
+        message
+      }
+    }
+  }
+`;
+
+export const PAYROLL_READINESS_QUERY = gql`
+  query PayrollReadiness($periodYear: Float!, $periodMonth: Float!) {
+    payrollReadiness(periodYear: $periodYear, periodMonth: $periodMonth) {
+      periodYear
+      periodMonth
+      hardBlockerCount
+      warningCount
+      employees {
+        employeeId
+        displayName
+        blockers {
+          code
+          severity
+          message
+        }
+      }
+    }
+  }
 `;
 
 export const PAYROLL_RUNS_QUERY = gql`
@@ -103,8 +152,8 @@ export const REMOVE_PAYROLL_RUN_LINE_MUTATION = gql`
 `;
 
 export const FINALIZE_PAYROLL_RUN_MUTATION = gql`
-  mutation FinalizePayrollRun($runId: ID!, $payDate: String) {
-    finalizePayrollRun(runId: $runId, payDate: $payDate) {
+  mutation FinalizePayrollRun($runId: ID!, $payDate: String, $overrideReason: String) {
+    finalizePayrollRun(runId: $runId, payDate: $payDate, overrideReason: $overrideReason) {
       ${RUN_FIELDS}
       lines {
         ${RUN_LINE_FIELDS}
@@ -123,6 +172,7 @@ export const RUN_PAYSLIPS_QUERY = gql`
   query RunPayslips($runId: ID!) {
     runPayslips(runId: $runId) {
       id
+      employeeId
       payslipNumber
       employeeNumber
       employeeName
@@ -218,10 +268,44 @@ export const MY_PAYSLIPS_QUERY = gql`
       payDate
       currency
       paidDays
+      standardWorkingDays
       lopDays
       grossAmount
+      taxableAmount
       incomeTaxAmount
       netPayAmount
+    }
+  }
+`;
+
+export const MY_PAYSLIP_QUERY = gql`
+  query MyPayslip($payslipId: ID!) {
+    myPayslip(payslipId: $payslipId) {
+      id
+      payslipNumber
+      periodYear
+      periodMonth
+      payDate
+      currency
+      paidDays
+      standardWorkingDays
+      lopDays
+      grossAmount
+      taxableAmount
+      incomeTaxAmount
+      netPayAmount
+      notes
+      lines {
+        id
+        componentCode
+        componentName
+        category
+        taxable
+        dependsOnPaymentDays
+        defaultAmount
+        amount
+        sourceType
+      }
     }
   }
 `;

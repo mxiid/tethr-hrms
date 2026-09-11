@@ -30,26 +30,30 @@ export const addMonths = (year: number, month: number, delta: number): { year: n
 
 export const monthStart = (year: number, month: number): IsoDate => isoMonthRange(year, month).start;
 
-// Fraction of `year-month` worked by someone hired on `hireDate` (null or
-// on/before month start → full month; after month end → zero). Rounded to 4 dp —
-// use `proratedAmount` for money so no drift accumulates from share rounding.
-export const prorationShare = (hireDate: IsoDate | null, year: number, month: number): number => {
-  if (!hireDate) {
-    return 1;
-  }
+// Fraction of `year-month` covered by the half-open span [startDate, endDate]
+// (both inclusive here; null start = month start, null end = month end). A span
+// entirely outside the month is zero. Rounded to 4 dp — use `proratedAmount` for
+// money so no drift accumulates from share rounding. `startDate` is normally the
+// later of hire date and membership start; `endDate` the earlier of the
+// membership end and termination date.
+export const prorationShare = (
+  startDate: IsoDate | null,
+  year: number,
+  month: number,
+  endDate: IsoDate | null = null,
+): number => {
   const { start, endExclusive } = isoMonthRange(year, month);
-  if (compareIsoDate(hireDate, start) <= 0) {
-    return 1;
-  }
   const lastDay = addIsoDays(endExclusive, -1);
-  if (compareIsoDate(hireDate, lastDay) > 0) {
+  const windowStart = startDate && compareIsoDate(startDate, start) > 0 ? startDate : start;
+  const windowEnd = endDate && compareIsoDate(endDate, lastDay) < 0 ? endDate : lastDay;
+  if (compareIsoDate(windowStart, windowEnd) > 0) {
     return 0;
   }
   const totalDays = countWorkingDays(start, lastDay);
   if (totalDays === 0) {
     return 0;
   }
-  const workedDays = countWorkingDays(hireDate, lastDay);
+  const workedDays = countWorkingDays(windowStart, windowEnd);
   return Math.round((workedDays / totalDays) * 10000) / 10000;
 };
 
@@ -57,26 +61,23 @@ export const prorationShare = (hireDate: IsoDate | null, year: number, month: nu
 // the end. E.g. rate 900 hired on the 12th of a 21-working-day month → 600.00.
 export const proratedAmount = (
   monthlyRate: number,
-  hireDate: IsoDate | null,
+  startDate: IsoDate | null,
   year: number,
   month: number,
+  endDate: IsoDate | null = null,
 ): number => {
-  if (!hireDate) {
-    return Math.round(monthlyRate * 100) / 100;
-  }
   const { start, endExclusive } = isoMonthRange(year, month);
-  if (compareIsoDate(hireDate, start) <= 0) {
-    return Math.round(monthlyRate * 100) / 100;
-  }
   const lastDay = addIsoDays(endExclusive, -1);
-  if (compareIsoDate(hireDate, lastDay) > 0) {
+  const windowStart = startDate && compareIsoDate(startDate, start) > 0 ? startDate : start;
+  const windowEnd = endDate && compareIsoDate(endDate, lastDay) < 0 ? endDate : lastDay;
+  if (compareIsoDate(windowStart, windowEnd) > 0) {
     return 0;
   }
   const totalDays = countWorkingDays(start, lastDay);
   if (totalDays === 0) {
     return 0;
   }
-  const workedDays = countWorkingDays(hireDate, lastDay);
+  const workedDays = countWorkingDays(windowStart, windowEnd);
   return Math.round(((monthlyRate * workedDays) / totalDays) * 100) / 100;
 };
 

@@ -10,8 +10,12 @@ import { Link } from 'react-router-dom';
 
 import { OnboardingCard } from '../../../components/onboarding/OnboardingFlow';
 import { useTheme } from '../../../providers/theme/useTheme';
+import { BankDetailsCard } from '../components/BankDetailsCard';
 import {
+  MY_BONUS_AWARDS_QUERY,
+  MY_PAY_ADJUSTMENTS_QUERY,
   MY_PROFILE_QUERY,
+  MY_SALARY_HISTORY_QUERY,
   UPDATE_MY_EMPLOYEE_PHOTO_MUTATION,
   UPDATE_MY_EMPLOYEE_PROFILE_MUTATION,
 } from '../graphql/self-service.operations';
@@ -67,6 +71,34 @@ type MyProfileData = {
   readonly myEmployee: MyEmployee;
   readonly myEmployeeProfile: MyProfile | null;
   readonly myCurrentSalaryRevision: MySalary | null;
+};
+
+type SalaryHistoryRecord = {
+  readonly id: string;
+  readonly validFrom: string;
+  readonly validTo: string | null;
+  readonly currency: string;
+  readonly annualAmount: number;
+  readonly reason: string;
+  readonly note: string | null;
+};
+
+type BonusRecord = {
+  readonly id: string;
+  readonly awardDate: string;
+  readonly currency: string;
+  readonly amount: number;
+  readonly reason: string;
+};
+
+type AdjustmentRecord = {
+  readonly id: string;
+  readonly amount: number;
+  readonly currency: string;
+  readonly periodYear: number;
+  readonly periodMonth: number;
+  readonly kind: string;
+  readonly sourceType: string | null;
 };
 
 type ProfileForm = Omit<MyProfile, 'employeeId' | 'photoUrl'> extends infer T
@@ -154,6 +186,26 @@ export const MyProfilePage = () => {
   const profile = data?.myEmployeeProfile ?? null;
   const employee = data?.myEmployee ?? null;
   const salary = data?.myCurrentSalaryRevision ?? null;
+
+  const { data: salaryHistoryData } = useQuery<{
+    readonly mySalaryRevisions: readonly SalaryHistoryRecord[];
+  }>(MY_SALARY_HISTORY_QUERY);
+  const { data: bonusesData } = useQuery<{
+    readonly myBonusAwards: readonly BonusRecord[];
+  }>(MY_BONUS_AWARDS_QUERY);
+  const { data: adjustmentsData } = useQuery<{
+    readonly myPayAdjustments: readonly AdjustmentRecord[];
+  }>(MY_PAY_ADJUSTMENTS_QUERY);
+
+  const salaryHistory = [...(salaryHistoryData?.mySalaryRevisions ?? [])].sort((a, b) =>
+    b.validFrom.localeCompare(a.validFrom),
+  );
+  const bonuses = bonusesData?.myBonusAwards ?? [];
+  const adjustments = adjustmentsData?.myPayAdjustments ?? [];
+  const monthLabels = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
 
   useEffect(() => {
     setForm(profileFrom(profile));
@@ -349,6 +401,52 @@ export const MyProfilePage = () => {
               </div>
             </div>
           </OnboardingCard>
+
+          <OnboardingCard
+            note="Your raises and one-off payments, newest first."
+            title="Pay history"
+          >
+            {salaryHistory.length === 0 && bonuses.length === 0 && adjustments.length === 0 ? (
+              <p className="field-hint">No pay history yet.</p>
+            ) : (
+              <div className="field-list">
+                {salaryHistory.map((revision) => (
+                  <div className="field-row" key={revision.id}>
+                    <span className="field-label">
+                      {revision.reason === 'hire' ? 'Starting salary' : 'Raise'}
+                      <span className="employee-secondary"> · from {formatDate(revision.validFrom)}</span>
+                    </span>
+                    <span className="field-value">
+                      {formatMoney(revision.annualAmount, revision.currency)} / year
+                      {revision.validTo ? '' : ' · current'}
+                    </span>
+                  </div>
+                ))}
+                {bonuses.map((bonus) => (
+                  <div className="field-row" key={bonus.id}>
+                    <span className="field-label">
+                      Bonus<span className="employee-secondary"> · {formatDate(bonus.awardDate)}</span>
+                    </span>
+                    <span className="field-value">{formatMoney(bonus.amount, bonus.currency)}</span>
+                  </div>
+                ))}
+                {adjustments.map((adjustment) => (
+                  <div className="field-row" key={adjustment.id}>
+                    <span className="field-label">
+                      {adjustment.kind}
+                      <span className="employee-secondary">
+                        {' '}
+                        · {monthLabels[adjustment.periodMonth - 1]} {adjustment.periodYear}
+                      </span>
+                    </span>
+                    <span className="field-value">{formatMoney(adjustment.amount, adjustment.currency)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </OnboardingCard>
+
+          <BankDetailsCard />
 
           <OnboardingCard note="How your team reaches you outside work email." title="Contact">
             <div className="onboarding-field-pair">

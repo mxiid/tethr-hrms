@@ -24,9 +24,23 @@ export class PayslipLine extends TenantScopedEntity {
   @Column({ type: 'boolean' })
   taxable!: boolean;
 
+  @Column({ type: 'boolean', default: true })
+  dependsOnPaymentDays!: boolean;
+
+  // Frozen pair: what the component would have paid for a full period, and what
+  // it actually paid after pro-rating. Null defaultAmount only on legacy rows.
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  defaultAmount!: string | null;
+
   @Column({ type: 'numeric', precision: 14, scale: 2 })
   amount!: string;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  sourceType!: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  sourceId!: string | null;
+
+  @Column({ type: 'int' })
   sortOrder!: number;
 }

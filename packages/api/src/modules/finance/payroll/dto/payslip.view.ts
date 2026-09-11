@@ -17,8 +17,20 @@ export class PayslipLineView {
   @Field()
   taxable!: boolean;
 
+  @Field()
+  dependsOnPaymentDays!: boolean;
+
+  @Field(() => Number)
+  defaultAmount!: number;
+
   @Field(() => Number)
   amount!: number;
+
+  @Field(() => String, { nullable: true })
+  sourceType!: string | null;
+
+  @Field(() => String, { nullable: true })
+  sourceId!: string | null;
 }
 
 @ObjectType('Payslip')
@@ -64,6 +76,9 @@ export class PayslipView {
 
   @Field(() => Number)
   lopDays!: number;
+
+  @Field(() => Number)
+  standardWorkingDays!: number;
 
   @Field(() => Number)
   grossAmount!: number;

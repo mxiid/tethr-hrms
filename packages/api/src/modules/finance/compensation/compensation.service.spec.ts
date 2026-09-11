@@ -2,6 +2,7 @@ import {
   toId,
   type EmployeeId,
   type OrganizationId,
+  type PayComponentId,
   type SalaryStructureId,
   type UserId,
 } from '@hrms/shared';
@@ -15,6 +16,7 @@ import type { EmployeeDirectoryService } from '../../employee';
 
 import { CompensationService } from './compensation.service';
 import type { BonusAward } from './entities/bonus-award.entity';
+import type { PayAdjustment } from './entities/pay-adjustment.entity';
 import type { PayComponent } from './entities/pay-component.entity';
 import type { SalaryRevision } from './entities/salary-revision.entity';
 import type { SalaryStructure } from './entities/salary-structure.entity';
@@ -33,6 +35,7 @@ const salaryStructure: SalaryStructure = {
   name: 'Default Salary Structure',
   code: 'DEFAULT',
   gradeId: null,
+  defaultAnnualAmount: null,
   currency: 'USD',
   payFrequency: 'monthly',
   isActive: true,
@@ -49,6 +52,7 @@ const buildService = (options: {
       Promise.resolve({ id: 'component-1', ...value }),
     ),
     find: jest.fn().mockResolvedValue([]),
+    findById: jest.fn().mockResolvedValue({ id: 'component-1', category: 'earning' }),
   } as unknown as TenantScopedRepository<PayComponent>;
   const salaryStructures = {
     create: jest.fn((value: unknown) => value),
@@ -71,8 +75,16 @@ const buildService = (options: {
   const bonusAwards = {
     find: jest.fn().mockResolvedValue([]),
   } as unknown as TenantScopedRepository<BonusAward>;
+  const payAdjustments = {
+    create: jest.fn((value: unknown) => value),
+    save: jest.fn((value: Record<string, unknown>) =>
+      Promise.resolve(value.id ? value : { id: 'adjustment-1', ...value }),
+    ),
+    find: jest.fn().mockResolvedValue([]),
+  } as unknown as TenantScopedRepository<PayAdjustment>;
   const manager = {
     find: jest.fn().mockResolvedValue(options.existingRevisions ?? []),
+    findOne: jest.fn().mockResolvedValue(null),
     create: jest.fn((_entity: unknown, value: unknown) => value),
     save: jest.fn((value: Record<string, unknown>) =>
       Promise.resolve(value.id ? value : { id: 'revision-1', ...value }),
@@ -100,6 +112,7 @@ const buildService = (options: {
     salaryStructureComponents,
     salaryRevisions,
     bonusAwards,
+    payAdjustments,
     dataSource,
     employeeDirectory,
     publisher,
@@ -107,12 +120,11 @@ const buildService = (options: {
     audit,
   );
 
-  return { service, publisher };
+  return { service, publisher, payComponents };
 };
 
-const existingRevision = (overrides: Partial<SalaryRevision> = {}): SalaryRevision =>
-  ({
-    id: 'revision-existing',
+const existingRevision = (overrides: Partial<SalaryRevision> = {}): SalaryRevision => ({
+  id: 'revision-existing',
     employeeId: EMPLOYEE,
     salaryStructureId: STRUCTURE,
     validFrom: '2026-01-01',
@@ -207,5 +219,37 @@ describe('CompensationService.reviseSalary', () => {
       expect.anything(),
       expect.objectContaining({ name: 'bonus.awarded' }),
     );
+  });
+});
+
+describe('CompensationService.createAdjustment', () => {
+  const base = {
+    employeeId: EMPLOYEE,
+    componentId: toId<PayComponentId>('component-1'),
+    amount: 1000,
+    currency: 'USD',
+    periodYear: 2026,
+    periodMonth: 9,
+  };
+
+  it('rejects a kind whose direction disagrees with the component category', async () => {
+    const { service, payComponents } = buildService({});
+    (payComponents.findById as jest.Mock).mockResolvedValueOnce({
+      id: 'component-1',
+      category: 'earning',
+    });
+    await expect(
+      service.createAdjustment({ ...base, kind: 'advanceRecovery' }),
+    ).rejects.toThrow(/deduction component/);
+  });
+
+  it('accepts a bonus against an earning component', async () => {
+    const { service, payComponents } = buildService({});
+    (payComponents.findById as jest.Mock).mockResolvedValueOnce({
+      id: 'component-1',
+      category: 'earning',
+    });
+    const adjustment = await service.createAdjustment({ ...base, kind: 'bonus' });
+    expect(adjustment.kind).toBe('bonus');
   });
 });

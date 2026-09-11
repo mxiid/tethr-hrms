@@ -630,3 +630,29 @@ export const SET_EMPLOYEE_MANAGER_MUTATION = gql`
     }
   }
 `;
+
+export const EMPLOYEE_BANK_CHANGE_REQUESTS_QUERY = gql`
+  query EmployeeBankChangeRequests($employeeId: ID) {
+    bankDetailChangeRequests(employeeId: $employeeId) {
+      id
+      employeeId
+      bankName
+      bankAccountTitle
+      bankAccountNumber
+      bankIban
+      status
+      createdAt
+      decidedAt
+      decisionNote
+    }
+  }
+`;
+
+export const DECIDE_BANK_CHANGE_MUTATION = gql`
+  mutation DecideBankChange($input: DecideBankDetailChangeInput!) {
+    decideBankDetailChange(input: $input) {
+      id
+      status
+    }
+  }
+`;

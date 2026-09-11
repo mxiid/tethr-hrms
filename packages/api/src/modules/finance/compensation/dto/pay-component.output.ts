@@ -19,4 +19,7 @@ export class PayComponentView {
 
   @Field()
   recurring!: boolean;
+
+  @Field()
+  dependsOnPaymentDays!: boolean;
 }

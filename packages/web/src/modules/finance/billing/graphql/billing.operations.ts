@@ -73,6 +73,20 @@ export const BILLING_PAGE_DATA_QUERY = gql`
   }
 `;
 
+// Light invoices read for the command palette's jump-to.
+export const INVOICES_JUMP_QUERY = gql`
+  query InvoicesJump {
+    invoices {
+      id
+      number
+      status
+      serviceYear
+      serviceMonth
+      totalAmount
+    }
+  }
+`;
+
 export const INVOICE_DETAIL_QUERY = gql`
   query InvoiceDetail($invoiceId: ID!) {
     invoice(invoiceId: $invoiceId) {
@@ -192,6 +206,25 @@ export const INVOICE_PDF_QUERY = gql`
 export const CLIENT_INVOICE_PDF_QUERY = gql`
   query ClientInvoicePdf($invoiceId: ID!) {
     clientInvoicePdf(invoiceId: $invoiceId)
+  }
+`;
+
+export const CLIENT_COST_BREAKDOWN_QUERY = gql`
+  query ClientCostBreakdown {
+    clientCostBreakdown {
+      totalBilled
+      currency
+      byEmployee {
+        employeeId
+        employeeName
+        total
+      }
+      byPeriod {
+        serviceYear
+        serviceMonth
+        total
+      }
+    }
   }
 `;
 

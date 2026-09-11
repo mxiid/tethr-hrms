@@ -6,8 +6,13 @@ import { Link, useParams } from 'react-router-dom';
 import { downloadBase64File } from '../../../../app/download';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
+  PayrollReadinessBanner,
+  type PayrollReadinessRecord,
+} from '../components/PayrollReadinessBanner';
+import {
   BANK_ADVICE_CSV_QUERY,
   FINALIZE_PAYROLL_RUN_MUTATION,
+  PAYROLL_READINESS_QUERY,
   PAYROLL_RUN_QUERY,
   REMOVE_PAYROLL_RUN_LINE_MUTATION,
   REGENERATE_PAYROLL_RUN_MUTATION,
@@ -22,15 +27,23 @@ type LineComponentRecord = {
   readonly componentName: string;
   readonly category: string;
   readonly taxable: boolean;
+  readonly dependsOnPaymentDays: boolean;
+  readonly defaultAmount: number;
   readonly amount: number;
+  readonly sourceType: string | null;
+  readonly sourceId: string | null;
 };
 
 type RunLineRecord = {
   readonly id: string;
   readonly employeeId: string;
   readonly displayName: string | null;
+  readonly roleTitle: string | null;
+  readonly hireDate: string | null;
+  readonly employmentStatus: string | null;
   readonly payableDays: number;
   readonly lopDays: number;
+  readonly standardWorkingDays: number;
   readonly grossAmount: number;
   readonly taxOverrideAmount: number | null;
   readonly note: string | null;
@@ -50,12 +63,16 @@ type PayrollRunData = {
     readonly currency: string;
     readonly standardWorkingDays: number;
     readonly finalizedAt: string | null;
+    readonly finalizeOverrideReason: string | null;
+    readonly isStale: boolean;
+    readonly staleReason: string | null;
     readonly lines?: readonly RunLineRecord[];
   };
 };
 
 type PayslipRecord = {
   readonly id: string;
+  readonly employeeId: string;
   readonly payslipNumber: string;
   readonly employeeNumber: string;
   readonly employeeName: string;
@@ -111,6 +128,17 @@ export const PayrollRunDetailPage = () => {
     { variables: { runId }, skip: !isFinalized },
   );
 
+  const { data: readinessData } = useQuery<{ readonly payrollReadiness: PayrollReadinessRecord }>(
+    PAYROLL_READINESS_QUERY,
+    {
+      variables: {
+        periodYear: data?.payrollRun.periodYear,
+        periodMonth: data?.payrollRun.periodMonth,
+      },
+      skip: !data?.payrollRun || isFinalized,
+    },
+  );
+
   const [regenerateRun, { loading: regenerating }] = useMutation(
     REGENERATE_PAYROLL_RUN_MUTATION,
   );
@@ -139,8 +167,17 @@ export const PayrollRunDetailPage = () => {
   };
 
   const onFinalize = async (): Promise<void> => {
+    const readiness = readinessData?.payrollReadiness;
+    let overrideReason: string | undefined;
+    if (readiness && readiness.hardBlockerCount > 0) {
+      const reason = window.prompt(
+        `${readiness.hardBlockerCount} employee${readiness.hardBlockerCount === 1 ? '' : 's'} have hard blockers. Provide a reason to finalize anyway:`,
+      );
+      if (!reason || !reason.trim()) return;
+      overrideReason = reason.trim();
+    }
     await runAction(
-      () => finalizeRun({ variables: { runId } }),
+      () => finalizeRun({ variables: { runId, overrideReason } }),
       'Run finalized — payslips are locked and the billing handoff event was emitted.',
     );
   };
@@ -248,6 +285,16 @@ export const PayrollRunDetailPage = () => {
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
         {message ? <p className="form-success">{message}</p> : null}
 
+        {run?.isStale && !isFinalized ? (
+          <p className="field-hint-warning" role="status">
+            Salary changed since this draft{run.staleReason ? `: ${run.staleReason}` : ''} —
+            regenerate before finalizing.
+          </p>
+        ) : null}
+        {readinessData?.payrollReadiness ? (
+          <PayrollReadinessBanner readiness={readinessData.payrollReadiness} />
+        ) : null}
+
         <section className="table-shell" aria-labelledby="run-lines-title">
           <div className="table-title-row">
             <div className="table-title" id="run-lines-title">
@@ -288,6 +335,16 @@ export const PayrollRunDetailPage = () => {
                           >
                             <span className="employee-primary">{line.displayName ?? line.employeeId}</span>
                           </button>
+                          <div className="employee-secondary">
+                            {[line.roleTitle, line.hireDate ? `joined ${line.hireDate}` : null, line.employmentStatus]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          <div className="employee-secondary">
+                            <Link className="table-link" to={`/employees/${line.employeeId}`}>
+                              View employee record
+                            </Link>
+                          </div>
                           {line.note ? <div className="employee-secondary">{line.note}</div> : null}
                         </td>
                         <td>{line.payableDays}</td>
@@ -341,8 +398,18 @@ export const PayrollRunDetailPage = () => {
                                       <span className="employee-secondary">({component.componentCode})</span>
                                     </span>
                                     <span>
-                                      {formatMoney(component.amount, run?.currency ?? 'PKR')}
+                                      {component.dependsOnPaymentDays &&
+                                      component.defaultAmount !== component.amount ? (
+                                        <span className="employee-secondary">
+                                          {formatMoney(component.defaultAmount, run?.currency ?? 'PKR')} ×{' '}
+                                          {line.payableDays}/{line.standardWorkingDays} ={' '}
+                                        </span>
+                                      ) : null}
+                                      <strong>
+                                        {formatMoney(component.amount, run?.currency ?? 'PKR')}
+                                      </strong>
                                       {component.taxable ? '' : ' · non-taxable'}
+                                      {component.sourceType ? ` · from ${component.sourceType}` : ''}
                                     </span>
                                   </div>
                                 ))
@@ -425,7 +492,9 @@ export const PayrollRunDetailPage = () => {
                         <div className="employee-primary">{payslip.payslipNumber}</div>
                       </td>
                       <td>
-                        <div className="employee-primary">{payslip.employeeName}</div>
+                        <Link className="table-link" to={`/employees/${payslip.employeeId}`}>
+                          {payslip.employeeName}
+                        </Link>
                         <div className="employee-secondary">{payslip.employeeNumber}</div>
                       </td>
                       <td>{payslip.payDate}</td>

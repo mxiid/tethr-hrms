@@ -23,4 +23,10 @@ export class PayComponent extends TenantScopedEntity {
 
   @Column({ type: 'boolean', default: true })
   recurring!: boolean;
+
+  // Whether payroll pro-rates this component by payable days. True for salary
+  // (basic, housing); false for reimbursements/flat allowances that are paid in
+  // full regardless of days worked. Mirrors Frappe's depends_on_payment_days.
+  @Column({ type: 'boolean', default: true })
+  dependsOnPaymentDays!: boolean;
 }

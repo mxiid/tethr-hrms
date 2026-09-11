@@ -94,3 +94,42 @@ export class InvoiceView {
   lines?: InvoiceLineView[];
 }
 
+@ObjectType('ClientCostByEmployee')
+export class ClientCostByEmployeeView {
+  @Field(() => ID)
+  employeeId!: string;
+
+  @Field(() => String, { nullable: true })
+  employeeName!: string | null;
+
+  @Field(() => Number)
+  total!: number;
+}
+
+@ObjectType('ClientCostByPeriod')
+export class ClientCostByPeriodView {
+  @Field(() => Number)
+  serviceYear!: number;
+
+  @Field(() => Number)
+  serviceMonth!: number;
+
+  @Field(() => Number)
+  total!: number;
+}
+
+@ObjectType('ClientCostBreakdown')
+export class ClientCostBreakdownView {
+  @Field(() => Number)
+  totalBilled!: number;
+
+  @Field()
+  currency!: string;
+
+  @Field(() => [ClientCostByEmployeeView])
+  byEmployee!: ClientCostByEmployeeView[];
+
+  @Field(() => [ClientCostByPeriodView])
+  byPeriod!: ClientCostByPeriodView[];
+}
+

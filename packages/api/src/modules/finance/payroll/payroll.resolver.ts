@@ -1,4 +1,11 @@
-﻿import { toId, type EmployeeId, type HolidayCalendarId, type PayrollRunId, type TaxSlabGroupId } from '@hrms/shared';
+﻿import {
+  toId,
+  type EmployeeId,
+  type HolidayCalendarId,
+  type IsoDate,
+  type PayrollRunId,
+  type TaxSlabGroupId,
+} from '@hrms/shared';
 import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
@@ -10,7 +17,7 @@ import { RequirePermissions } from '../../../core/authz/require-permissions.deco
 import { ConfigService } from '../../../core/config/config.service';
 
 import { PayrollRunLineComponentView, PayrollRunView } from './dto/payroll-run.view';
-import {
+import { EmployeePayrollReadinessView, PayrollReadinessView } from './dto/payroll-readiness.view';import {
   CreatePayrollRunInput,
   CreateTaxSlabGroupInput,
   FinalizePayrollRunArgs,
@@ -18,14 +25,16 @@ import {
   UpdatePayrollRunLineInput,
 } from './dto/payroll.inputs';
 import { PayslipView } from './dto/payslip.view';
+import { FinalSettlementView } from './dto/final-settlement.view';
 import { TaxSlabGroupView, TaxSlabView } from './dto/tax-slab.view';
 import { PayrollRun } from './entities/payroll-run.entity';
 import type { PayslipLine } from './entities/payslip-line.entity';
 import type { Payslip } from './entities/payslip.entity';
+import type { FinalSettlement } from './entities/final-settlement.entity';
 import { TaxSlab, TaxSlabGroup } from './entities/tax-slab.entities';
-import type { RunDetail } from './payroll-run.service';
+import type { PayrollReadiness, RunDetail } from './payroll-run.service';
 import { PayrollRunService } from './payroll-run.service';
-import { PayslipPdfService } from './pdf/payslip-pdf.service';
+import { FinalSettlementService } from './final-settlement.service';import { PayslipPdfService } from './pdf/payslip-pdf.service';
 import { TaxSlabService } from './tax-slab.service';
 
 const toRunView = (run: PayrollRun): PayrollRunView => ({
@@ -37,6 +46,9 @@ const toRunView = (run: PayrollRun): PayrollRunView => ({
   standardWorkingDays: run.standardWorkingDays,
   holidayCalendarId: run.holidayCalendarId,
   finalizedAt: run.finalizedAt,
+  finalizeOverrideReason: run.finalizeOverrideReason,
+  isStale: run.isStale,
+  staleReason: run.staleReason,
 });
 
 const toPayslipView = (payslip: Payslip): PayslipView => ({
@@ -54,6 +66,7 @@ const toPayslipView = (payslip: Payslip): PayslipView => ({
   hireDate: payslip.hireDate,
   paidDays: Number(payslip.paidDays),
   lopDays: Number(payslip.lopDays),
+  standardWorkingDays: payslip.standardWorkingDays,
   grossAmount: Number(payslip.grossAmount),
   taxableAmount: Number(payslip.taxableAmount),
   incomeTaxAmount: Number(payslip.incomeTaxAmount),
@@ -67,7 +80,11 @@ const toPayslipLineView = (line: PayslipLine) => ({
   componentName: line.componentName,
   category: line.category,
   taxable: line.taxable,
+  dependsOnPaymentDays: line.dependsOnPaymentDays,
+  defaultAmount: Number(line.defaultAmount ?? line.amount),
   amount: Number(line.amount),
+  sourceType: line.sourceType,
+  sourceId: line.sourceId,
 });
 
 const toTaxSlabGroupView = (group: TaxSlabGroup): TaxSlabGroupView => ({
@@ -94,8 +111,15 @@ const toRunDetailView = (detail: RunDetail): PayrollRunView => ({
     runId: item.line.runId,
     employeeId: item.line.employeeId,
     displayName: item.displayName,
+    roleTitle: item.roleTitle,
+    hireDate: item.hireDate,
+    employmentStatus: item.employmentStatus,
     payableDays: Number(item.line.payableDays),
     lopDays: Number(item.line.lopDays),
+    standardWorkingDays:
+      item.line.standardWorkingDays > 0
+        ? item.line.standardWorkingDays
+        : detail.run.standardWorkingDays,
     grossAmount: Number(item.line.grossAmount),
     taxOverrideAmount:
       item.line.taxOverrideAmount === null ? null : Number(item.line.taxOverrideAmount),
@@ -111,10 +135,50 @@ const toRunDetailView = (detail: RunDetail): PayrollRunView => ({
         componentName: component.componentName,
         category: component.category,
         taxable: component.taxable,
+        dependsOnPaymentDays: component.dependsOnPaymentDays,
+        defaultAmount:
+          component.defaultAmount !== null ? Number(component.defaultAmount) : Number(component.amount),
         amount: Number(component.amount),
+        sourceType: component.sourceType,
+        sourceId: component.sourceId,
       }),
     ),
   })),
+});
+
+const toReadinessView = (readiness: PayrollReadiness): PayrollReadinessView => ({
+  periodYear: readiness.periodYear,
+  periodMonth: readiness.periodMonth,
+  hardBlockerCount: readiness.hardBlockerCount,
+  warningCount: readiness.warningCount,
+  employees: readiness.employees.map((entry) => ({
+    employeeId: entry.employeeId,
+    displayName: entry.displayName,
+    blockers: entry.blockers.map((blocker) => ({ ...blocker })),
+  })),
+});
+
+const toFinalSettlementView = (settlement: FinalSettlement): FinalSettlementView => ({
+  id: settlement.id,
+  employeeId: settlement.employeeId,
+  terminationDate: settlement.terminationDate,
+  periodYear: settlement.periodYear,
+  periodMonth: settlement.periodMonth,
+  currency: settlement.currency,
+  standardWorkingDays: settlement.standardWorkingDays,
+  workedDays: Number(settlement.workedDays),
+  proRatedEarnings: Number(settlement.proRatedEarnings),
+  adjustmentEarnings: Number(settlement.adjustmentEarnings),
+  leaveBalanceDays: Number(settlement.leaveBalanceDays),
+  leaveEncashmentAmount: Number(settlement.leaveEncashmentAmount),
+  recoveryAmount: Number(settlement.recoveryAmount),
+  payableTotal: Number(settlement.payableTotal),
+  taxableAmount: Number(settlement.taxableAmount),
+  incomeTaxAmount: Number(settlement.incomeTaxAmount),
+  netPayableAmount: Number(settlement.netPayableAmount),
+  status: settlement.status,
+  computedAt: settlement.computedAt,
+  note: settlement.note,
 });
 
 @Resolver(() => PayrollRunView)
@@ -125,6 +189,7 @@ export class PayrollResolver {
     private readonly pdfService: PayslipPdfService,
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly finalSettlements: FinalSettlementService,
   ) {}
 
   // --- Runs (finance) ---
@@ -144,6 +209,41 @@ export class PayrollResolver {
   ): Promise<PayrollRunView> {
     const detail = await this.runService.getRunDetail(toId<PayrollRunId>(runId));
     return toRunDetailView(detail);
+  }
+
+  @Query(() => PayrollReadinessView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.payrollRead)
+  async payrollReadiness(
+    @Args('periodYear', { type: () => Number }) periodYear: number,
+    @Args('periodMonth', { type: () => Number }) periodMonth: number,
+  ): Promise<PayrollReadinessView> {
+    return toReadinessView(await this.runService.getReadiness(periodYear, periodMonth));
+  }
+
+  // One employee's readiness, for the record's Pay tab (avoids a tenant-wide
+  // computation just to render one person).
+  @Query(() => EmployeePayrollReadinessView, { nullable: true })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.payrollRead)
+  async employeePayrollReadiness(
+    @Args('employeeId', { type: () => ID }) employeeId: string,
+    @Args('periodYear', { type: () => Number }) periodYear: number,
+    @Args('periodMonth', { type: () => Number }) periodMonth: number,
+  ): Promise<EmployeePayrollReadinessView | null> {
+    const readiness = await this.runService.getEmployeeReadiness(
+      toId<EmployeeId>(employeeId),
+      periodYear,
+      periodMonth,
+    );
+    if (!readiness) {
+      return null;
+    }
+    return {
+      employeeId: readiness.employeeId,
+      displayName: readiness.displayName,
+      blockers: readiness.blockers.map((blocker) => ({ ...blocker })),
+    };
   }
 
   @Mutation(() => PayrollRunView)
@@ -210,6 +310,7 @@ export class PayrollResolver {
       runId: toId<PayrollRunId>(args.runId),
       payDate: args.payDate ?? null,
       finalizedByUserId: toId(user.id),
+      overrideReason: args.overrideReason ?? null,
     });
     // Lines remain in the run tables after finalization; the detail view now
     // shows the frozen values that were snapshotted into payslips.
@@ -224,6 +325,35 @@ export class PayrollResolver {
     @Args('runId', { type: () => ID }) runId: string,
   ): Promise<string> {
     return this.runService.buildBankAdviceCsv(toId<PayrollRunId>(runId));
+  }
+
+  // --- Final settlement ---
+
+  @Query(() => FinalSettlementView, { nullable: true })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.payrollRead)
+  async finalSettlement(
+    @Args('employeeId', { type: () => ID }) employeeId: string,
+  ): Promise<FinalSettlementView | null> {
+    const settlement = await this.finalSettlements.getForEmployee(
+      toId<EmployeeId>(employeeId),
+    );
+    return settlement ? toFinalSettlementView(settlement) : null;
+  }
+
+  @Mutation(() => FinalSettlementView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.payrollFinalize)
+  async computeFinalSettlement(
+    @Args('employeeId', { type: () => ID }) employeeId: string,
+    @Args('terminationDate') terminationDate: string,
+  ): Promise<FinalSettlementView> {
+    return toFinalSettlementView(
+      await this.finalSettlements.compute(
+        toId<EmployeeId>(employeeId),
+        terminationDate as IsoDate,
+      ),
+    );
   }
 
   // --- Payslips ---
@@ -244,12 +374,40 @@ export class PayrollResolver {
 
   @Query(() => PayslipView)
   @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.payslipOwnRead)
+  async myPayslip(
+    @Args('payslipId', { type: () => ID }) payslipId: string,
+  ): Promise<PayslipView> {
+    const user = await this.authService.getCurrentUser();
+    if (!user.employeeId) {
+      throw new NotFoundError('No employee record is linked to this account');
+    }
+    const { payslip, lines } = await this.runService.getPayslipWithLines(payslipId);
+    if (payslip.employeeId !== user.employeeId) {
+      throw new NotFoundError('Payslip not found', { id: payslipId });
+    }
+    return { ...toPayslipView(payslip), lines: lines.map(toPayslipLineView) };
+  }
+
+  @Query(() => PayslipView)
+  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payslipRead)
   async payslip(
     @Args('payslipId', { type: () => ID }) payslipId: string,
   ): Promise<PayslipView> {
     const { payslip, lines } = await this.runService.getPayslipWithLines(payslipId);
     return { ...toPayslipView(payslip), lines: lines.map(toPayslipLineView) };
+  }
+
+  @Query(() => [PayslipView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.payrollRead)
+  async employeePayslips(
+    @Args('employeeId', { type: () => ID }) employeeId: string,
+  ): Promise<PayslipView[]> {
+    return (
+      await this.runService.listPayslipsForEmployee(toId<EmployeeId>(employeeId))
+    ).map(toPayslipView);
   }
 
   @Query(() => [PayslipView])

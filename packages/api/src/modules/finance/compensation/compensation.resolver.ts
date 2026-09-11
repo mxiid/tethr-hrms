@@ -24,7 +24,9 @@ import { CompensationService } from './compensation.service';
 import { AwardBonusInput } from './dto/award-bonus.input';
 import { BonusAwardView } from './dto/bonus-award.output';
 import { CreatePayComponentInput } from './dto/create-pay-component.input';
+import { CreatePayAdjustmentInput } from './dto/create-pay-adjustment.input';
 import { CreateSalaryStructureInput } from './dto/create-salary-structure.input';
+import { PayAdjustmentView } from './dto/pay-adjustment.output';
 import { PayComponentView } from './dto/pay-component.output';
 import { ReviseSalaryInput } from './dto/revise-salary.input';
 import { SalaryRevisionView } from './dto/salary-revision.output';
@@ -34,6 +36,7 @@ import {
 } from './dto/structure-component.input';
 import { SalaryStructureComponentView } from './dto/structure-component.output';
 import { BonusAward } from './entities/bonus-award.entity';
+import { PayAdjustment, type PayAdjustmentKind } from './entities/pay-adjustment.entity';
 import { PayComponent } from './entities/pay-component.entity';
 import { SalaryRevision } from './entities/salary-revision.entity';
 import { SalaryStructureComponent } from './entities/salary-structure-component.entity';
@@ -46,6 +49,7 @@ const toPayComponentView = (component: PayComponent): PayComponentView => ({
   category: component.category,
   taxable: component.taxable,
   recurring: component.recurring,
+  dependsOnPaymentDays: component.dependsOnPaymentDays,
 });
 
 const toSalaryStructureView = (structure: SalaryStructure): SalaryStructureView => ({
@@ -53,6 +57,8 @@ const toSalaryStructureView = (structure: SalaryStructure): SalaryStructureView 
   name: structure.name,
   code: structure.code,
   gradeId: structure.gradeId,
+  defaultAnnualAmount:
+    structure.defaultAnnualAmount === null ? null : Number(structure.defaultAnnualAmount),
   currency: structure.currency,
   payFrequency: structure.payFrequency,
   isActive: structure.isActive,
@@ -82,10 +88,27 @@ const toBonusAwardView = (bonus: BonusAward): BonusAwardView => ({
   note: bonus.note,
 });
 
+const toPayAdjustmentView = (adjustment: PayAdjustment): PayAdjustmentView => ({
+  id: adjustment.id,
+  employeeId: adjustment.employeeId,
+  componentId: adjustment.componentId,
+  amount: Number(adjustment.amount),
+  currency: adjustment.currency,
+  periodYear: adjustment.periodYear,
+  periodMonth: adjustment.periodMonth,
+  kind: adjustment.kind,
+  sourceType: adjustment.sourceType,
+  sourceId: adjustment.sourceId,
+  overwritesStructureAmount: adjustment.overwritesStructureAmount,
+  isRecurring: adjustment.isRecurring,
+  recurringFrom: adjustment.recurringFrom,
+  recurringTo: adjustment.recurringTo,
+  note: adjustment.note,
+});
+
 const toStructureComponentView = (
   component: SalaryStructureComponent,
-): SalaryStructureComponentView => ({
-  id: component.id,
+): SalaryStructureComponentView => ({  id: component.id,
   structureId: component.structureId,
   componentId: component.componentId,
   calcType: component.calcType,
@@ -119,6 +142,7 @@ export class CompensationResolver {
       category: input.category as PayComponentCategory,
       taxable: input.taxable,
       recurring: input.recurring,
+      dependsOnPaymentDays: input.dependsOnPaymentDays,
     });
     return toPayComponentView(component);
   }
@@ -140,6 +164,7 @@ export class CompensationResolver {
       name: input.name,
       code: input.code,
       gradeId: input.gradeId ? toId<GradeId>(input.gradeId) : null,
+      defaultAnnualAmount: input.defaultAnnualAmount ?? null,
       currency: input.currency,
       payFrequency: input.payFrequency as PayFrequency | undefined,
     });
@@ -188,6 +213,48 @@ export class CompensationResolver {
       toId<EmployeeId>(employeeId),
     );
     return revisions.map(toSalaryRevisionView);
+  }
+
+  // Self-service read: the caller's own salary history ("your last raise,
+  // effective when"). Identity comes from the session, never an argument.
+  @Query(() => [SalaryRevisionView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.compensationOwnRead)
+  async mySalaryRevisions(): Promise<SalaryRevisionView[]> {
+    const user = await this.authService.getCurrentUser();
+    if (!user.employeeId) {
+      throw new NotFoundError('No employee record is linked to this account');
+    }
+    const revisions = await this.compensationService.listSalaryRevisions(
+      toId<EmployeeId>(user.employeeId),
+    );
+    return revisions.map(toSalaryRevisionView);
+  }
+
+  @Query(() => [BonusAwardView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.compensationOwnRead)
+  async myBonusAwards(): Promise<BonusAwardView[]> {
+    const user = await this.authService.getCurrentUser();
+    if (!user.employeeId) {
+      throw new NotFoundError('No employee record is linked to this account');
+    }
+    return (await this.compensationService.listBonusAwards(toId<EmployeeId>(user.employeeId))).map(
+      toBonusAwardView,
+    );
+  }
+
+  @Query(() => [PayAdjustmentView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.compensationOwnRead)
+  async myPayAdjustments(): Promise<PayAdjustmentView[]> {
+    const user = await this.authService.getCurrentUser();
+    if (!user.employeeId) {
+      throw new NotFoundError('No employee record is linked to this account');
+    }
+    return (
+      await this.compensationService.listAdjustmentsFor(toId<EmployeeId>(user.employeeId))
+    ).map(toPayAdjustmentView);
   }
 
   @Query(() => SalaryRevisionView, { nullable: true })
@@ -262,5 +329,41 @@ export class CompensationResolver {
       note: input.note ?? null,
     });
     return toBonusAwardView(bonus);
+  }
+
+  @Query(() => [PayAdjustmentView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.compensationRead)
+  async payAdjustments(
+    @Args('employeeId', { type: () => ID }) employeeId: string,
+  ): Promise<PayAdjustmentView[]> {
+    return (await this.compensationService.listAdjustmentsFor(toId<EmployeeId>(employeeId))).map(
+      toPayAdjustmentView,
+    );
+  }
+
+  @Mutation(() => PayAdjustmentView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.compensationWrite)
+  async createPayAdjustment(
+    @Args('input') input: CreatePayAdjustmentInput,
+  ): Promise<PayAdjustmentView> {
+    const adjustment = await this.compensationService.createAdjustment({
+      employeeId: toId<EmployeeId>(input.employeeId),
+      componentId: toId<PayComponentId>(input.componentId),
+      amount: input.amount,
+      currency: input.currency,
+      periodYear: input.periodYear,
+      periodMonth: input.periodMonth,
+      kind: input.kind as PayAdjustmentKind,
+      sourceType: input.sourceType ?? null,
+      sourceId: input.sourceId ?? null,
+      overwritesStructureAmount: input.overwritesStructureAmount ?? false,
+      isRecurring: input.isRecurring ?? false,
+      recurringFrom: input.recurringFrom ?? null,
+      recurringTo: input.recurringTo ?? null,
+      note: input.note ?? null,
+    });
+    return toPayAdjustmentView(adjustment);
   }
 }

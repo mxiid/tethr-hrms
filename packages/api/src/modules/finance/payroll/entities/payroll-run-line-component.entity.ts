@@ -26,9 +26,30 @@ export class PayrollRunLineComponent extends TenantScopedEntity {
   @Column({ type: 'boolean' })
   taxable!: boolean;
 
+  // Whether this component's amount scales with payable days (Frappe's
+  // depends_on_payment_days). Stored so Phase 4 can explain why a line shrank.
+  @Column({ type: 'boolean', default: true })
+  dependsOnPaymentDays!: boolean;
+
+  // The un-prorated component amount for a full period. Null only on rows
+  // written before pro-rating existed; readers fall back to `amount`.
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  defaultAmount!: string | null;
+
+  // The amount actually payable this period (defaultAmount pro-rated by
+  // payableDays/standardWorkingDays for day-dependent components). Equal to
+  // defaultAmount when the month is full or the component is day-independent.
   @Column({ type: 'numeric', precision: 14, scale: 2 })
   amount!: string;
 
-  @Column({ type: 'int', default: 0 })
+  // Provenance for adjustment-derived lines (e.g. 'bonusAward' + id); null for
+  // structure lines. Lets a payslip explain why a line exists.
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  sourceType!: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  sourceId!: string | null;
+
+  @Column({ type: 'int' })
   sortOrder!: number;
 }

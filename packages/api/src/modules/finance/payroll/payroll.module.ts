@@ -17,10 +17,15 @@ import {
 } from './entities/payroll-run.entity';
 import { PayslipLine } from './entities/payslip-line.entity';
 import { Payslip } from './entities/payslip.entity';
+import { FinalSettlement } from './entities/final-settlement.entity';
 import { TaxSlabGroup, TaxSlab } from './entities/tax-slab.entities';
+import { EmployeeTerminatedFinalSettlementConsumer } from './final-settlement.consumer';
+import { FinalSettlementService } from './final-settlement.service';
+import { SalaryRevisedPayrollConsumer } from './payroll.consumer';
 import { PayrollRunService } from './payroll-run.service';
 import { PayrollResolver } from './payroll.resolver';
 import {
+  FINAL_SETTLEMENT_REPOSITORY,
   PAYSLIP_LINE_REPOSITORY,
   PAYSLIP_REPOSITORY,
   PAYROLL_RUN_LINE_COMPONENT_REPOSITORY,
@@ -42,6 +47,7 @@ import { TaxSlabService } from './tax-slab.service';
       PayslipLine,
       TaxSlabGroup,
       TaxSlab,
+      FinalSettlement,
     ]),
     AuthModule,
     AuthzModule,
@@ -55,7 +61,10 @@ import { TaxSlabService } from './tax-slab.service';
     PayrollRunService,
     PayslipPdfService,
     TaxSlabService,
+    FinalSettlementService,
+    EmployeeTerminatedFinalSettlementConsumer,
     PayrollResolver,
+    SalaryRevisedPayrollConsumer,
     provideTenantScopedRepository(PAYROLL_RUN_REPOSITORY, PayrollRun),
     provideTenantScopedRepository(PAYROLL_RUN_LINE_REPOSITORY, PayrollRunLine),
     provideTenantScopedRepository(PAYROLL_RUN_LINE_COMPONENT_REPOSITORY, PayrollRunLineComponent),
@@ -63,7 +72,8 @@ import { TaxSlabService } from './tax-slab.service';
     provideTenantScopedRepository(PAYSLIP_LINE_REPOSITORY, PayslipLine),
     provideTenantScopedRepository(TAX_SLAB_GROUP_REPOSITORY, TaxSlabGroup),
     provideTenantScopedRepository(TAX_SLAB_REPOSITORY, TaxSlab),
+    provideTenantScopedRepository(FINAL_SETTLEMENT_REPOSITORY, FinalSettlement),
   ],
-  exports: [PayrollRunService, TaxSlabService],
+  exports: [PayrollRunService, TaxSlabService, FinalSettlementService],
 })
 export class PayrollModule {}

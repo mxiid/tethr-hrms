@@ -8,14 +8,17 @@ import { EmployeeModule } from '../../employee';
 
 import { CompensationResolver } from './compensation.resolver';
 import { CompensationService } from './compensation.service';
+import { EmployeeTerminatedCompensationConsumer } from './compensation.consumer';
 import {
   PAY_COMPONENT_REPOSITORY,
   BONUS_AWARD_REPOSITORY,
+  PAY_ADJUSTMENT_REPOSITORY,
   SALARY_REVISION_REPOSITORY,
   SALARY_STRUCTURE_COMPONENT_REPOSITORY,
   SALARY_STRUCTURE_REPOSITORY,
 } from './compensation.tokens';
 import { BonusAward } from './entities/bonus-award.entity';
+import { PayAdjustment } from './entities/pay-adjustment.entity';
 import { PayComponent } from './entities/pay-component.entity';
 import { SalaryRevision } from './entities/salary-revision.entity';
 import { SalaryStructureComponent } from './entities/salary-structure-component.entity';
@@ -29,6 +32,7 @@ import { SalaryStructure } from './entities/salary-structure.entity';
       SalaryStructureComponent,
       SalaryRevision,
       BonusAward,
+      PayAdjustment,
     ]),
     AuthModule,
     AuthzModule,
@@ -37,11 +41,13 @@ import { SalaryStructure } from './entities/salary-structure.entity';
   providers: [
     CompensationService,
     CompensationResolver,
+    EmployeeTerminatedCompensationConsumer,
     provideTenantScopedRepository(PAY_COMPONENT_REPOSITORY, PayComponent),
     provideTenantScopedRepository(SALARY_STRUCTURE_REPOSITORY, SalaryStructure),
     provideTenantScopedRepository(SALARY_STRUCTURE_COMPONENT_REPOSITORY, SalaryStructureComponent),
     provideTenantScopedRepository(SALARY_REVISION_REPOSITORY, SalaryRevision),
     provideTenantScopedRepository(BONUS_AWARD_REPOSITORY, BonusAward),
+    provideTenantScopedRepository(PAY_ADJUSTMENT_REPOSITORY, PayAdjustment),
   ],
   exports: [CompensationService],
 })

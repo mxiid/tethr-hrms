@@ -22,7 +22,7 @@ import {
   UpdateBillingConfigInput,
   UpdateInvoiceLineInput,
 } from './dto/billing.inputs';
-import { InvoiceView } from './dto/invoice.view';
+import { ClientCostBreakdownView, InvoiceView } from './dto/invoice.view';
 import type { BillingGroupMember } from './entities/billing-group-member.entity';
 import type { BillingGroup } from './entities/billing-group.entity';
 import type { ClientBillingConfig } from './entities/client-billing-config.entity';
@@ -243,6 +243,21 @@ export class BillingResolver {
       throw new NotFoundError('Invoice not found', { id: invoiceId });
     }
     return this.toDetailView(detail);
+  }
+
+  // Client-portal spend view: per-employee cost and a period trend across
+  // issued/paid invoices (plan Phase 4 #28).
+  @Query(() => ClientCostBreakdownView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.billingOwnRead)
+  async clientCostBreakdown(): Promise<ClientCostBreakdownView> {
+    const breakdown = await this.invoicesService.getClientCostBreakdown();
+    return {
+      totalBilled: breakdown.totalBilled,
+      currency: breakdown.currency,
+      byEmployee: breakdown.byEmployee.map((entry) => ({ ...entry })),
+      byPeriod: breakdown.byPeriod.map((entry) => ({ ...entry })),
+    };
   }
 
   // Manual re-trigger of the auto-drafter for a finalized run (the event

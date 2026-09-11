@@ -265,7 +265,7 @@ export const BillingPage = () => {
                 ) : (
                   members.map((member) => (
                     <tr key={member.id}>
-                      <td><span className="employee-primary">{member.displayName ?? member.employeeId}</span></td>
+                      <td><Link className="table-link" to={`/employees/${member.employeeId}`}>{member.displayName ?? member.employeeId}</Link></td>
                       <td>{member.groupName}</td>
                       <td>{`$${member.monthlyRate.toLocaleString()} / mo`}</td>
                       <td>

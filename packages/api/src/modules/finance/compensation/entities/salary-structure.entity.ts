@@ -17,6 +17,11 @@ export class SalaryStructure extends TenantScopedEntity {
   @Column({ type: 'uuid', nullable: true })
   gradeId!: GradeId | null;
 
+  // Entitlement default for the grade: pre-fills a new employee's assignment so
+  // pay setup is one confirm rather than a blank form. Null = no default.
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  defaultAnnualAmount!: string | null;
+
   @Column({ type: 'varchar', length: 3 })
   currency!: string;
 

@@ -28,7 +28,7 @@ import {
   IconX,
   type TablerIcon,
 } from '@tabler/icons-react';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import {
@@ -36,6 +36,9 @@ import {
   SWITCHABLE_WORKSPACES_QUERY,
 } from '../modules/auth/graphql/auth.operations';
 import { useAuth, type WorkspaceOption } from '../modules/auth/hooks/useAuth';
+import { EMPLOYEES_QUERY } from '../modules/employees/graphql/employee.operations';
+import { INVOICES_JUMP_QUERY } from '../modules/finance/billing/graphql/billing.operations';
+import { PAYROLL_RUNS_QUERY } from '../modules/finance/payroll/graphql/payroll.operations';
 import {
   MY_ORGANIZATION_QUERY,
   UPDATE_MY_ORGANIZATION_BRAND_COLOR_MUTATION,
@@ -138,6 +141,23 @@ const employeeNavigation: readonly NavigationEntry[] = [
 ];
 
 const workspaceUsersItem: NavigationItem = { label: 'Users', to: '/users', icon: IconUserCog };
+
+// A destination matches a detail route too, so the group's sub-nav strip stays
+// visible on `/payroll/:runId`, `/employees/:employeeId`, `/billing/:invoiceId`.
+const isWithinPath = (pathname: string, to: string): boolean =>
+  pathname === to || pathname.startsWith(`${to}/`);
+
+const NAV_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+] as const;
+
+type JumpResult = {
+  readonly key: string;
+  readonly label: string;
+  readonly hint: string;
+  readonly to: string;
+};
 
 
 export const AppShell = () => {
@@ -280,8 +300,119 @@ export const AppShell = () => {
   // pages doesn't require reopening the pill's dropdown each time.
   const activeGroupEntry = visibleNavigation.find(
     (entry): entry is NavigationGroupEntry =>
-      entry.kind === 'group' && entry.items.some((item) => item.to === pathname),
+      entry.kind === 'group' && entry.items.some((item) => isWithinPath(pathname, item.to)),
   );
+
+  // --- Jump-to (⌘K) ---
+  const [search, setSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const { data: jumpEmployeesData } = useQuery<{
+    readonly employees: readonly {
+      readonly id: string;
+      readonly employeeNumber: string;
+      readonly firstName: string;
+      readonly lastName: string;
+    }[];
+  }>(EMPLOYEES_QUERY, { skip: isEmployeePortal || !searchOpen });
+  const [loadJumpRuns, { data: jumpRunsData }] = useLazyQuery<{
+    readonly payrollRuns: readonly {
+      readonly id: string;
+      readonly periodYear: number;
+      readonly periodMonth: number;
+      readonly status: string;
+    }[];
+  }>(PAYROLL_RUNS_QUERY);
+  const [loadJumpInvoices, { data: jumpInvoicesData }] = useLazyQuery<{
+    readonly invoices: readonly {
+      readonly id: string;
+      readonly number: string | null;
+      readonly status: string;
+      readonly serviceYear: number;
+      readonly serviceMonth: number;
+      readonly totalAmount: number;
+    }[];
+  }>(INVOICES_JUMP_QUERY);
+
+  const openSearch = (): void => {
+    setSearchOpen(true);
+    if (canManagePayroll) {
+      void loadJumpRuns();
+      void loadJumpInvoices();
+    }
+  };
+
+  const jumpResults = useMemo<readonly JumpResult[]>(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+    const results: JumpResult[] = [];
+    for (const entry of visibleNavigation) {
+      const items = entry.kind === 'link' ? [entry] : entry.items;
+      for (const item of items) {
+        if (item.label.toLowerCase().includes(query)) {
+          results.push({ key: `nav:${item.to}`, label: item.label, hint: 'Page', to: item.to });
+        }
+      }
+    }
+    for (const employee of jumpEmployeesData?.employees ?? []) {
+      const name = `${employee.firstName} ${employee.lastName}`;
+      if (
+        name.toLowerCase().includes(query) ||
+        employee.employeeNumber.toLowerCase().includes(query)
+      ) {
+        results.push({
+          key: `emp:${employee.id}`,
+          label: name,
+          hint: employee.employeeNumber,
+          to: `/employees/${employee.id}`,
+        });
+      }
+    }
+    if (canManagePayroll) {
+      for (const run of jumpRunsData?.payrollRuns ?? []) {
+        const label = `${NAV_MONTHS[run.periodMonth - 1] ?? run.periodMonth} ${run.periodYear}`;
+        if (
+          label.toLowerCase().includes(query) ||
+          `${run.periodYear}-${String(run.periodMonth).padStart(2, '0')}`.includes(query)
+        ) {
+          results.push({
+            key: `run:${run.id}`,
+            label,
+            hint: `Payroll run · ${run.status}`,
+            to: `/payroll/${run.id}`,
+          });
+        }
+      }
+      for (const invoice of jumpInvoicesData?.invoices ?? []) {
+        const label =
+          invoice.number ??
+          `Invoice ${invoice.serviceYear}-${String(invoice.serviceMonth).padStart(2, '0')}`;
+        if (label.toLowerCase().includes(query) || invoice.status.includes(query)) {
+          results.push({
+            key: `inv:${invoice.id}`,
+            label,
+            hint: `Invoice · ${invoice.status}`,
+            to: `/billing/${invoice.id}`,
+          });
+        }
+      }
+    }
+    return results.slice(0, 8);
+  }, [
+    search,
+    visibleNavigation,
+    jumpEmployeesData,
+    jumpRunsData,
+    jumpInvoicesData,
+    canManagePayroll,
+  ]);
+
+  const onJump = (to: string): void => {
+    setSearch('');
+    setSearchOpen(false);
+    navigate(to);
+  };
 
   const organization = orgData?.myOrganization;
   const brandColor = (organization?.brandColor ?? 'gray') as WorkspaceBrandColor;
@@ -343,7 +474,7 @@ export const AppShell = () => {
   const renderGroup = (entry: NavigationGroupEntry) => {
     const Icon = entry.icon;
     const isOpen = openMenu === entry.label;
-    const isActive = entry.items.some((item) => item.to === pathname);
+    const isActive = entry.items.some((item) => isWithinPath(pathname, item.to));
     return (
       <div className="dropdown-anchor" key={entry.label}>
         <button
@@ -483,11 +614,51 @@ export const AppShell = () => {
 
         <div className="topnav-right">
           {isEmployeePortal ? null : (
-            <label className="topbar-search">
-              <IconSearch size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              <input aria-label="Search" placeholder="Search" ref={searchInputRef} type="search" />
-              <kbd className="topbar-search-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
-            </label>
+            <div className="topbar-search-anchor">
+              <label className="topbar-search">
+                <IconSearch size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <input
+                  aria-label="Search"
+                  onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    openSearch();
+                  }}
+                  onFocus={openSearch}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && jumpResults[0]) {
+                      onJump(jumpResults[0].to);
+                    } else if (event.key === 'Escape') {
+                      setSearchOpen(false);
+                    }
+                  }}
+                  placeholder="Search"
+                  ref={searchInputRef}
+                  type="search"
+                  value={search}
+                />
+                <kbd className="topbar-search-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+              </label>
+              {searchOpen && search.trim() ? (
+                <div className="topbar-search-results" role="listbox">
+                  {jumpResults.length === 0 ? (
+                    <div className="topbar-search-empty">No matches</div>
+                  ) : (
+                    jumpResults.map((result) => (
+                      <button
+                        className="topbar-search-result"
+                        key={result.key}
+                        onMouseDown={() => onJump(result.to)}
+                        type="button"
+                      >
+                        <span>{result.label}</span>
+                        <span className="employee-secondary">{result.hint}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
           )}
 
           <div className="topbar-actions">

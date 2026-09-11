@@ -14,7 +14,7 @@ import {
   IconSpeakerphone,
   type TablerIcon,
 } from '@tabler/icons-react';
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { Fragment, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../app/download';
@@ -24,6 +24,7 @@ import { useSelfClock } from '../../attendance/hooks/useSelfClock';
 import { SUBMIT_MY_FEEDBACK_MUTATION } from '../../engagement/graphql/engagement.operations';
 import {
   MY_PAYSLIP_PDF_QUERY,
+  MY_PAYSLIP_QUERY,
   MY_PAYSLIPS_QUERY,
 } from '../../finance/payroll/graphql/payroll.operations';
 import {
@@ -776,6 +777,18 @@ export const EmployeeWorkspacePage = () => {
   );
 };
 
+type PayslipLineRecord = {
+  readonly id: string;
+  readonly componentCode: string;
+  readonly componentName: string;
+  readonly category: string;
+  readonly taxable: boolean;
+  readonly dependsOnPaymentDays: boolean;
+  readonly defaultAmount: number;
+  readonly amount: number;
+  readonly sourceType: string | null;
+};
+
 type PayslipRowRecord = {
   readonly id: string;
   readonly payslipNumber: string;
@@ -784,25 +797,56 @@ type PayslipRowRecord = {
   readonly payDate: string;
   readonly currency: string;
   readonly paidDays: number;
+  readonly standardWorkingDays: number;
   readonly lopDays: number;
   readonly grossAmount: number;
+  readonly taxableAmount: number;
   readonly incomeTaxAmount: number;
   readonly netPayAmount: number;
 };
 
+type PayslipDetailRecord = PayslipRowRecord & {
+  readonly notes: string | null;
+  readonly lines?: readonly PayslipLineRecord[];
+};
+
 function MyPayslipsSection() {
   const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const { data, loading } = useQuery<{ readonly myPayslips: readonly PayslipRowRecord[] }>(
     MY_PAYSLIPS_QUERY,
   );
   const [loadPdf] = useLazyQuery<{ readonly myPayslipPdf: string }>(MY_PAYSLIP_PDF_QUERY, {
     fetchPolicy: 'no-cache',
   });
+  const [loadDetail, { data: detailData, loading: detailLoading }] = useLazyQuery<{
+    readonly myPayslip: PayslipDetailRecord;
+  }>(MY_PAYSLIP_QUERY, { fetchPolicy: 'cache-first' });
 
   const rows = data?.myPayslips ?? [];
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const money = (value: number, currency: string): string =>
     new Intl.NumberFormat('en', { currency, maximumFractionDigits: 0, style: 'currency' }).format(value);
+
+  // Year-to-date, the single most-asked payslip question (plan Phase 4 #24).
+  const currentYear = new Date().getFullYear();
+  const ytd = rows
+    .filter((row) => row.periodYear === currentYear)
+    .reduce(
+      (totals, row) => ({
+        gross: totals.gross + row.grossAmount,
+        tax: totals.tax + row.incomeTaxAmount,
+        net: totals.net + row.netPayAmount,
+        currency: row.currency,
+      }),
+      { gross: 0, tax: 0, net: 0, currency: rows[0]?.currency ?? 'PKR' },
+    );
+
+  const detail = detailData?.myPayslip ?? null;
+  const dayRatio = (payslip: PayslipDetailRecord): string =>
+    payslip.standardWorkingDays > 0
+      ? `${payslip.paidDays} of ${payslip.standardWorkingDays} days`
+      : `${payslip.paidDays} days`;
 
   return (
     <section className="table-shell" aria-labelledby="my-payslips-title">
@@ -810,6 +854,17 @@ function MyPayslipsSection() {
         <div className="table-title" id="my-payslips-title">My payslips</div>
         <div className="table-density">{loading ? 'Loading…' : `${rows.length}`}</div>
       </div>
+      {rows.length > 0 ? (
+        <div className="field-list">
+          <div className="field-row">
+            <span className="field-label">{currentYear} year to date</span>
+            <span className="field-value">
+              {money(ytd.gross, ytd.currency)} gross · {money(ytd.tax, ytd.currency)} tax ·{' '}
+              <strong>{money(ytd.net, ytd.currency)} net</strong>
+            </span>
+          </div>
+        </div>
+      ) : null}
       <div className="data-table-wrap">
         <table className="data-table">
           <thead>
@@ -817,7 +872,7 @@ function MyPayslipsSection() {
               <th>Payslip</th>
               <th>Period</th>
               <th>Pay date</th>
-              <th>Paid / LOP</th>
+              <th>Paid / days</th>
               <th>Gross</th>
               <th>Tax</th>
               <th>Net pay</th>
@@ -829,35 +884,97 @@ function MyPayslipsSection() {
               <tr><td colSpan={8}>No payslips issued yet.</td></tr>
             ) : (
               rows.map((payslip) => (
-                <tr key={payslip.id}>
-                  <td><span className="employee-primary">{payslip.payslipNumber}</span></td>
-                  <td data-label="Period">{monthNames[payslip.periodMonth - 1]} {payslip.periodYear}</td>
-                  <td data-label="Pay date">{payslip.payDate}</td>
-                  <td>{payslip.paidDays}{payslip.lopDays > 0 ? ` / LOP ${payslip.lopDays}` : ''}</td>
-                  <td>{money(payslip.grossAmount, payslip.currency)}</td>
-                  <td>{money(payslip.incomeTaxAmount, payslip.currency)}</td>
-                  <td><strong>{money(payslip.netPayAmount, payslip.currency)}</strong></td>
-                  <td>
-                    <button
-                      className="button button-secondary"
-                      type="button"
-                      onClick={() => {
-                        void (async () => {
-                          setError(null);
-                          try {
-                            const result = await loadPdf({ variables: { payslipId: payslip.id } });
-                            if (!result.data) return;
-                            downloadBase64File(`${payslip.payslipNumber}.pdf`, result.data.myPayslipPdf);
-                          } catch (cause) {
-                            setError(cause instanceof Error ? cause.message : 'Could not render PDF.');
+                <Fragment key={payslip.id}>
+                  <tr>
+                    <td>
+                      <button
+                        className="link-button"
+                        type="button"
+                        onClick={() => {
+                          const next = expandedId === payslip.id ? null : payslip.id;
+                          setExpandedId(next);
+                          if (next) {
+                            void loadDetail({ variables: { payslipId: payslip.id } });
                           }
-                        })();
-                      }}
-                    >
-                      PDF
-                    </button>
-                  </td>
-                </tr>
+                        }}
+                      >
+                        <span className="employee-primary">{payslip.payslipNumber}</span>
+                      </button>
+                    </td>
+                    <td data-label="Period">{monthNames[payslip.periodMonth - 1]} {payslip.periodYear}</td>
+                    <td data-label="Pay date">{payslip.payDate}</td>
+                    <td>{payslip.paidDays}{payslip.lopDays > 0 ? ` / LOP ${payslip.lopDays}` : ''}</td>
+                    <td>{money(payslip.grossAmount, payslip.currency)}</td>
+                    <td>{money(payslip.incomeTaxAmount, payslip.currency)}</td>
+                    <td><strong>{money(payslip.netPayAmount, payslip.currency)}</strong></td>
+                    <td>
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => {
+                          void (async () => {
+                            setError(null);
+                            try {
+                              const result = await loadPdf({ variables: { payslipId: payslip.id } });
+                              if (!result.data) return;
+                              downloadBase64File(`${payslip.payslipNumber}.pdf`, result.data.myPayslipPdf);
+                            } catch (cause) {
+                              setError(cause instanceof Error ? cause.message : 'Could not render PDF.');
+                            }
+                          })();
+                        }}
+                      >
+                        PDF
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedId === payslip.id ? (
+                    <tr>
+                      <td colSpan={8}>
+                        {detailLoading || !detail || detail.id !== payslip.id ? (
+                          <p className="field-hint">Loading breakdown…</p>
+                        ) : (
+                          <div className="record-list">
+                            <div className="record-item">
+                              <span>Paid for {dayRatio(detail)}</span>
+                              <span className="employee-secondary">
+                                {detail.lopDays > 0 ? `${detail.lopDays} unpaid day(s)` : 'no unpaid leave'}
+                              </span>
+                            </div>
+                            {(detail.lines ?? []).map((line) => (
+                              <div className="record-item" key={line.id}>
+                                <span>
+                                  {line.componentName}{' '}
+                                  <span className="employee-secondary">
+                                    ({line.category}
+                                    {line.sourceType ? ` · from ${line.sourceType}` : ''})
+                                  </span>
+                                </span>
+                                <span>
+                                  {line.dependsOnPaymentDays && line.defaultAmount !== line.amount ? (
+                                    <span className="employee-secondary">
+                                      {money(line.defaultAmount, detail.currency)} × {dayRatio(detail)} ={' '}
+                                    </span>
+                                  ) : null}
+                                  <strong>{money(line.amount, detail.currency)}</strong>
+                                  {line.taxable ? '' : ' · non-taxable'}
+                                </span>
+                              </div>
+                            ))}
+                            <div className="record-item">
+                              <span>Income tax withheld</span>
+                              <span>{money(detail.incomeTaxAmount, detail.currency)}</span>
+                            </div>
+                            <div className="record-item">
+                              <strong>Net pay</strong>
+                              <strong>{money(detail.netPayAmount, detail.currency)}</strong>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               ))
             )}
           </tbody>

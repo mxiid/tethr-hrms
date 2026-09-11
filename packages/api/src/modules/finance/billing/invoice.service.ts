@@ -1,5 +1,7 @@
 ﻿import {
   addIsoDays,
+  compareIsoDate,
+  rangesOverlap,
   toId,
   type BillingGroupId,
   type EmployeeId,
@@ -12,6 +14,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import {
   DataSource,
   In,
+  IsNull,
   type EntityManager,
   type FindOptionsWhere,
 } from 'typeorm';
@@ -30,7 +33,7 @@ import { BillingGroup } from './entities/billing-group.entity';
 import { ClientBillingConfig } from './entities/client-billing-config.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
 import { Invoice } from './entities/invoice.entity';
-import { addMonths, monthLabel as formatMonthLabel, monthsFromHireThrough, prorationShare, proratedAmount } from './month-math';
+import { addMonths, monthLabel as formatMonthLabel, prorationShare, proratedAmount } from './month-math';
 
 export type UpdateBillingConfigData = {
   readonly feeAmount?: number;
@@ -91,6 +94,21 @@ export type MarkInvoicePaidData = {
 export type InvoiceDetail = {
   readonly invoice: Invoice;
   readonly lines: readonly InvoiceLine[];
+};
+
+export type ClientCostBreakdown = {
+  readonly totalBilled: number;
+  readonly currency: string;
+  readonly byEmployee: readonly {
+    readonly employeeId: EmployeeId;
+    readonly employeeName: string | null;
+    readonly total: number;
+  }[];
+  readonly byPeriod: readonly {
+    readonly serviceYear: number;
+    readonly serviceMonth: number;
+    readonly total: number;
+  }[];
 };
 
 // A line pending persistence during auto-drafting — plain data, no base-entity
@@ -243,70 +261,143 @@ export class InvoiceService {
     return this.groups.find({ order: { name: 'ASC' } });
   }
 
+  // Opening a membership is an effective-dated act: the current open row is
+  // closed on the day the new one starts, and the new row carries the new group
+  // and rate. A repeated call with identical group+rate is a no-op. The first
+  // membership for an employee starts at their hire date so catch-up billing
+  // still reaches back to the beginning of their employment.
   async setMember(input: SetBillingMemberData): Promise<BillingGroupMember> {
     if (!(await this.groups.findById(input.groupId))) {
       throw new NotFoundError('Billing group not found', { id: input.groupId });
     }
-    if (!(await this.employeeDirectory.exists(input.employeeId))) {
+    const employee = await this.employeeDirectory.getById(input.employeeId);
+    if (!employee) {
       throw new NotFoundError('Employee not found', { id: input.employeeId });
     }
     if (input.monthlyRate < 0) {
       throw new ValidationFailedError('monthlyRate must be zero or greater');
     }
     const organizationId = this.tenantContext.getOrganizationId();
-    const existing = await this.members.findOne({
+    const today = todayIso();
+    const open = await this.members.findOne({
+      where: { employeeId: input.employeeId, validTo: IsNull() } as FindOptionsWhere<BillingGroupMember>,
+      order: { validFrom: 'DESC' },
+    });
+    if (
+      open &&
+      open.groupId === input.groupId &&
+      Number(open.monthlyRate) === input.monthlyRate
+    ) {
+      return open;
+    }
+    const anyExisting = await this.members.findOne({
+      where: { employeeId: input.employeeId } as FindOptionsWhere<BillingGroupMember>,
+      order: { validFrom: 'ASC' },
+    });
+    const validFrom = anyExisting ? today : employee.hireDate;
+    // Service-level overlap guard mirroring AssignmentService: no two membership
+    // ranges may share a day. The DB partial unique index (one open row per
+    // employee) is the race-proof backstop; this gives the clean error first.
+    const history = await this.members.find({
       where: { employeeId: input.employeeId } as FindOptionsWhere<BillingGroupMember>,
     });
+    const conflict = history.find(
+      (member) =>
+        member.id !== open?.id &&
+        rangesOverlap(
+          { validFrom: member.validFrom, validTo: member.validTo },
+          { validFrom, validTo: null },
+        ),
+    );
+    if (conflict) {
+      throw new ConflictError('A billing membership already covers this period', {
+        employeeId: input.employeeId,
+        conflictingMembershipId: conflict.id,
+      });
+    }
     const payloadGroupId = input.groupId;
     const payloadRate = toMoneyString(input.monthlyRate);
-    let saved: BillingGroupMember;
-    if (existing) {
-      existing.groupId = payloadGroupId;
-      existing.monthlyRate = payloadRate;
-      saved = await this.members.save(existing);
-    } else {
-      saved = await this.members.save(
-        this.members.create({
+    const saved = await this.dataSource.transaction(async (manager) => {
+      if (open) {
+        // Half-open ranges: the old row ends the moment the new one begins.
+        open.validTo = validFrom;
+        await manager.save(open);
+      }
+      return manager.save(
+        manager.create(BillingGroupMember, {
           organizationId,
           employeeId: input.employeeId,
           groupId: payloadGroupId,
           monthlyRate: payloadRate,
           rateCurrency: 'USD',
+          validFrom,
+          validTo: null,
         }),
       );
-    }
+    });
     await this.audit.record({
       action: 'setMember',
       resourceType: 'billing_group_member',
       resourceId: saved.id,
-      after: { groupId: saved.groupId, monthlyRate: Number(saved.monthlyRate) },
+      after: { groupId: saved.groupId, monthlyRate: Number(saved.monthlyRate), validFrom },
     });
     return saved;
   }
 
+  // Removal closes the open membership rather than deleting it, so the record of
+  // prior billing stays intact and the drafter can still see (and is stopped by)
+  // the closed range. Billing pro-rates the final month through the close date.
   async removeMember(employeeId: EmployeeId): Promise<void> {
-    const member = await this.members.findOne({
-      where: { employeeId } as FindOptionsWhere<BillingGroupMember>,
+    const open = await this.members.findOne({
+      where: { employeeId, validTo: IsNull() } as FindOptionsWhere<BillingGroupMember>,
     });
-    if (!member) {
+    if (!open) {
       throw new NotFoundError('Billing group membership not found', { employeeId });
     }
-    // TenantScopedRepository exposes no delete — removal goes through a manager
-    // so the tenant stamp on the fetched row still guards the write.
-    await this.dataSource.transaction(async (manager) => {
-      await manager.remove(member);
-    });
+    open.validTo = todayIso();
+    await this.members.save(open);
     await this.audit.record({
       action: 'removeMember',
       resourceType: 'billing_group_member',
-      resourceId: member.id,
+      resourceId: open.id,
       before: { employeeId },
+      after: { validTo: open.validTo },
     });
   }
 
+  // Published write for the `employee.terminated` consumer: stop billing after
+  // the employee's last working day. No-op when there is no open membership.
+  async closeMembershipAt(employeeId: EmployeeId, lastCoveredDate: IsoDate): Promise<void> {
+    const open = await this.members.findOne({
+      where: { employeeId, validTo: IsNull() } as FindOptionsWhere<BillingGroupMember>,
+    });
+    if (!open) {
+      return;
+    }
+    // validTo is exclusive: cover through the last day, stop the next day. Never
+    // end a membership before it started.
+    const exclusiveEnd = addIsoDays(lastCoveredDate, 1);
+    open.validTo =
+      compareIsoDate(exclusiveEnd, open.validFrom) < 0 ? open.validFrom : exclusiveEnd;
+    await this.members.save(open);
+    await this.audit.record({
+      action: 'closeMembership',
+      resourceType: 'billing_group_member',
+      resourceId: open.id,
+      after: { employeeId, validTo: open.validTo },
+    });
+  }
+
+  // Current memberships only (open ranges). History is reachable through the
+  // membership rows themselves for billing, not the admin list.
   listMembers(groupId?: BillingGroupId): Promise<BillingGroupMember[]> {
-    const where = groupId ? { groupId } : {};
-    return this.members.find({ where: where as FindOptionsWhere<BillingGroupMember> });
+    const where = groupId
+      ? { groupId, validTo: IsNull() }
+      : { validTo: IsNull() };
+    return this.members.find({
+      where: where as FindOptionsWhere<BillingGroupMember>,
+      order: { validFrom: 'ASC' },
+    });
   }
 
   // --- Invoices ---
@@ -323,6 +414,55 @@ export class InvoiceService {
       where: { status: In(['issued', 'paid']) } as FindOptionsWhere<Invoice>,
       order: { serviceYear: 'DESC', serviceMonth: 'DESC', createdAt: 'DESC' },
     });
+  }
+
+  // Client-portal aggregate (plan Phase 4 #28): per-employee cost and a spend
+  // trend across issued/paid invoices — the data that previously existed only
+  // inside the downloadable addendum PDF.
+  async getClientCostBreakdown(): Promise<ClientCostBreakdown> {
+    const invoices = await this.listVisibleInvoices();
+    const byEmployee = new Map<string, { employeeId: EmployeeId; employeeName: string | null; total: number }>();
+    const byPeriod = new Map<string, { serviceYear: number; serviceMonth: number; total: number }>();
+    let total = 0;
+    for (const invoice of invoices) {
+      const lines = await this.lines.find({
+        where: { invoiceId: invoice.id } as FindOptionsWhere<InvoiceLine>,
+      });
+      for (const line of lines) {
+        const amount = Number(line.total);
+        total += amount;
+        if (line.employeeId) {
+          const key = line.employeeId as string;
+          const existing =
+            byEmployee.get(key) ?? { employeeId: line.employeeId, employeeName: line.employeeName, total: 0 };
+          existing.total += amount;
+          if (!existing.employeeName && line.employeeName) {
+            existing.employeeName = line.employeeName;
+          }
+          byEmployee.set(key, existing);
+        }
+        const periodKey = `${invoice.serviceYear}-${invoice.serviceMonth}`;
+        const period =
+          byPeriod.get(periodKey) ??
+          { serviceYear: invoice.serviceYear, serviceMonth: invoice.serviceMonth, total: 0 };
+        period.total += amount;
+        byPeriod.set(periodKey, period);
+      }
+    }
+    return {
+      totalBilled: round2(total),
+      currency: invoices[0]?.currency ?? 'USD',
+      byEmployee: [...byEmployee.values()]
+        .map((entry) => ({ ...entry, total: round2(entry.total) }))
+        .sort((a, b) => b.total - a.total),
+      byPeriod: [...byPeriod.values()]
+        .map((entry) => ({ ...entry, total: round2(entry.total) }))
+        .sort((a, b) =>
+          a.serviceYear === b.serviceYear
+            ? a.serviceMonth - b.serviceMonth
+            : a.serviceYear - b.serviceYear,
+        ),
+    };
   }
 
   async getInvoiceDetail(invoiceId: InvoiceId): Promise<InvoiceDetail> {
@@ -372,78 +512,92 @@ export class InvoiceService {
     }
 
     const created: Invoice[] = [];
+    // Months already billed are tracked globally across the whole draft call, so
+    // an employee whose membership moved between groups mid-stream is billed for
+    // any given month exactly once (and never double-fee'd).
+    const covered = await this.loadCoveredMonths(allMembers.map((member) => member.employeeId));
+    const feesBilled = new Set<string>();
     for (const group of groups) {
-      const members = allMembers.filter((member) => member.groupId === group.id);
-      if (members.length === 0) {
+      const memberships = allMembers.filter((member) => member.groupId === group.id);
+      if (memberships.length === 0) {
         continue;
       }
 
-      const covered = await this.loadCoveredMonths(members.map((member) => member.employeeId));
       const pending: PendingLine[] = [];
 
-      for (const member of members) {
-        const employee = await this.employeeDirectory.getById(member.employeeId);
+      for (const membership of memberships) {
+        const employee = await this.employeeDirectory.getById(membership.employeeId);
         if (!employee) {
           continue;
         }
-        const rate = Number(member.monthlyRate);
+        const rate = Number(membership.monthlyRate);
         const personName = `${employee.firstName} ${employee.lastName}`;
-        const hireDate: IsoDate = employee.hireDate;
-        const billedPerson = (): void => {
+        // Effective covered span for THIS membership: no earlier than the later
+        // of hire date and the membership start, no later than the earlier of
+        // the membership end and the employee's termination date.
+        const effectiveStart =
+          compareIsoDate(membership.validFrom, employee.hireDate) > 0
+            ? membership.validFrom
+            : employee.hireDate;
+        let effectiveEnd: IsoDate | null = membership.validTo
+          ? addIsoDays(membership.validTo, -1)
+          : null;
+        if (
+          employee.terminationDate &&
+          (!effectiveEnd || compareIsoDate(employee.terminationDate, effectiveEnd) < 0)
+        ) {
+          effectiveEnd = employee.terminationDate;
+        }
+
+        let billedAny = false;
+        let cursor = {
+          year: Number(effectiveStart.slice(0, 4)),
+          month: Number(effectiveStart.slice(5, 7)),
+        };
+        while (
+          cursor.year < service.year ||
+          (cursor.year === service.year && cursor.month <= service.month)
+        ) {
+          const label = formatMonthLabel(cursor.year, cursor.month);
+          const key = `${membership.employeeId}:${label}`;
+          const isServiceMonth =
+            cursor.year === service.year && cursor.month === service.month;
+          const amount = proratedAmount(
+            rate,
+            effectiveStart,
+            cursor.year,
+            cursor.month,
+            effectiveEnd,
+          );
+          if (amount > 0 && !covered.has(key)) {
+            pending.push({
+              kind: isServiceMonth ? 'salary' : 'catchup',
+              employeeId: membership.employeeId,
+              employeeName: personName,
+              monthLabel: label,
+              description: isServiceMonth ? 'Salary' : 'Salary (catch-up)',
+              unitPrice: amount,
+            });
+            covered.add(key);
+            billedAny = true;
+          }
+          cursor = addMonths(cursor.year, cursor.month, 1);
+        }
+
+        // One PEPM fee, billed by whichever group's membership actually covers
+        // the person during the service month.
+        const coversServiceMonth =
+          prorationShare(effectiveStart, service.year, service.month, effectiveEnd) > 0;
+        if (billedAny && coversServiceMonth && !feesBilled.has(membership.employeeId)) {
+          feesBilled.add(membership.employeeId);
           pending.push({
             kind: 'fee',
-            employeeId: member.employeeId,
+            employeeId: membership.employeeId,
             employeeName: personName,
             monthLabel: null,
             description: 'Management Fees',
             unitPrice: Number(config.feeAmount),
           });
-        };
-
-        let billedAny = false;
-        // Catch-ups: every month from hire through the month before the service
-        // month whose entitlement was never invoiced.
-        const priorMonth = addMonths(service.year, service.month, -1);
-        for (const past of monthsFromHireThrough(hireDate, priorMonth.year, priorMonth.month)) {
-          const label = formatMonthLabel(past.year, past.month);
-          if (covered.has(`${member.employeeId}:${label}`)) {
-            continue;
-          }
-          const amount = proratedAmount(rate, hireDate, past.year, past.month);
-          if (amount <= 0) {
-            continue;
-          }
-          pending.push({
-            kind: 'catchup',
-            employeeId: member.employeeId,
-            employeeName: personName,
-            monthLabel: label,
-            description: 'Salary (catch-up)',
-            unitPrice: amount,
-          });
-          covered.add(`${member.employeeId}:${label}`);
-          billedAny = true;
-        }
-
-        // Service-month main line: full rate unless hired inside it. A future
-        // hire (after the service month ends) is simply not billed yet.
-        if (prorationShare(hireDate, service.year, service.month) > 0) {
-          const label = formatMonthLabel(service.year, service.month);
-          if (!covered.has(`${member.employeeId}:${label}`)) {
-            pending.push({
-              kind: 'salary',
-              employeeId: member.employeeId,
-              employeeName: personName,
-              monthLabel: label,
-              description: 'Salary',
-              unitPrice: proratedAmount(rate, hireDate, service.year, service.month),
-            });
-            covered.add(`${member.employeeId}:${label}`);
-            billedAny = true;
-          }
-        }
-        if (billedAny) {
-          billedPerson();
         }
       }
 
