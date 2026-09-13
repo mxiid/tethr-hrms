@@ -25,6 +25,7 @@ import {
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { StatusChip } from '../../../components/chip/StatusChip';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { DetailSection } from '../components/DetailSection';
@@ -385,6 +386,14 @@ const onboardingStatusColors: Record<EmployeeOnboardingTaskStatus, MainColorName
   inProgress: 'amber',
   completed: 'green',
   blocked: 'tomato',
+};
+
+// Offboarding tasks arrive with a plain-string status from the API.
+const offboardingStatusLabels: Record<string, string> = {
+  notStarted: 'Not started',
+  inProgress: 'In progress',
+  completed: 'Completed',
+  blocked: 'Blocked',
 };
 
 const fullName = (employee: EmployeeRecord): string => `${employee.firstName} ${employee.lastName}`;
@@ -1345,13 +1354,11 @@ export const EmployeeProfilePage = () => {
               </div>
           <h1 className="profile-name">{fullName(detailEmployee)}</h1>
           <div className="employee-meta">{detailEmployee.employeeNumber}</div>
-          <span
-            className="chip profile-identity-status"
-            style={chipStyle(statusColors[detailEmployee.employmentStatus])}
-          >
-            <span className="chip-dot" />
-            {statusLabels[detailEmployee.employmentStatus]}
-          </span>
+          <StatusChip
+            className="profile-identity-status"
+            color={statusColors[detailEmployee.employmentStatus]}
+            label={statusLabels[detailEmployee.employmentStatus]}
+          />
 
           {photoNotice ? <p className="form-success">{photoNotice}</p> : null}
 
@@ -1432,13 +1439,10 @@ export const EmployeeProfilePage = () => {
               <div className="field-list">
                 <div className="field-row">
                   <span className="field-label">Status</span>
-                  <span
-                    className="chip"
-                    style={chipStyle(statusColors[detailEmployee.employmentStatus])}
-                  >
-                    <span className="chip-dot" />
-                    {statusLabels[detailEmployee.employmentStatus]}
-                  </span>
+                  <StatusChip
+                    color={statusColors[detailEmployee.employmentStatus]}
+                    label={statusLabels[detailEmployee.employmentStatus]}
+                  />
                 </div>
                 <div className="field-row">
                   <span className="field-label">Worker type</span>
@@ -1600,8 +1604,8 @@ export const EmployeeProfilePage = () => {
                     </div>
                   </div>
                   <p className="field-hint">
-                    Reporting lines are effective-dated: this closes the current assignment and
-                    opens a new one, so the history stays intact.
+                    Changing the manager ends the current reporting line and starts a new one, so
+                    past history is kept.
                   </p>
                   <button className="button button-secondary" disabled={savingManager} type="submit">
                     <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -2114,13 +2118,10 @@ export const EmployeeProfilePage = () => {
                         </div>
                         <div className="employee-secondary">{document.latestStorageKey}</div>
                         <div className="record-inline-actions">
-                          <span
-                            className="chip"
-                            style={chipStyle(signatureStatusColors[document.signatureStatus])}
-                          >
-                            <span className="chip-dot" />
-                            {signatureStatusLabels[document.signatureStatus]}
-                          </span>
+                          <StatusChip
+                            color={signatureStatusColors[document.signatureStatus]}
+                            label={signatureStatusLabels[document.signatureStatus]}
+                          />
                           {document.signedAt ? (
                             <span className="employee-secondary">
                               Signed {formatDate(document.signedAt.slice(0, 10))}
@@ -2595,13 +2596,10 @@ export const EmployeeProfilePage = () => {
                         <div>
                           <div className="employee-primary">{task.title}</div>
                           <div className="record-inline-actions">
-                            <span
-                              className="chip"
-                              style={chipStyle(onboardingStatusColors[draft.status])}
-                            >
-                              <span className="chip-dot" />
-                              {onboardingStatusLabels[draft.status]}
-                            </span>
+                            <StatusChip
+                              color={onboardingStatusColors[draft.status]}
+                              label={onboardingStatusLabels[draft.status]}
+                            />
                             {task.completedAt ? (
                               <span className="employee-secondary">
                                 Completed {formatDate(task.completedAt.slice(0, 10))}
@@ -2855,7 +2853,10 @@ export const EmployeeProfilePage = () => {
                           <div>
                             <div className="employee-primary">{task.title}</div>
                             <div className="record-inline-actions">
-                              <span className="chip" style={chipStyle(task.status === 'completed' ? 'green' : task.status === 'inProgress' ? 'amber' : 'gray')}><span className="chip-dot" />{task.status}</span>
+                              <StatusChip
+                                color={task.status === 'completed' ? 'green' : task.status === 'inProgress' ? 'amber' : 'gray'}
+                                label={offboardingStatusLabels[task.status] ?? task.status}
+                              />
                             </div>
                             <div className="onboarding-task-controls">
                               <div className="field"><label>Status</label><select value={draft.status} onChange={(e) => setOffboardingDrafts((c) => ({ ...c, [task.taskKey]: { ...draft, status: e.target.value } }))}><option value="notStarted">Not started</option><option value="inProgress">In progress</option><option value="completed">Completed</option><option value="blocked">Blocked</option></select></div>

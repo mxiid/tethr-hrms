@@ -1,9 +1,24 @@
 ﻿import { useMutation, useQuery } from '@apollo/client';
-import { IconFileInvoice, IconPlus, IconRefresh, IconSettings } from '@tabler/icons-react';
-import { useState, type CSSProperties, type FormEvent } from 'react';
+import type { InvoiceStatus } from '@hrms/shared';
+import type { MainColorName } from '@hrms/ui';
+import {
+  IconFileInvoice,
+  IconFilterOff,
+  IconPlus,
+  IconRefresh,
+  IconSettings,
+  IconUsersGroup,
+  IconX,
+} from '@tabler/icons-react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { StatusChip } from '../../../../components/chip/StatusChip';
+import { EmptyState } from '../../../../components/empty-state/EmptyState';
 import { Modal } from '../../../../components/modal/Modal';
+import { DataTable, toViewColumns, type ColumnDefinition } from '../../../../components/table/DataTable';
+import { useListView } from '../../../../components/view-bar/useListView';
+import { ViewBar } from '../../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   BILLING_PAGE_DATA_QUERY,
@@ -11,7 +26,6 @@ import {
   OPEN_EXPENSES_INVOICE_MUTATION,
   REMOVE_BILLING_MEMBER_MUTATION,
   SET_BILLING_MEMBER_MUTATION,
-  UPDATE_BILLING_CONFIG_MUTATION,
 } from '../graphql/billing.operations';
 
 type BillingConfigRecord = {
@@ -58,7 +72,7 @@ type InvoiceRow = {
   readonly id: string;
   readonly groupName: string | null;
   readonly type: string;
-  readonly status: string;
+  readonly status: InvoiceStatus;
   readonly serviceYear: number;
   readonly serviceMonth: number;
   readonly number: string | null;
@@ -87,8 +101,106 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
-const statusColor = (status: string): string =>
+const statusColor = (status: InvoiceStatus): MainColorName =>
   status === 'paid' ? 'green' : status === 'issued' ? 'blue' : 'amber';
+
+const invoiceStatusLabels: Record<InvoiceStatus, string> = {
+  draft: 'Draft',
+  issued: 'Issued',
+  paid: 'Paid',
+};
+
+const formatMoney = (amount: number, currency: string): string =>
+  new Intl.NumberFormat('en', { currency, style: 'currency' }).format(amount);
+
+const GROUP_COLUMNS: readonly ColumnDefinition<BillingGroupRecord>[] = [
+  {
+    key: 'group',
+    header: 'Group',
+    width: '40%',
+    hideable: false,
+    sortValue: (group) => group.name,
+    render: (group) => <span className="employee-primary">{group.name}</span>,
+  },
+  {
+    key: 'prefixes',
+    header: 'Prefixes',
+    width: '38%',
+    sortValue: (group) => `${group.servicesPrefix}/${group.expensesPrefix}`,
+    render: (group) => `${group.servicesPrefix} / ${group.expensesPrefix}`,
+  },
+  {
+    key: 'members',
+    header: 'Members',
+    width: '22%',
+    align: 'right',
+    sortValue: (group) => group.memberCount ?? 0,
+    render: (group) => group.memberCount ?? 0,
+  },
+];
+
+const INVOICE_COLUMNS: readonly ColumnDefinition<InvoiceRow>[] = [
+  {
+    key: 'number',
+    header: 'Number',
+    width: '16%',
+    hideable: false,
+    sortValue: (invoice) => invoice.number ?? 'Draft',
+    render: (invoice) => <span className="employee-primary">{invoice.number ?? 'Draft'}</span>,
+  },
+  {
+    key: 'type',
+    header: 'Group / Type',
+    width: '22%',
+    sortValue: (invoice) => `${invoice.groupName ?? ''} ${invoice.type}`,
+    render: (invoice) => `${invoice.groupName ?? '—'} · ${invoice.type}`,
+  },
+  {
+    key: 'covers',
+    header: 'Covers',
+    width: '16%',
+    sortValue: (invoice) => invoice.serviceYear * 100 + invoice.serviceMonth,
+    render: (invoice) => `${MONTH_NAMES[invoice.serviceMonth - 1]} ${invoice.serviceYear}`,
+  },
+  {
+    key: 'total',
+    header: 'Total',
+    width: '14%',
+    align: 'right',
+    hideable: false,
+    sortValue: (invoice) => invoice.totalAmount,
+    render: (invoice) => formatMoney(invoice.totalAmount, invoice.currency),
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    width: '13%',
+    hideable: false,
+    sortValue: (invoice) => invoice.status,
+    render: (invoice) => (
+      <StatusChip color={statusColor(invoice.status)} label={invoiceStatusLabels[invoice.status]} />
+    ),
+  },
+  {
+    key: 'due',
+    header: 'Due',
+    width: '11%',
+    sortValue: (invoice) => invoice.dueDate ?? '',
+    render: (invoice) => invoice.dueDate ?? '—',
+  },
+  {
+    key: 'open',
+    header: '',
+    label: 'Open',
+    width: '8%',
+    hideable: false,
+    render: (invoice) => (
+      <Link className="table-link" to={`/billing/${invoice.id}`}>
+        Open
+      </Link>
+    ),
+  },
+];
 
 const now = new Date();
 
@@ -96,9 +208,15 @@ export const BillingPage = () => {
   const { theme } = useTheme();
   const { data, loading, error, refetch } = useQuery<BillingPageData>(BILLING_PAGE_DATA_QUERY);
   const [formError, setFormError] = useState<string | null>(null);
-  const [openModal, setOpenModal] = useState<'settings' | 'group' | 'rate' | 'expenses' | null>(
-    null,
-  );
+  const [openModal, setOpenModal] = useState<'group' | 'rate' | 'expenses' | null>(null);
+
+  const groupView = useListView({ routeKey: '/billing/groups', paramKeyPrefix: 'groups' });
+  const memberView = useListView({ routeKey: '/billing/rates', paramKeyPrefix: 'rates' });
+  const invoiceView = useListView({
+    routeKey: '/billing/invoices',
+    paramKeyPrefix: 'invoices',
+    defaultSorts: [{ key: 'covers', direction: 'desc' }],
+  });
 
   const [groupName, setGroupName] = useState('');
   const [servicesPrefix, setServicesPrefix] = useState('SP');
@@ -108,33 +226,60 @@ export const BillingPage = () => {
   const [memberGroupId, setMemberGroupId] = useState('');
   const [memberRate, setMemberRate] = useState('');
 
-  const [feeAmount, setFeeAmount] = useState('');
-  const [netDays, setNetDays] = useState('');
-  const [anchorDay, setAnchorDay] = useState('');
-  const [receiverName, setReceiverName] = useState('');
-  const [addressForm, setAddressForm] = useState({
-    senderAddress: '', senderZipCode: '', senderCity: '', senderCountry: '', senderPhone: '',
-    receiverAddress: '', receiverZipCode: '', receiverCity: '', receiverCountry: '', receiverPhone: '',
-  });
-  const [logoDataUrl, setLogoDataUrl] = useState('');
-  const [signatureDataUrl, setSignatureDataUrl] = useState('');
-  const [logoFileName, setLogoFileName] = useState('');
-  const [signatureFileName, setSignatureFileName] = useState('');
-
   const [expenseGroupId, setExpenseGroupId] = useState('');
   const [expenseYear, setExpenseYear] = useState(now.getFullYear());
   const [expenseMonth, setExpenseMonth] = useState(now.getMonth() + 1);
 
-  const [updateConfig] = useMutation(UPDATE_BILLING_CONFIG_MUTATION);
   const [createGroup] = useMutation(CREATE_BILLING_GROUP_MUTATION);
   const [setMember] = useMutation(SET_BILLING_MEMBER_MUTATION);
   const [removeMember] = useMutation(REMOVE_BILLING_MEMBER_MUTATION);
   const [openExpenses] = useMutation(OPEN_EXPENSES_INVOICE_MUTATION);
 
-  const config = data?.billingConfig;
   const groups = data?.billingGroups ?? [];
   const members = data?.billingMembers ?? [];
-  const invoices = [...(data?.invoices ?? [])].sort((a, b) => b.serviceYear - a.serviceYear || b.serviceMonth - a.serviceMonth);
+  const invoices = data?.invoices ?? [];
+
+  const memberGroups = useMemo(
+    () =>
+      [
+        ...new Set(
+          members
+            .map((member) => member.groupName)
+            .filter((name): name is string => Boolean(name)),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [members],
+  );
+  const invoiceGroups = useMemo(
+    () =>
+      [
+        ...new Set(
+          invoices
+            .map((invoice) => invoice.groupName)
+            .filter((name): name is string => Boolean(name)),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [invoices],
+  );
+
+  const visibleMembers = useMemo(() => {
+    const groupNames = memberView.filters.group ?? [];
+    if (groupNames.length === 0) return members;
+    return members.filter(
+      (member) => member.groupName !== null && groupNames.includes(member.groupName),
+    );
+  }, [members, memberView.filters.group]);
+
+  const visibleInvoices = useMemo(() => {
+    const statuses = invoiceView.filters.status ?? [];
+    const groupNames = invoiceView.filters.group ?? [];
+    return invoices.filter((invoice) => {
+      if (statuses.length > 0 && !statuses.includes(invoice.status)) return false;
+      if (groupNames.length > 0 && !groupNames.includes(invoice.groupName ?? '')) return false;
+      return true;
+    });
+  }, [invoices, invoiceView.filters.group, invoiceView.filters.status]);
+
   const employees = data?.employees ?? [];
 
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {
@@ -149,46 +294,150 @@ export const BillingPage = () => {
     }
   };
 
-  const openModalWith = (modal: 'settings' | 'group' | 'rate' | 'expenses'): void => {
+  const openModalWith = (modal: 'group' | 'rate' | 'expenses'): void => {
     setFormError(null);
     setOpenModal(modal);
   };
 
-  const onSaveConfig = (event: FormEvent): void => {
-    event.preventDefault();
+  const onRemoveMember = (member: BillingMemberRecord): void => {
     void run(() =>
-      updateConfig({
-        variables: {
-          input: {
-            ...(feeAmount !== '' ? { feeAmount: Number(feeAmount) } : {}),
-            ...(netDays !== '' ? { paymentTermsNetDays: Number(netDays) } : {}),
-            ...(anchorDay !== '' ? { anchorDay: Number(anchorDay) } : {}),
-            ...(receiverName !== '' ? { receiverName } : {}),
-            ...Object.fromEntries(
-              Object.entries(addressForm).filter(([, value]) => value !== ''),
-            ),
-            ...(logoDataUrl ? { invoiceLogoDataUrl: logoDataUrl } : {}),
-            ...(signatureDataUrl ? { signatureDataUrl } : {}),
-          },
-        },
+      removeMember({
+        variables: { employeeId: member.employeeId },
         refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
       }),
-    ).then((ok) => {
-      if (ok) {
-        setOpenModal(null);
-      }
-    });
+    );
   };
 
-  const readFileAsDataUrl = (file: File, setter: (dataUrl: string) => void): void => {
-    if (file.size > 300_000) {
-      setFormError('Image must be under 300 KB.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setter(String(reader.result));
-    reader.readAsDataURL(file);
-  };
+  const memberColumns: readonly ColumnDefinition<BillingMemberRecord>[] = [
+    {
+      key: 'employee',
+      header: 'Employee',
+      width: '36%',
+      hideable: false,
+      sortValue: (member) => member.displayName ?? member.employeeId,
+      render: (member) => (
+        <Link className="table-link" to={`/employees/${member.employeeId}`}>
+          {member.displayName ?? member.employeeId}
+        </Link>
+      ),
+    },
+    {
+      key: 'group',
+      header: 'Group',
+      width: '26%',
+      sortValue: (member) => member.groupName ?? '',
+      render: (member) => member.groupName,
+    },
+    {
+      key: 'monthlyRate',
+      header: 'Monthly rate',
+      width: '26%',
+      align: 'right',
+      sortValue: (member) => member.monthlyRate,
+      render: (member) => `$${member.monthlyRate.toLocaleString()} / mo`,
+    },
+    {
+      key: 'remove',
+      header: '',
+      label: 'Remove',
+      width: '12%',
+      hideable: false,
+      render: (member) => (
+        <button
+          className="icon-button row-hover-action"
+          onClick={() => onRemoveMember(member)}
+          title="Remove membership"
+          type="button"
+        >
+          <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+        </button>
+      ),
+    },
+  ];
+
+  const memberFilters = [
+    {
+      key: 'group',
+      label: 'Group',
+      options: memberGroups.map((groupName) => ({ value: groupName, label: groupName })),
+    },
+  ];
+
+  const invoiceFilters = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: (Object.keys(invoiceStatusLabels) as InvoiceStatus[]).map((value) => ({
+        value,
+        label: invoiceStatusLabels[value],
+      })),
+    },
+    {
+      key: 'group',
+      label: 'Group',
+      options: invoiceGroups.map((groupName) => ({ value: groupName, label: groupName })),
+    },
+  ];
+
+  const groupsEmpty = (
+    <EmptyState
+      icon={IconUsersGroup}
+      title="No billing groups yet"
+      description="Groups decide which client entity an employee's work is billed to."
+      action={
+        <button className="button button-secondary" onClick={() => openModalWith('group')} type="button">
+          <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          New group
+        </button>
+      }
+    />
+  );
+
+  const membersEmpty: ReactNode =
+    members.length === 0 ? (
+      <EmptyState
+        icon={IconUsersGroup}
+        title="Nobody assigned yet"
+        description="Assign a rate so this client pays for the employee's time."
+        action={
+          <button className="button button-secondary" onClick={() => openModalWith('rate')} type="button">
+            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            Assign rate
+          </button>
+        }
+      />
+    ) : (
+      <EmptyState
+        icon={IconFilterOff}
+        title="No rates match this filter"
+        description="Clear the filter to see every assigned rate."
+        action={
+          <button className="button button-secondary" onClick={memberView.clearFilters} type="button">
+            Clear filters
+          </button>
+        }
+      />
+    );
+
+  const invoicesEmpty: ReactNode =
+    invoices.length === 0 ? (
+      <EmptyState
+        icon={IconFileInvoice}
+        title="No invoices yet"
+        description="Finish a payroll run and client invoices are created for you."
+      />
+    ) : (
+      <EmptyState
+        icon={IconFilterOff}
+        title="No invoices match these filters"
+        description="Clear a filter to see more."
+        action={
+          <button className="button button-secondary" onClick={invoiceView.clearFilters} type="button">
+            Clear filters
+          </button>
+        }
+      />
+    );
 
   const onCreateGroup = (event: FormEvent): void => {
     event.preventDefault();
@@ -236,20 +485,13 @@ export const BillingPage = () => {
         <header className="page-header">
           <div>
             <h1 className="page-title">Billing</h1>
-            <p className="page-subtitle">
-              Tethr → client invoicing: groups, agreed rates, and the invoice pipeline
-              (auto-drafted when payroll finalizes).
-            </p>
+            <p className="page-subtitle">Manage client billing, rates, and invoices.</p>
           </div>
           <div className="page-actions">
-            <button
-              className="button button-secondary"
-              type="button"
-              onClick={() => openModalWith('settings')}
-            >
+            <Link className="button button-secondary" to="/settings/billing">
               <IconSettings size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Billing settings
-            </button>
+            </Link>
             <button className="icon-button" onClick={() => void refetch()} title="Refresh" type="button">
               <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             </button>
@@ -258,256 +500,90 @@ export const BillingPage = () => {
 
         {error ? <p className="auth-error" role="alert">Could not load billing data.</p> : null}
 
-        <section className="table-shell" aria-labelledby="groups-title">
-          <div className="table-title-row">
-            <div className="table-title" id="groups-title">Billing groups</div>
-            <div className="panel-actions">
-              <div className="table-density">{loading ? 'Loading…' : `${groups.length}`}</div>
+        <section className="table-shell" aria-label="Billing groups">
+          <ViewBar
+            actions={
               <button className="button button-secondary" type="button" onClick={() => openModalWith('group')}>
                 <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 New group
               </button>
-            </div>
-          </div>
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr><th>Group</th><th>Prefixes</th><th>Members</th></tr>
-              </thead>
-              <tbody>
-                {groups.length === 0 && !loading ? (
-                  <tr><td colSpan={3}>No groups yet — create one to start billing.</td></tr>
-                ) : (
-                  groups.map((group) => (
-                    <tr key={group.id}>
-                      <td><span className="employee-primary">{group.name}</span></td>
-                      <td>{`${group.servicesPrefix} / ${group.expensesPrefix}`}</td>
-                      <td>{group.memberCount ?? 0}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+            }
+            columns={toViewColumns(GROUP_COLUMNS)}
+            count={groups.length}
+            filters={[]}
+            view={groupView}
+            viewLabel="All groups"
+          />
+          <DataTable
+            columns={GROUP_COLUMNS}
+            emptyState={groupsEmpty}
+            loading={loading}
+            rows={groups}
+            getRowKey={(group) => group.id}
+            hiddenColumns={groupView.hiddenColumns}
+            onHideColumn={groupView.hideColumn}
+            onSort={groupView.setSort}
+            skeletonRows={3}
+            sorts={groupView.sorts}
+          />
         </section>
 
-        <section className="table-shell" aria-labelledby="members-title">
-          <div className="table-title-row">
-            <div className="table-title" id="members-title">Agreed rates</div>
-            <div className="panel-actions">
-              <div className="table-density">{members.length}</div>
+        <section className="table-shell" aria-label="Agreed rates">
+          <ViewBar
+            actions={
               <button className="button button-secondary" type="button" onClick={() => openModalWith('rate')}>
                 <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Assign rate
               </button>
-            </div>
-          </div>
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr><th>Employee</th><th>Group</th><th>Monthly rate</th><th aria-label="Remove" /></tr>
-              </thead>
-              <tbody>
-                {members.length === 0 && !loading ? (
-                  <tr><td colSpan={4}>Nobody assigned yet.</td></tr>
-                ) : (
-                  members.map((member) => (
-                    <tr key={member.id}>
-                      <td><Link className="table-link" to={`/employees/${member.employeeId}`}>{member.displayName ?? member.employeeId}</Link></td>
-                      <td>{member.groupName}</td>
-                      <td>{`$${member.monthlyRate.toLocaleString()} / mo`}</td>
-                      <td>
-                        <button
-                          className="icon-button"
-                          type="button"
-                          title="Remove membership"
-                          onClick={() => void run(() => removeMember({ variables: { employeeId: member.employeeId }, refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }] }))}
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+            }
+            columns={toViewColumns(memberColumns)}
+            count={visibleMembers.length}
+            filters={memberFilters}
+            view={memberView}
+            viewLabel="All rates"
+          />
+          <DataTable
+            columns={memberColumns}
+            emptyState={membersEmpty}
+            loading={loading}
+            rows={visibleMembers}
+            getRowKey={(member) => member.id}
+            hiddenColumns={memberView.hiddenColumns}
+            onHideColumn={memberView.hideColumn}
+            onSort={memberView.setSort}
+            skeletonRows={3}
+            sorts={memberView.sorts}
+          />
         </section>
 
-        <section className="table-shell" aria-labelledby="invoices-title">
-          <div className="table-title-row">
-            <div className="table-title" id="invoices-title">Invoices</div>
-            <div className="panel-actions">
-              <div className="table-density">{invoices.length}</div>
+        <section className="table-shell" aria-label="Invoices">
+          <ViewBar
+            actions={
               <button className="button button-secondary" type="button" onClick={() => openModalWith('expenses')}>
                 <IconFileInvoice size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Open expenses draft
               </button>
-            </div>
-          </div>
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr><th>Number</th><th>Group / Type</th><th>Covers</th><th>Total</th><th>Status</th><th>Due</th><th aria-label="Open" /></tr>
-              </thead>
-              <tbody>
-                {invoices.length === 0 && !loading ? (
-                  <tr><td colSpan={7}>No invoices yet — finalize a payroll run to auto-draft services invoices.</td></tr>
-                ) : (
-                  invoices.map((invoice) => (
-                    <tr key={invoice.id}>
-                      <td><span className="employee-primary">{invoice.number ?? 'Draft'}</span></td>
-                      <td>{`${invoice.groupName ?? '—'} · ${invoice.type}`}</td>
-                      <td>{`${MONTH_NAMES[invoice.serviceMonth - 1]} ${invoice.serviceYear}`}</td>
-                      <td>{new Intl.NumberFormat('en', { currency: invoice.currency, style: 'currency' }).format(invoice.totalAmount)}</td>
-                      <td>
-                        <span
-                          className="chip"
-                          style={{ '--chip-color': `var(--hrms-color-tag-${statusColor(invoice.status)})` } as CSSProperties}
-                        >
-                          <span className="chip-dot" />
-                          {invoice.status}
-                        </span>
-                      </td>
-                      <td>{invoice.dueDate ?? '—'}</td>
-                      <td><Link className="table-link" to={`/billing/${invoice.id}`}>Open</Link></td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+            }
+            columns={toViewColumns(INVOICE_COLUMNS)}
+            count={visibleInvoices.length}
+            filters={invoiceFilters}
+            view={invoiceView}
+            viewLabel="All invoices"
+          />
+          <DataTable
+            columns={INVOICE_COLUMNS}
+            emptyState={invoicesEmpty}
+            loading={loading}
+            rows={visibleInvoices}
+            getRowKey={(invoice) => invoice.id}
+            hiddenColumns={invoiceView.hiddenColumns}
+            onHideColumn={invoiceView.hideColumn}
+            onSort={invoiceView.setSort}
+            skeletonRows={3}
+            sorts={invoiceView.sorts}
+          />
         </section>
       </div>
-
-      <Modal
-        isOpen={openModal === 'settings'}
-        onClose={() => setOpenModal(null)}
-        title="Billing settings"
-        width="lg"
-      >
-        {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
-        <form className="config-form" onSubmit={onSaveConfig}>
-          <h3 className="section-title">Commercial terms</h3>
-          <p className="field-hint">Current: ${config?.feeAmount ?? '—'} PEPM · Net {config?.paymentTermsNetDays ?? '—'} · anchor day {config?.anchorDay ?? '—'}</p>
-          <div className="field"><label htmlFor="fee-amount">PEPM fee (USD)</label>
-            <input id="fee-amount" min={0} placeholder={String(config?.feeAmount ?? '')} step="0.01" type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} />
-          </div>
-          <div className="field"><label htmlFor="net-days">Payment terms (net days)</label>
-            <input id="net-days" min={0} placeholder={String(config?.paymentTermsNetDays ?? '')} type="number" value={netDays} onChange={(e) => setNetDays(e.target.value)} />
-          </div>
-          <div className="field"><label htmlFor="anchor-day">Anchor day</label>
-            <input id="anchor-day" max={28} min={1} placeholder={String(config?.anchorDay ?? '')} type="number" value={anchorDay} onChange={(e) => setAnchorDay(e.target.value)} />
-          </div>
-          <div className="field"><label htmlFor="receiver-name">Client receiver name</label>
-            <input id="receiver-name" placeholder={config?.receiverName ?? 'SynAck Solutions LLC'} value={receiverName} onChange={(e) => setReceiverName(e.target.value)} />
-          </div>
-
-          <h3 className="section-title">Letterhead</h3>
-          <div className="field">
-            <label htmlFor="invoice-logo">Invoice logo (PNG/JPG, ≤300 KB)</label>
-            <div className="file-input">
-              <label className="file-input-trigger" htmlFor="invoice-logo">
-                Choose file
-              </label>
-              <span className="file-input-name">{logoFileName || 'No file chosen'}</span>
-              <input
-                accept="image/*"
-                className="file-input-native"
-                id="invoice-logo"
-                type="file"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) {
-                    setLogoFileName(file.name);
-                    readFileAsDataUrl(file, setLogoDataUrl);
-                  }
-                }}
-              />
-            </div>
-          </div>
-          {config?.invoiceLogoDataUrl || logoDataUrl ? (
-            <img
-              alt="Invoice logo preview"
-              src={logoDataUrl || config?.invoiceLogoDataUrl || undefined}
-              style={{ maxHeight: 60, marginBottom: 8, objectFit: 'contain' }}
-            />
-          ) : null}
-          <div className="field">
-            <label htmlFor="signature-image">Signature image (≤300 KB)</label>
-            <div className="file-input">
-              <label className="file-input-trigger" htmlFor="signature-image">
-                Choose file
-              </label>
-              <span className="file-input-name">{signatureFileName || 'No file chosen'}</span>
-              <input
-                accept="image/*"
-                className="file-input-native"
-                id="signature-image"
-                type="file"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) {
-                    setSignatureFileName(file.name);
-                    readFileAsDataUrl(file, setSignatureDataUrl);
-                  }
-                }}
-              />
-            </div>
-          </div>
-          {config?.signatureDataUrl || signatureDataUrl ? (
-            <img
-              alt="Signature preview"
-              src={signatureDataUrl || config?.signatureDataUrl || undefined}
-              style={{ maxHeight: 40, marginBottom: 8, objectFit: 'contain' }}
-            />
-          ) : null}
-
-          <h3 className="section-title">Sender (Tethr) address</h3>
-          <div className="field"><label htmlFor="sender-address">Street address</label>
-            <input id="sender-address" placeholder={config?.senderAddress ?? '152, Street 23, G-10/2'} value={addressForm.senderAddress} onChange={(e) => setAddressForm((f) => ({ ...f, senderAddress: e.target.value }))} />
-          </div>
-          <div className="field-row">
-            <div className="field"><label htmlFor="sender-zip">Zip</label>
-              <input id="sender-zip" placeholder={config?.senderZipCode ?? '42201'} value={addressForm.senderZipCode} onChange={(e) => setAddressForm((f) => ({ ...f, senderZipCode: e.target.value }))} />
-            </div>
-            <div className="field"><label htmlFor="sender-city">City</label>
-              <input id="sender-city" placeholder={config?.senderCity ?? 'Islamabad'} value={addressForm.senderCity} onChange={(e) => setAddressForm((f) => ({ ...f, senderCity: e.target.value }))} />
-            </div>
-          </div>
-          <div className="field-row">
-            <div className="field"><label htmlFor="sender-country">Country</label>
-              <input id="sender-country" placeholder={config?.senderCountry ?? 'Pakistan'} value={addressForm.senderCountry} onChange={(e) => setAddressForm((f) => ({ ...f, senderCountry: e.target.value }))} />
-            </div>
-            <div className="field"><label htmlFor="sender-phone">Phone</label>
-              <input id="sender-phone" placeholder={config?.senderPhone ?? '+92 332 8883847'} value={addressForm.senderPhone} onChange={(e) => setAddressForm((f) => ({ ...f, senderPhone: e.target.value }))} />
-            </div>
-          </div>
-
-          <h3 className="section-title">Receiver (client) address</h3>
-          <div className="field"><label htmlFor="receiver-address">Street address</label>
-            <input id="receiver-address" placeholder={config?.receiverAddress ?? '7709 Inwood Ave'} value={addressForm.receiverAddress} onChange={(e) => setAddressForm((f) => ({ ...f, receiverAddress: e.target.value }))} />
-          </div>
-          <div className="field-row">
-            <div className="field"><label htmlFor="receiver-zip">Zip</label>
-              <input id="receiver-zip" placeholder={config?.receiverZipCode ?? '21228'} value={addressForm.receiverZipCode} onChange={(e) => setAddressForm((f) => ({ ...f, receiverZipCode: e.target.value }))} />
-            </div>
-            <div className="field"><label htmlFor="receiver-city">City</label>
-              <input id="receiver-city" placeholder={config?.receiverCity ?? 'Baltimore'} value={addressForm.receiverCity} onChange={(e) => setAddressForm((f) => ({ ...f, receiverCity: e.target.value }))} />
-            </div>
-          </div>
-          <div className="field-row">
-            <div className="field"><label htmlFor="receiver-country">Country</label>
-              <input id="receiver-country" placeholder={config?.receiverCountry ?? 'United States'} value={addressForm.receiverCountry} onChange={(e) => setAddressForm((f) => ({ ...f, receiverCountry: e.target.value }))} />
-            </div>
-            <div className="field"><label htmlFor="receiver-phone">Phone</label>
-              <input id="receiver-phone" placeholder={config?.receiverPhone ?? '+1 443 805 9476'} value={addressForm.receiverPhone} onChange={(e) => setAddressForm((f) => ({ ...f, receiverPhone: e.target.value }))} />
-            </div>
-          </div>
-
-          <button className="button button-secondary button-full" type="submit">Save terms</button>
-        </form>
-      </Modal>
 
       <Modal
         isOpen={openModal === 'group'}
@@ -608,4 +684,3 @@ export const BillingPage = () => {
     </main>
   );
 };
-

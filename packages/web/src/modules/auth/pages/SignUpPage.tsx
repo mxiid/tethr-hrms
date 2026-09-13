@@ -3,6 +3,7 @@ import { useState, type ChangeEvent, type FocusEvent, type FormEvent } from 'rea
 import { Link, useNavigate } from 'react-router-dom';
 
 import { portalHome } from '../../../app/portal';
+import { Skeleton } from '../../../components/skeleton/Skeleton';
 import {
   HAS_CREATED_WORKSPACE_QUERY,
   LEGAL_NAME_IS_ALREADY_USED_QUERY,
@@ -123,7 +124,9 @@ export const SignUpPage = () => {
             required
           />
           {checkingName ? (
-            <div className="field-skeleton" aria-label="Checking workspace name…" />
+            <div aria-label="Checking workspace name…" role="status">
+              <Skeleton height="xs" width="65%" style={{ marginTop: 'var(--hrms-space-2)' }} />
+            </div>
           ) : legalNameAlreadyUsed ? (
             <p className="field-hint field-hint-warning">
               A workspace named &quot;{organizationName.trim()}&quot; already exists. Workspace
@@ -143,7 +146,9 @@ export const SignUpPage = () => {
             required
           />
           {checkingEmail ? (
-            <div className="field-skeleton" aria-label="Checking email…" />
+            <div aria-label="Checking email…" role="status">
+              <Skeleton height="xs" width="65%" style={{ marginTop: 'var(--hrms-space-2)' }} />
+            </div>
           ) : emailBlocked ? (
             <p className="field-hint field-hint-warning">
               This email has already created a workspace. <Link to="/login">Sign in</Link> instead,

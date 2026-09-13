@@ -3,28 +3,37 @@ import type { WorkerType } from '@hrms/shared';
 import {
   IconAlertTriangle,
   IconArrowRight,
+  IconDeviceFloppy,
+  IconFilterOff,
   IconPlus,
   IconSearch,
-  IconUserCheck,
-  IconUserPlus,
   IconUsersGroup,
 } from '@tabler/icons-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
-import { ActionMenu } from '../../../components/menu/ActionMenu';
+import { StatusChip } from '../../../components/chip/StatusChip';
+import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { FilterBar } from '../../../components/filter-bar/FilterBar';
+import { FieldGroup } from '../../../components/record-panel/FieldGroup';
+import { FieldRow } from '../../../components/record-panel/FieldRow';
+import type { RecordFieldOption, RecordFieldType } from '../../../components/record-panel/FieldRow';
+import { useInlineCreate } from '../../../components/record-panel/useInlineCreate';
+import { SidePanel } from '../../../components/side-panel/SidePanel';
+import {
+  DataTable,
+  toViewColumns,
+  type ColumnDefinition,
+  type DraftRow,
+} from '../../../components/table/DataTable';
+import { useListView } from '../../../components/view-bar/useListView';
+import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { DirectoryFilterMenu } from '../components/DirectoryFilterMenu';
-import {
-  EmployeeOnboardingForm,
-  type EmployeeOnboardingFormValues,
-} from '../components/EmployeeOnboardingForm';
 import { EmployeeOrgChart } from '../components/EmployeeOrgChart';
 import {
   chipStyle,
   colorFor,
-  daysSince,
   formatDate,
   fullName,
   initials,
@@ -39,58 +48,326 @@ import {
   CREATE_EMPLOYEE_MUTATION,
   EMPLOYEES_QUERY,
   SET_EMPLOYEE_MANAGER_MUTATION,
+  UPDATE_EMPLOYEE_MUTATION,
 } from '../graphql/employee.operations';
 
-// Shortcuts in the "Onboard employee" menu — the rest stay reachable from the
-// worker type field inside the flow.
-const QUICK_WORKER_TYPES: readonly WorkerType[] = ['permanent', 'contractor', 'fixedTerm'];
+type EmployeeDraft = {
+  employeeNumber: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  salutation: string;
+  workEmail: string;
+  roleTitle: string;
+  dateOfBirth: string;
+  hireDate: string;
+  probationEndDate: string;
+  scheduledConfirmationDate: string;
+  finalConfirmationDate: string;
+  contractEndDate: string;
+  noticePeriodDays: string;
+  retirementDate: string;
+  workerType: string;
+};
 
-const emptyForm: EmployeeOnboardingFormValues = {
+type EmployeeFieldKey = keyof EmployeeDraft & string;
+
+type EmployeeFieldDescriptor = {
+  readonly key: EmployeeFieldKey;
+  readonly label: string;
+  readonly type: RecordFieldType;
+  readonly options?: readonly RecordFieldOption[];
+  readonly placeholder?: string;
+  readonly required?: boolean;
+  readonly min?: number;
+};
+
+type EmployeeFieldGroup = {
+  readonly title: string;
+  readonly fields: readonly EmployeeFieldDescriptor[];
+};
+
+const today = (): string => new Date().toISOString().slice(0, 10);
+
+const emptyEmployeeDraft = (): EmployeeDraft => ({
   employeeNumber: '',
   firstName: '',
   middleName: '',
   lastName: '',
   salutation: '',
-  hireDate: '',
   workEmail: '',
   roleTitle: '',
   dateOfBirth: '',
+  hireDate: today(),
   probationEndDate: '',
   scheduledConfirmationDate: '',
   finalConfirmationDate: '',
   contractEndDate: '',
   noticePeriodDays: '',
   retirementDate: '',
-  holidayCalendarId: '',
   workerType: 'permanent',
+});
+
+const isEmployeeDraftComplete = (draft: EmployeeDraft): boolean =>
+  draft.employeeNumber.trim() !== '' &&
+  draft.firstName.trim() !== '' &&
+  draft.lastName.trim() !== '' &&
+  draft.hireDate !== '';
+
+const SALUTATION_OPTIONS: readonly RecordFieldOption[] = [
+  { value: 'Mr', label: 'Mr' },
+  { value: 'Ms', label: 'Ms' },
+  { value: 'Mrs', label: 'Mrs' },
+  { value: 'Mx', label: 'Mx' },
+  { value: 'Dr', label: 'Dr' },
+  { value: 'Prof', label: 'Prof' },
+];
+
+const WORKER_TYPE_OPTIONS: readonly RecordFieldOption[] = Object.entries(workerTypeLabels).map(
+  ([value, label]) => ({ value, label }),
+);
+
+const EMPLOYEE_FIELD_GROUPS: readonly EmployeeFieldGroup[] = [
+  {
+    title: 'Work identity',
+    fields: [
+      { key: 'employeeNumber', label: 'Employee number', type: 'text', required: true },
+      { key: 'workEmail', label: 'Work email', type: 'text', placeholder: 'name@company.com' },
+      {
+        key: 'salutation',
+        label: 'Salutation',
+        type: 'select',
+        options: SALUTATION_OPTIONS,
+        placeholder: 'Not set',
+      },
+      { key: 'dateOfBirth', label: 'Date of birth', type: 'date' },
+    ],
+  },
+  {
+    title: 'Employment',
+    fields: [
+      { key: 'roleTitle', label: 'Role', type: 'text' },
+      { key: 'hireDate', label: 'Hire date', type: 'date', required: true },
+      { key: 'workerType', label: 'Worker type', type: 'select', options: WORKER_TYPE_OPTIONS },
+    ],
+  },
+  {
+    title: 'Probation & confirmation',
+    fields: [
+      { key: 'probationEndDate', label: 'Probation end', type: 'date' },
+      { key: 'scheduledConfirmationDate', label: 'Scheduled confirmation', type: 'date' },
+      { key: 'finalConfirmationDate', label: 'Final confirmation', type: 'date' },
+    ],
+  },
+  {
+    title: 'Contract & exit terms',
+    fields: [
+      { key: 'contractEndDate', label: 'Contract end', type: 'date' },
+      { key: 'noticePeriodDays', label: 'Notice period (days)', type: 'number', min: 0 },
+      { key: 'retirementDate', label: 'Retirement date', type: 'date' },
+    ],
+  },
+];
+
+const DATE_FIELDS: readonly EmployeeFieldKey[] = [
+  'dateOfBirth',
+  'hireDate',
+  'probationEndDate',
+  'scheduledConfirmationDate',
+  'finalConfirmationDate',
+  'contractEndDate',
+  'retirementDate',
+];
+
+const employeeRawValue = (employee: EmployeeRecord, key: EmployeeFieldKey): string => {
+  switch (key) {
+    case 'employeeNumber':
+      return employee.employeeNumber;
+    case 'firstName':
+      return employee.firstName;
+    case 'middleName':
+      return employee.middleName ?? '';
+    case 'lastName':
+      return employee.lastName;
+    case 'salutation':
+      return employee.salutation ?? '';
+    case 'workEmail':
+      return employee.workEmail ?? '';
+    case 'roleTitle':
+      return employee.roleTitle ?? '';
+    case 'noticePeriodDays':
+      return employee.noticePeriodDays === null ? '' : String(employee.noticePeriodDays);
+    case 'workerType':
+      return employee.workerType;
+    case 'dateOfBirth':
+      return employee.dateOfBirth ?? '';
+    case 'hireDate':
+      return employee.hireDate;
+    case 'probationEndDate':
+      return employee.probationEndDate ?? '';
+    case 'scheduledConfirmationDate':
+      return employee.scheduledConfirmationDate ?? '';
+    case 'finalConfirmationDate':
+      return employee.finalConfirmationDate ?? '';
+    case 'contractEndDate':
+      return employee.contractEndDate ?? '';
+    case 'retirementDate':
+      return employee.retirementDate ?? '';
+    default:
+      return '';
+  }
+};
+
+const fieldDisplay = (key: EmployeeFieldKey, raw: string): string | undefined => {
+  if (raw === '') return undefined;
+  if (key === 'workerType') return workerTypeLabels[raw as WorkerType] ?? raw;
+  if (DATE_FIELDS.includes(key)) return formatDate(raw);
+  return undefined;
+};
+
+const toCreateEmployeeInput = (draft: EmployeeDraft): Record<string, unknown> => ({
+  employeeNumber: draft.employeeNumber.trim(),
+  firstName: draft.firstName.trim(),
+  middleName: draft.middleName.trim() || undefined,
+  lastName: draft.lastName.trim(),
+  salutation: draft.salutation || undefined,
+  hireDate: draft.hireDate,
+  workEmail: draft.workEmail.trim() || undefined,
+  roleTitle: draft.roleTitle.trim() || undefined,
+  dateOfBirth: draft.dateOfBirth || undefined,
+  probationEndDate: draft.probationEndDate || undefined,
+  scheduledConfirmationDate: draft.scheduledConfirmationDate || undefined,
+  finalConfirmationDate: draft.finalConfirmationDate || undefined,
+  contractEndDate: draft.contractEndDate || undefined,
+  noticePeriodDays: draft.noticePeriodDays ? Number(draft.noticePeriodDays) : undefined,
+  retirementDate: draft.retirementDate || undefined,
+  workerType: draft.workerType,
+});
+
+// `employeeNumber` is immutable (not in UpdateEmployeeInput), and every other
+// field sends only itself — a partial update, never the whole record.
+const toUpdateEmployeeInput = (key: EmployeeFieldKey, value: string): Record<string, unknown> => {
+  if (key === 'noticePeriodDays') {
+    return { noticePeriodDays: value === '' ? null : Number(value) };
+  }
+  return { [key]: value === '' ? null : value };
+};
+
+const draftAsRecord = (draft: EmployeeDraft): EmployeeRecord => ({
+  id: '__draft',
+  employeeNumber: draft.employeeNumber,
+  firstName: draft.firstName,
+  middleName: draft.middleName || null,
+  lastName: draft.lastName,
+  salutation: draft.salutation || null,
+  workEmail: draft.workEmail || null,
+  roleTitle: draft.roleTitle || null,
+  dateOfBirth: draft.dateOfBirth || null,
+  hireDate: draft.hireDate,
+  probationEndDate: draft.probationEndDate || null,
+  scheduledConfirmationDate: draft.scheduledConfirmationDate || null,
+  finalConfirmationDate: draft.finalConfirmationDate || null,
+  contractEndDate: draft.contractEndDate || null,
+  noticePeriodDays: draft.noticePeriodDays === '' ? null : Number(draft.noticePeriodDays),
+  retirementDate: draft.retirementDate || null,
+  holidayCalendarId: null,
+  employmentStatus: 'active',
+  workerType: (draft.workerType || 'permanent') as WorkerType,
+  currentAssignment: null,
+  assignmentHistory: [],
+});
+
+type NameHeaderProps = {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly mode: 'create' | 'live';
+  readonly onDraftChange?: (patch: Partial<EmployeeDraft>) => void;
+  readonly onCommit?: (patch: { firstName?: string; lastName?: string }) => void;
+};
+
+// The name fields live in the panel header, as Twenty does. In create mode they
+// write straight into the draft; in live mode blur/Enter commits each name.
+const NameHeader = ({ firstName, lastName, mode, onDraftChange, onCommit }: NameHeaderProps) => {
+  const [draft, setDraft] = useState({ firstName, lastName });
+  useEffect(() => {
+    setDraft({ firstName, lastName });
+  }, [firstName, lastName]);
+
+  const values = mode === 'create' ? { firstName, lastName } : draft;
+
+  const update = (patch: { firstName?: string; lastName?: string }): void => {
+    if (mode === 'create') {
+      onDraftChange?.(patch);
+      return;
+    }
+    setDraft((current) => ({ ...current, ...patch }));
+  };
+
+  const commitKey = (key: 'firstName' | 'lastName'): void => {
+    if (mode === 'create') return;
+    const committed = key === 'firstName' ? firstName : lastName;
+    if (draft[key] !== committed) onCommit?.({ [key]: draft[key] });
+  };
+
+  return (
+    <div className="record-panel-name">
+      <input
+        aria-label="First name"
+        autoFocus={mode === 'create'}
+        className="record-panel-name-input"
+        onBlur={() => commitKey('firstName')}
+        onChange={(event) => update({ firstName: event.target.value })}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Escape' && mode === 'live') {
+            // Escape reverts the name edit without closing the panel.
+            event.preventDefault();
+            event.stopPropagation();
+            setDraft({ firstName, lastName });
+          }
+        }}
+        placeholder="First name"
+        value={values.firstName}
+      />
+      <input
+        aria-label="Last name"
+        className="record-panel-name-input"
+        onBlur={() => commitKey('lastName')}
+        onChange={(event) => update({ lastName: event.target.value })}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Escape' && mode === 'live') {
+            event.preventDefault();
+            event.stopPropagation();
+            setDraft({ firstName, lastName });
+          }
+        }}
+        placeholder="Last name"
+        value={values.lastName}
+      />
+    </div>
+  );
 };
 
 export const EmployeesListPage = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
   const { data, loading, error, refetch } = useQuery<EmployeesData>(EMPLOYEES_QUERY);
-  const [createEmployee, { loading: creating }] =
-    useMutation<CreateEmployeeData>(CREATE_EMPLOYEE_MUTATION);
+  const [createEmployee] = useMutation<CreateEmployeeData>(CREATE_EMPLOYEE_MUTATION);
+  const [updateEmployee, { loading: savingEmployee }] = useMutation(UPDATE_EMPLOYEE_MUTATION);
+  const [setEmployeeManager, { loading: reassigning }] = useMutation(SET_EMPLOYEE_MANAGER_MUTATION);
 
   const employees = useMemo(() => data?.employees ?? [], [data]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // The org chart is its own sub-nav tab, so the view follows the route rather
-  // than local state — both views share the preview rail below.
+  // than local state — both views share the record panel below.
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const viewMode: 'directory' | 'orgChart' = pathname.endsWith('/org-chart')
     ? 'orgChart'
     : 'directory';
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<readonly string[]>([]);
-  const [workerTypeFilter, setWorkerTypeFilter] = useState<readonly string[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  // Which worker type the onboarding flow opens prefilled with, chosen from the
-  // "Onboard employee" menu. Null means start on the default (permanent).
-  const [pendingWorkerType, setPendingWorkerType] = useState<WorkerType | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
   const [reassignError, setReassignError] = useState<string | null>(null);
-  const [setEmployeeManager, { loading: reassigning }] = useMutation(SET_EMPLOYEE_MANAGER_MUTATION);
 
   const canRestructure = Boolean(
     user?.roleKeys.includes('tethrAdmin') || user?.roleKeys.includes('tethrHr'),
@@ -116,19 +393,29 @@ export const EmployeesListPage = () => {
     }
   };
 
-  const startOnboarding = (workerType?: WorkerType): void => {
-    setPendingWorkerType(workerType ?? null);
-    setFormError(null);
-    setShowForm(true);
-  };
+  const create = useInlineCreate<EmployeeDraft, EmployeeRecord>({
+    createEmptyDraft: emptyEmployeeDraft,
+    isComplete: isEmployeeDraftComplete,
+    createRecord: async (draft) => {
+      const result = await createEmployee({
+        variables: { input: toCreateEmployeeInput(draft) },
+      });
+      await refetch();
+      return result.data?.createEmployee ?? null;
+    },
+    onCreated: (record) => setSelectedId(record.id),
+  });
 
+  const view = useListView({ routeKey: '/employees' });
   const visibleEmployees = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase();
+    const statuses = view.filters.status ?? [];
+    const workerTypes = view.filters.workerType ?? [];
     return employees.filter((employee) => {
-      if (statusFilter.length > 0 && !statusFilter.includes(employee.employmentStatus)) {
+      if (statuses.length > 0 && !statuses.includes(employee.employmentStatus)) {
         return false;
       }
-      if (workerTypeFilter.length > 0 && !workerTypeFilter.includes(employee.workerType)) {
+      if (workerTypes.length > 0 && !workerTypes.includes(employee.workerType)) {
         return false;
       }
       if (needle === '') return true;
@@ -142,15 +429,94 @@ export const EmployeesListPage = () => {
         .toLowerCase()
         .includes(needle);
     });
-  }, [employees, searchTerm, statusFilter, workerTypeFilter]);
+  }, [employees, searchTerm, view.filters.status, view.filters.workerType]);
+
+  const columns: readonly ColumnDefinition<EmployeeRecord>[] = [
+    {
+      key: 'employee',
+      header: 'Employee',
+      width: '22%',
+      hideable: false,
+      sortValue: (employee) => fullName(employee),
+      render: (employee) => (
+        <div className="employee-name-cell">
+          <span className="employee-avatar" style={chipStyle(colorFor(employee.id))}>
+            {initials(employee)}
+          </span>
+          <div className="truncate">
+            {/* A real link, not just the row click: the panel is hidden below
+                1100px, so on a phone this is the only route into the record. */}
+            <Link className="employee-primary employee-name-link" to={`/employees/${employee.id}`}>
+              {fullName(employee)}
+            </Link>
+            <div className="employee-secondary">{employee.employeeNumber}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'workEmail',
+      header: 'Work email',
+      width: '22%',
+      sortValue: (employee) => employee.workEmail ?? '',
+      render: (employee) => <span className="truncate">{employee.workEmail ?? '—'}</span>,
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      width: '18%',
+      sortValue: (employee) => employee.roleTitle ?? '',
+      render: (employee) => <span className="truncate">{employee.roleTitle ?? '—'}</span>,
+    },
+    {
+      key: 'hireDate',
+      header: 'Hire date',
+      width: '14%',
+      sortValue: (employee) => employee.hireDate,
+      render: (employee) => <span className="truncate">{formatDate(employee.hireDate)}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: '12%',
+      hideable: false,
+      sortValue: (employee) => employee.employmentStatus,
+      render: (employee) => (
+        <StatusChip
+          color={statusColors[employee.employmentStatus]}
+          label={statusLabels[employee.employmentStatus]}
+        />
+      ),
+    },
+    {
+      key: 'workerType',
+      header: 'Worker type',
+      width: '12%',
+      sortValue: (employee) => employee.workerType,
+      render: (employee) => workerTypeLabels[employee.workerType],
+    },
+  ];
+  const filterDefinitions = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: Object.entries(statusLabels).map(([value, label]) => ({ value, label })),
+    },
+    {
+      key: 'workerType',
+      label: 'Worker type',
+      options: Object.entries(workerTypeLabels).map(([value, label]) => ({ value, label })),
+    },
+  ];
 
   const filtersActive =
-    searchTerm.trim() !== '' || statusFilter.length > 0 || workerTypeFilter.length > 0;
+    searchTerm.trim() !== '' ||
+    (view.filters.status ?? []).length > 0 ||
+    (view.filters.workerType ?? []).length > 0;
 
   const clearFilters = (): void => {
     setSearchTerm('');
-    setStatusFilter([]);
-    setWorkerTypeFilter([]);
+    view.clearFilters();
   };
 
   const selected: EmployeeRecord | null =
@@ -159,68 +525,83 @@ export const EmployeesListPage = () => {
   const canOnboardEmployee = Boolean(
     user?.roleKeys.includes('tethrAdmin') || user?.roleKeys.includes('tethrHr'),
   );
+  // employeeWrite lives on tethrAdmin/tethrHr, the same roles that may onboard;
+  // everyone else (e.g. tethrFinance, clientMember) gets a read-only panel.
+  const canEditEmployee = canOnboardEmployee;
 
-  const onCreate = async (values: EmployeeOnboardingFormValues): Promise<void> => {
-    if (!canOnboardEmployee) return;
-    setFormError(null);
+  const commitField = async (
+    employeeId: string,
+    key: EmployeeFieldKey,
+    value: string,
+  ): Promise<void> => {
+    if (key === 'employeeNumber') return;
+    create.setError(null);
     try {
-      const result = await createEmployee({
-        variables: {
-          input: {
-            employeeNumber: values.employeeNumber,
-            firstName: values.firstName,
-            middleName: values.middleName || undefined,
-            lastName: values.lastName,
-            salutation: values.salutation || undefined,
-            hireDate: values.hireDate,
-            workEmail: values.workEmail ? values.workEmail : undefined,
-            roleTitle: values.roleTitle ? values.roleTitle : undefined,
-            dateOfBirth: values.dateOfBirth ? values.dateOfBirth : undefined,
-            probationEndDate: values.probationEndDate ? values.probationEndDate : undefined,
-            scheduledConfirmationDate: values.scheduledConfirmationDate || undefined,
-            finalConfirmationDate: values.finalConfirmationDate || undefined,
-            contractEndDate: values.contractEndDate || undefined,
-            noticePeriodDays: values.noticePeriodDays ? Number(values.noticePeriodDays) : undefined,
-            retirementDate: values.retirementDate || undefined,
-            holidayCalendarId: values.holidayCalendarId || undefined,
-            workerType: values.workerType,
-          },
-        },
+      await updateEmployee({
+        variables: { input: { employeeId, ...toUpdateEmployeeInput(key, value) } },
       });
       await refetch();
-      setShowForm(false);
-      if (result.data) {
-        setSelectedId(result.data.createEmployee.id);
-      }
     } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : 'Could not create employee');
+      create.setError(caught instanceof Error ? caught.message : 'Could not save the change');
     }
   };
 
-  // Onboarding takes over the whole page rather than sitting as a strip above the
-  // directory: the intake is a task in its own right, and competing with the table
-  // plus the preview rail is what made it feel cramped.
-  if (showForm && canOnboardEmployee) {
-    return (
-      <main className="onboarding-page">
-        <EmployeeOnboardingForm
-          formError={formError}
-          initialValues={
-            pendingWorkerType ? { ...emptyForm, workerType: pendingWorkerType } : emptyForm
-          }
-          submitting={creating}
-          workerTypeLabels={workerTypeLabels}
-          onCancel={() => setShowForm(false)}
-          onSubmit={(values) => void onCreate(values)}
-        />
-      </main>
-    );
-  }
+  const onRowClick = (employee: EmployeeRecord): void => {
+    if (create.draft !== null) create.discard();
+    setSelectedId(employee.id);
+  };
+
+  // A fresh draft takes over the panel; clearing the selection means discarding
+  // it closes the panel rather than falling back to the last record opened.
+  const startCreate = (): void => {
+    setSelectedId(null);
+    create.start();
+  };
+
+  const draftRow: DraftRow<EmployeeRecord> | null =
+    create.draft !== null
+      ? {
+          rowKey: '__draft',
+          renderCell: (column) => {
+            const draft = create.draft;
+            if (draft === null) return null;
+            if (column.key === 'employee') {
+              return (
+                <div className="employee-name-cell">
+                  <span className="employee-avatar" style={chipStyle('blue')}>
+                    {`${draft.firstName.charAt(0)}${draft.lastName.charAt(0)}`.toUpperCase() || '?'}
+                  </span>
+                  <div className="truncate">
+                    <div className="employee-primary">
+                      {draft.firstName || draft.lastName
+                        ? `${draft.firstName} ${draft.lastName}`.trim()
+                        : 'New employee'}
+                    </div>
+                    <div className="employee-secondary">
+                      {draft.employeeNumber || 'Number pending'}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return column.render(draftAsRecord(draft));
+          },
+        }
+      : null;
+
+  const panelOpen = viewMode !== 'orgChart' && (create.draft !== null || selected !== null);
+  const closePanel = (): void => {
+    if (create.draft !== null) {
+      create.discard();
+      return;
+    }
+    setSelectedId(null);
+  };
 
   return (
-    // The org chart needs the whole page: with the preview rail taking 500px it
+    // The org chart needs the whole page: with the record panel taking 500px it
     // renders a 2700px tree into ~780px. Selection there opens the record instead.
-    <main className={viewMode === 'orgChart' ? 'page-frame-wide' : 'page-frame'}>
+    <main className={viewMode === 'orgChart' ? 'page-frame-wide' : 'list-with-panel'}>
       <section className="employees-content" aria-labelledby="employees-title">
         <header className="page-header">
           <div>
@@ -229,42 +610,18 @@ export const EmployeesListPage = () => {
             </h1>
             <p className="page-subtitle">
               {viewMode === 'orgChart'
-                ? 'Reporting lines across the workspace. Select anyone to open their record.'
+                ? 'See who reports to whom. Select anyone to open their record.'
                 : isTethrWorkspace
-                  ? 'Onboard employees and maintain client-facing workforce records.'
-                  : 'Review employee data, documents, pay, assessments, and bonuses.'}
+                  ? 'Add employees and keep their records up to date.'
+                  : "Your team's records, documents, and pay."}
             </p>
           </div>
-          {canOnboardEmployee ? (
+          {canOnboardEmployee && viewMode !== 'orgChart' ? (
             <div className="page-actions">
-              <ActionMenu
-                icon={IconPlus}
-                label="Onboard employee"
-                sections={[
-                  {
-                    key: 'start',
-                    items: [
-                      {
-                        key: 'blank',
-                        label: 'Add one person',
-                        description: 'Full intake, worker type set on the way through',
-                        icon: IconUserPlus,
-                        onSelect: () => startOnboarding(),
-                      },
-                    ],
-                  },
-                  {
-                    key: 'worker-types',
-                    label: 'Frequently used',
-                    items: QUICK_WORKER_TYPES.map((workerType) => ({
-                      key: workerType,
-                      label: workerTypeLabels[workerType],
-                      icon: IconUserPlus,
-                      onSelect: () => startOnboarding(workerType),
-                    })),
-                  },
-                ]}
-              />
+              <button className="button button-primary" onClick={startCreate} type="button">
+                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                New employee
+              </button>
             </div>
           ) : null}
         </header>
@@ -279,30 +636,25 @@ export const EmployeesListPage = () => {
               onChange={(event) => setSearchTerm(event.target.value)}
             />
           </div>
-          <DirectoryFilterMenu
-            label="Status"
-            options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
-            selected={statusFilter}
-            onChange={setStatusFilter}
-          />
-          <DirectoryFilterMenu
-            label="Worker type"
-            options={Object.entries(workerTypeLabels).map(([value, label]) => ({ value, label }))}
-            selected={workerTypeFilter}
-            onChange={setWorkerTypeFilter}
-          />
+          {/* On the directory the filters live in the view bar; the org chart has
+              no table, so it keeps them inline. */}
+          {viewMode === 'orgChart' ? (
+            <FilterBar filters={filterDefinitions} values={view.filters} onChange={view.setFilter} />
+          ) : null}
           {filtersActive ? (
             <button className="link-button directory-clear" type="button" onClick={clearFilters}>
               Clear all
             </button>
           ) : null}
-          <span className="directory-count">
-            {loading
-              ? 'Loading…'
-              : filtersActive
-                ? `${visibleEmployees.length} of ${employees.length} people`
-                : `Total ${employees.length} ${employees.length === 1 ? 'person' : 'people'}`}
-          </span>
+          {viewMode === 'orgChart' ? (
+            <span className="directory-count">
+              {loading
+                ? 'Loading…'
+                : filtersActive
+                  ? `${visibleEmployees.length} of ${employees.length} people`
+                  : `Total ${employees.length} ${employees.length === 1 ? 'person' : 'people'}`}
+            </span>
+          ) : null}
         </div>
 
         {viewMode === 'orgChart' && canRestructure ? (
@@ -318,186 +670,279 @@ export const EmployeesListPage = () => {
           </p>
         ) : null}
 
-        <div className="table-shell">
-          {error ? (
-            <div className="directory-empty">
-              <IconAlertTriangle size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-              <h2 className="directory-empty-title">Could not load employees</h2>
-              <p>Is the API running, and are you still signed in?</p>
-            </div>
-          ) : !loading && employees.length === 0 ? (
-            <div className="directory-empty">
-              <IconUsersGroup size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-              <h2 className="directory-empty-title">No employees yet</h2>
-              <p>
-                {canOnboardEmployee
-                  ? 'Onboard your first employee to start building the directory.'
-                  : 'No employees are available in this workspace yet.'}
-              </p>
-              {canOnboardEmployee ? (
-                <button
-                  className="button button-primary"
-                  type="button"
-                  onClick={() => startOnboarding()}
-                >
-                  <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  Onboard employee
-                </button>
-              ) : null}
-            </div>
-          ) : !loading && visibleEmployees.length === 0 ? (
-            <div className="directory-empty">
-              <IconSearch size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-              <h2 className="directory-empty-title">No result</h2>
-              <p>Adjust your search or filters to show the people in this workspace.</p>
-              <button className="button button-secondary" type="button" onClick={clearFilters}>
-                Clear all filters
-              </button>
-            </div>
-          ) : viewMode === 'orgChart' ? (
-            <EmployeeOrgChart
-              employees={visibleEmployees}
-              reassigning={reassigning}
-              selectedId={selectedId}
-              onReassign={
-                canRestructure ? (id, managerId) => void onReassign(id, managerId) : undefined
-              }
-              onSelect={(employeeId) => navigate(`/employees/${employeeId}`)}
-            />
-          ) : (
-            <div className="employee-table-wrap">
-              <table className="employee-table">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Work email</th>
-                    <th>Role</th>
-                    <th>Hire date</th>
-                    <th>Status</th>
-                    <th>Worker type</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleEmployees.map((employee) => (
-                    <tr
-                      key={employee.id}
-                      aria-selected={selected?.id === employee.id}
-                      className={`employee-row${selected?.id === employee.id ? ' is-selected' : ''}`}
-                      onClick={() => setSelectedId(employee.id)}
+        {viewMode === 'orgChart' ? (
+          <div className="table-shell">
+            {error ? (
+              <EmptyState
+                icon={IconAlertTriangle}
+                title="Could not load employees"
+                description="Is the API running, and are you still signed in?"
+              />
+            ) : !loading && employees.length === 0 ? (
+              <EmptyState
+                icon={IconUsersGroup}
+                title="No employees yet"
+                description={
+                  canOnboardEmployee
+                    ? 'Add your first employee to start building the directory.'
+                    : 'No employees are available in this workspace yet.'
+                }
+                action={
+                  canOnboardEmployee ? (
+                    <button
+                      className="button button-primary"
+                      type="button"
+                      onClick={startCreate}
                     >
-                      <td>
-                        <div className="employee-name-cell">
-                          <span
-                            className="employee-avatar"
-                            style={chipStyle(colorFor(employee.id))}
-                          >
-                            {initials(employee)}
-                          </span>
-                          <div className="truncate">
-                            {/* A real link, not just the row click: the preview
-                                rail is hidden below 1100px, so on a phone this
-                                is the only route into the record. */}
-                            <Link
-                              className="employee-primary employee-name-link"
-                              to={`/employees/${employee.id}`}
-                            >
-                              {fullName(employee)}
-                            </Link>
-                            <div className="employee-secondary">{employee.employeeNumber}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="truncate" data-label="Work email">{employee.workEmail ?? '—'}</td>
-                      <td className="truncate" data-label="Role">{employee.roleTitle ?? '—'}</td>
-                      <td className="truncate" data-label="Hire date">{formatDate(employee.hireDate)}</td>
-                      <td data-label="Status">
-                        <span
-                          className="chip"
-                          style={chipStyle(statusColors[employee.employmentStatus])}
+                      <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      New employee
+                    </button>
+                  ) : null
+                }
+              />
+            ) : !loading && visibleEmployees.length === 0 ? (
+              <EmptyState
+                icon={IconFilterOff}
+                title="No result"
+                description="Adjust your search or filters to show the people in this workspace."
+                action={
+                  <button className="button button-secondary" type="button" onClick={clearFilters}>
+                    Clear all filters
+                  </button>
+                }
+              />
+            ) : (
+              <EmployeeOrgChart
+                employees={visibleEmployees}
+                reassigning={reassigning}
+                selectedId={selectedId}
+                onReassign={
+                  canRestructure ? (id, managerId) => void onReassign(id, managerId) : undefined
+                }
+                onSelect={(employeeId) => navigate(`/employees/${employeeId}`)}
+              />
+            )}
+          </div>
+        ) : (
+          <section className="table-shell" aria-label="Employees">
+            <ViewBar
+              columns={toViewColumns(columns)}
+              count={visibleEmployees.length}
+              filters={filterDefinitions}
+              view={view}
+              viewLabel="All employees"
+            />
+            <DataTable
+              columns={columns}
+              draftRow={draftRow}
+              emptyState={
+                error ? (
+                  <EmptyState
+                    icon={IconAlertTriangle}
+                    title="Could not load employees"
+                    description="Is the API running, and are you still signed in?"
+                  />
+                ) : employees.length === 0 ? (
+                  <EmptyState
+                    icon={IconUsersGroup}
+                    title="No employees yet"
+                    description={
+                      canOnboardEmployee
+                        ? 'Add your first employee to start building the directory.'
+                        : 'No employees are available in this workspace yet.'
+                    }
+                    action={
+                      canOnboardEmployee ? (
+                        <button
+                          className="button button-primary"
+                          type="button"
+                          onClick={startCreate}
                         >
-                          <span className="chip-dot" />
-                          {statusLabels[employee.employmentStatus]}
-                        </span>
-                      </td>
-                      <td data-label="Worker type">{workerTypeLabels[employee.workerType]}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                          <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                          New employee
+                        </button>
+                      ) : null
+                    }
+                  />
+                ) : (
+                  <EmptyState
+                    icon={IconFilterOff}
+                    title="No result"
+                    description="Adjust your search or filters to show the people in this workspace."
+                    action={
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={clearFilters}
+                      >
+                        Clear all filters
+                      </button>
+                    }
+                  />
+                )
+              }
+              getRowKey={(employee) => employee.id}
+              hiddenColumns={view.hiddenColumns}
+              loading={loading && !error}
+              onHideColumn={view.hideColumn}
+              onRowClick={onRowClick}
+              onSort={view.setSort}
+              rows={error ? [] : visibleEmployees}
+              selectedRowKey={selected?.id ?? null}
+              skeletonRows={6}
+              sorts={view.sorts}
+              tableClassName="employee-table"
+            />
+          </section>
+        )}
       </section>
 
-      {/* Preview only. Everything beyond these headline facts lives on the
-          profile page, which has the width for it. */}
-      {viewMode === 'orgChart' ? null : (
-      <aside className="employee-detail-panel" aria-label="Selected employee preview">
-        {selected ? (
-          <>
+      <SidePanel
+        headerContent={
+          create.draft !== null ? (
+            <NameHeader
+              firstName={create.draft.firstName}
+              lastName={create.draft.lastName}
+              mode="create"
+              onDraftChange={(patch) => create.patchDraft(patch)}
+            />
+          ) : selected !== null ? (
+            canEditEmployee ? (
+              <NameHeader
+                firstName={selected.firstName}
+                lastName={selected.lastName}
+                mode="live"
+                onCommit={(patch) => {
+                  if (patch.firstName !== undefined) {
+                    void commitField(selected.id, 'firstName', patch.firstName);
+                  }
+                  if (patch.lastName !== undefined) {
+                    void commitField(selected.id, 'lastName', patch.lastName);
+                  }
+                }}
+              />
+            ) : (
+              <h2 className="side-panel-title">{fullName(selected)}</h2>
+            )
+          ) : undefined
+        }
+        isOpen={panelOpen}
+        onClose={closePanel}
+        title={create.draft !== null ? 'New employee' : 'Employee'}
+      >
+        {create.draft !== null ? (
+          <div>
+            {EMPLOYEE_FIELD_GROUPS.map((group) => (
+              <FieldGroup key={group.title} title={group.title}>
+                {group.fields.map((field) => (
+                  <FieldRow
+                    alwaysEditing
+                    key={field.key}
+                    label={field.label}
+                    min={field.min}
+                    onChange={(value) =>
+                      create.patchDraft({ [field.key]: value } as Partial<EmployeeDraft>)
+                    }
+                    options={field.options}
+                    placeholder={field.placeholder}
+                    required={field.required}
+                    type={field.type}
+                    value={create.draft?.[field.key] ?? ''}
+                  />
+                ))}
+              </FieldGroup>
+            ))}
+            {create.error ? (
+              <p className="auth-error record-panel-error" role="alert">
+                {create.error}
+              </p>
+            ) : null}
+            <div className="record-panel-actions">
+              <button
+                className="button button-primary"
+                disabled={!create.canCreate || create.isSaving}
+                onClick={() => void create.commit()}
+                type="button"
+              >
+                <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                {create.isSaving ? 'Creating…' : 'Create employee'}
+              </button>
+              <button className="button button-secondary" onClick={create.discard} type="button">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : selected !== null ? (
+          <div>
             <div className="preview-identity">
               <span className="employee-avatar" style={chipStyle(colorFor(selected.id))}>
                 {initials(selected)}
               </span>
               <div className="truncate">
-                <div className="panel-kicker">Selected employee</div>
-                <h2 className="panel-title">{fullName(selected)}</h2>
                 <div className="employee-meta">{selected.employeeNumber}</div>
+                <StatusChip
+                  color={statusColors[selected.employmentStatus]}
+                  label={statusLabels[selected.employmentStatus]}
+                />
               </div>
             </div>
 
-            <span
-              className="chip preview-status"
-              style={chipStyle(statusColors[selected.employmentStatus])}
-            >
-              <span className="chip-dot" />
-              {statusLabels[selected.employmentStatus]}
-            </span>
+            {EMPLOYEE_FIELD_GROUPS.map((group) => (
+              <FieldGroup key={group.title} title={group.title}>
+                {group.fields.map((field) => {
+                  const raw = employeeRawValue(selected, field.key);
+                  return (
+                    <FieldRow
+                      display={fieldDisplay(field.key, raw)}
+                      key={field.key}
+                      label={field.label}
+                      onCommit={(value) => void commitField(selected.id, field.key, value)}
+                      options={field.options}
+                      readOnly={
+                        !canEditEmployee || field.key === 'employeeNumber' || savingEmployee
+                      }
+                      required={field.required}
+                      type={field.type}
+                      value={raw}
+                    />
+                  );
+                })}
+                {group.title === 'Employment' ? (
+                  <>
+                    <div className="record-field">
+                      <span className="record-field-label">Department</span>
+                      <span className="record-field-value">
+                        <span className="record-field-static">
+                          {selected.currentAssignment?.departmentName ?? 'Not assigned'}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="record-field">
+                      <span className="record-field-label">Manager</span>
+                      <span className="record-field-value">
+                        <span className="record-field-static">
+                          {selected.currentAssignment?.reportsToName ?? 'Not set'}
+                        </span>
+                      </span>
+                    </div>
+                  </>
+                ) : null}
+              </FieldGroup>
+            ))}
 
-            <div className="field-list preview-facts">
-              <div className="field-row">
-                <span className="field-label">Role</span>
-                <span className="field-value">{selected.roleTitle ?? '—'}</span>
-              </div>
-              <div className="field-row">
-                <span className="field-label">Worker type</span>
-                <span className="field-value">{workerTypeLabels[selected.workerType]}</span>
-              </div>
-              <div className="field-row">
-                <span className="field-label">Hire date</span>
-                <span className="field-value">{formatDate(selected.hireDate)}</span>
-              </div>
-              <div className="field-row">
-                <span className="field-label">Days since joining</span>
-                <span className="field-value">{daysSince(selected.hireDate)}</span>
-              </div>
-              <div className="field-row">
-                <span className="field-label">Department</span>
-                <span className="field-value">
-                  {selected.currentAssignment?.departmentName ?? '—'}
-                </span>
-              </div>
-              <div className="field-row">
-                <span className="field-label">Manager</span>
-                <span className="field-value">
-                  {selected.currentAssignment?.reportsToName ?? '—'}
-                </span>
-              </div>
-            </div>
+            {create.error ? (
+              <p className="auth-error record-panel-error" role="alert">
+                {create.error}
+              </p>
+            ) : null}
 
             <Link className="button button-primary button-full" to={`/employees/${selected.id}`}>
               Open record
               <IconArrowRight size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             </Link>
-          </>
-        ) : (
-          <div className="detail-panel-empty">
-            <IconUserCheck size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
-            <p>Select an employee from the directory to preview them.</p>
           </div>
-        )}
-      </aside>
-      )}
+        ) : null}
+      </SidePanel>
     </main>
   );
 };

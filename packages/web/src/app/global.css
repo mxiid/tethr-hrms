@@ -2,6 +2,44 @@
   box-sizing: border-box;
 }
 
+/* Themed thin scrollbars app-wide (Windows otherwise paints a 17px opaque
+   gutter inside every card). `scrollbar-width: thin` is the valid standard
+   value; the webkit rules give Chromium a genuinely thin, rounded bar. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hrms-color-border-medium) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--hrms-color-border-medium);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--hrms-color-border-strong);
+}
+
+/* Touch devices manage their own scrollbar; the thin desktop bar just steals
+   width there. */
+@media (pointer: coarse) {
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 html,
 body,
 #root {
@@ -71,7 +109,6 @@ button {
 
 .employee-meta,
 .metric-label,
-.field-label,
 .panel-kicker {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xxs);
@@ -210,6 +247,7 @@ button {
   min-height: 32px;
   border-radius: var(--hrms-radius-pill);
   cursor: pointer;
+  text-decoration: none;
   transition: var(--hrms-animation-clickable-background-transition);
 }
 
@@ -799,16 +837,59 @@ button {
   background: var(--hrms-color-background-tertiary);
 }
 
+.account-dropdown-settings {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  border-top: 1px solid var(--hrms-color-border-light);
+  font-size: var(--hrms-font-size-xs);
+  text-decoration: none;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.account-dropdown-settings:hover {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+}
+
+/* ---------------------------------------------------------------------------
+   Settings — its own sub-nav strip under the app chrome, with content pages
+   provided by the routed children.
+   --------------------------------------------------------------------------- */
+.settings-subnav {
+  background: var(--hrms-color-background-primary);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.settings-subnav-inner {
+  margin-bottom: 0;
+  padding: 0 var(--hrms-space-10);
+  border-bottom: 0;
+}
+
+.settings-section-body {
+  padding: var(--hrms-space-4) var(--hrms-space-5) var(--hrms-space-5);
+}
+
+.settings-section-body .config-form {
+  margin-bottom: 0;
+}
+
+.settings-section-body .field:last-of-type {
+  margin-bottom: 0;
+}
+
 .app-content {
   display: flex;
   flex-direction: column;
   min-height: 0;
   flex: 1;
-  /* Shared side inset for every page mounted here, on top of whatever
-     padding a given page already applies to its own inner blocks — one
-     consistent margin from the viewport edge instead of each page setting
-     its own, so raising it once pulls the whole app in toward the middle. */
-  padding: 0 var(--hrms-space-10);
+  /* Shared inset for every page mounted here. The shell owns the top gap so
+     side panels, rails, and content columns all start on the same line instead
+     of a card touching the nav; pages keep only their side/bottom padding. */
+  padding: var(--hrms-space-6) var(--hrms-space-10);
 }
 
 
@@ -821,7 +902,7 @@ button {
 
 .employees-content {
   min-width: 0;
-  padding: var(--hrms-space-6);
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
 }
 
 .employee-detail-panel {
@@ -845,7 +926,7 @@ button {
   align-items: flex-start;
   justify-content: center;
   padding: var(--hrms-space-8) var(--hrms-space-4);
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--hrms-color-background-overlay-primary);
 }
 
@@ -918,7 +999,7 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--hrms-space-4);
-  margin-bottom: var(--hrms-space-5);
+  margin-bottom: var(--hrms-space-4);
 }
 
 .page-title {
@@ -948,6 +1029,14 @@ button {
   justify-content: center;
   padding: 0 var(--hrms-space-4);
   font-weight: var(--hrms-font-weight-medium);
+}
+
+/* Compact tier: 24px tall, for dense rows and panel footers. */
+.record-inline-actions .button,
+.attendance-row-actions .button {
+  min-height: 24px;
+  padding: 0 var(--hrms-space-2);
+  font-size: var(--hrms-font-size-xs);
 }
 
 .button:disabled {
@@ -984,10 +1073,19 @@ button {
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: var(--hrms-space-5);
+  margin-bottom: var(--hrms-space-4);
   border: 1px solid var(--hrms-color-border-light);
   border-radius: var(--hrms-radius-md);
   overflow: hidden;
+}
+
+/* For strips whose fourth card was decoration rather than data. */
+.metric-strip-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.metric-strip-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .metric-card {
@@ -1477,6 +1575,31 @@ button {
   overflow: hidden;
 }
 
+/* Stacked page cards keep one consistent 16px (4px-grid) gap. Scoped to direct
+   children of the page content columns so cards held in a grid (Compensation's
+   two-up) are unaffected. */
+.employees-content > .table-shell,
+.client-workspace-content > .table-shell,
+.workspace-users-content > .table-shell,
+.client-portfolio-content > .table-shell,
+.hiring-content > .table-shell,
+.announcements-content > .table-shell,
+.feedback-content > .table-shell,
+.leave-content > .table-shell {
+  margin-bottom: var(--hrms-space-4);
+}
+
+.employees-content > .table-shell:last-child,
+.client-workspace-content > .table-shell:last-child,
+.workspace-users-content > .table-shell:last-child,
+.client-portfolio-content > .table-shell:last-child,
+.hiring-content > .table-shell:last-child,
+.announcements-content > .table-shell:last-child,
+.feedback-content > .table-shell:last-child,
+.leave-content > .table-shell:last-child {
+  margin-bottom: 0;
+}
+
 .compensation-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1507,7 +1630,9 @@ button {
 }
 
 .employee-table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: min(72vh, 760px);
+  scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -1522,7 +1647,28 @@ button {
 }
 
 .data-table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: min(72vh, 760px);
+  scrollbar-gutter: stable;
+}
+
+/* Horizontal scroll shadow, no JS: the opaque covers use `background-
+   attachment: local` so they travel with the content and hide the shadows
+   at each end, then reveal them the moment the table scrolls. */
+.data-table-wrap,
+.employee-table-wrap {
+  background:
+    linear-gradient(to right, var(--hrms-color-background-primary) 60%, transparent) left center,
+    linear-gradient(to left, var(--hrms-color-background-primary) 60%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, var(--hrms-color-border-medium), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, var(--hrms-color-border-medium), transparent) right center;
+  background-repeat: no-repeat;
+  background-size:
+    32px 100%,
+    32px 100%,
+    12px 100%,
+    12px 100%;
+  background-attachment: scroll, scroll, local, local;
 }
 
 .employee-table {
@@ -1534,33 +1680,105 @@ button {
 
 .data-table {
   width: 100%;
-  min-width: 640px;
   border-collapse: collapse;
   table-layout: fixed;
-}
-
-.salary-history-table {
-  min-width: 760px;
 }
 
 .employee-table th,
 .employee-table td,
 .data-table th,
 .data-table td {
-  height: 44px;
+  height: var(--hrms-layout-table-row-height);
   padding: 0 var(--hrms-layout-table-horizontal-cell-padding);
   border-bottom: 1px solid var(--hrms-color-border-light);
+  border-right: 1px solid var(--hrms-color-border-light);
   text-align: left;
   vertical-align: middle;
+  font-size: var(--hrms-layout-table-font-size);
+  line-height: var(--hrms-line-height-md);
 }
 
+/* Twenty's header: same size and height as a data row, tertiary gray, no
+   uppercase, and pinned while the body scrolls. */
 .employee-table th,
 .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   color: var(--hrms-color-text-tertiary);
-  background: var(--hrms-color-background-secondary);
-  font-size: var(--hrms-font-size-xxs);
+  background: var(--hrms-color-background-primary);
+  font-size: var(--hrms-layout-table-font-size);
   font-weight: var(--hrms-font-weight-medium);
-  text-transform: uppercase;
+  text-transform: none;
+  border-bottom: 1px solid var(--hrms-color-border-medium);
+}
+
+.employee-table th:last-child,
+.employee-table td:last-child,
+.data-table th:last-child,
+.data-table td:last-child {
+  border-right: 0;
+}
+
+/* Real hover on every table, distinct from selection. Hover is gated to
+   hover-capable pointers so a tap doesn't leave it stuck. */
+@media (hover: hover) {
+  .employee-table tbody tr:hover,
+  .data-table tbody tr:hover {
+    background: var(--hrms-color-background-tertiary);
+  }
+}
+
+.employee-table tbody tr.is-selected,
+.data-table tbody tr.is-selected {
+  background: var(--hrms-color-accent-accent3);
+}
+
+.employee-table tbody tr.is-selected:hover,
+.data-table tbody tr.is-selected:hover {
+  background: var(--hrms-color-accent-accent3);
+}
+
+/* Rows that open a record in the side panel. */
+.employee-table tbody tr.is-clickable,
+.data-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+/* The pinned draft row for inline creation: tinted and edge-marked so it never
+   reads as a saved record, and always above the hover/selection tints. */
+.employee-table tbody tr.data-table-draft-row,
+.data-table tbody tr.data-table-draft-row,
+.employee-table tbody tr.data-table-draft-row:hover,
+.data-table tbody tr.data-table-draft-row:hover {
+  background: var(--hrms-color-accent-accent2);
+  box-shadow: inset 2px 0 0 var(--hrms-color-accent-accent9);
+}
+
+/* Secondary row actions surface on hover (and on keyboard focus inside the
+   row) instead of competing with the row's primary content. Touch devices keep
+   them visible — there is no hover to reveal them. */
+@media (hover: hover) {
+  .data-table .row-hover-action,
+  .employee-table .row-hover-action {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  .data-table tbody tr:hover .row-hover-action,
+  .employee-table tbody tr:hover .row-hover-action,
+  .data-table tbody tr:focus-within .row-hover-action,
+  .employee-table tbody tr:focus-within .row-hover-action {
+    opacity: 1;
+  }
+}
+
+.data-table th.cell-numeric,
+.data-table td.cell-numeric,
+.employee-table th.cell-numeric,
+.employee-table td.cell-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .employee-table tr:last-child td,
@@ -1570,11 +1788,6 @@ button {
 
 .employee-row {
   cursor: pointer;
-}
-
-.employee-row:hover,
-.employee-row.is-selected {
-  background: var(--hrms-color-background-secondary);
 }
 
 .employee-name-cell {
@@ -1921,7 +2134,7 @@ button {
   align-items: center;
   gap: 2px;
   min-height: 20px;
-  padding: 0 6px;
+  padding: 0 var(--hrms-space-2);
   transform: translateX(-50%);
   color: var(--hrms-color-text-secondary);
   background: var(--hrms-color-background-primary);
@@ -2056,6 +2269,13 @@ button {
   gap: var(--hrms-space-4);
 }
 
+.field-label {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  line-height: var(--hrms-line-height-lg);
+}
+
 .field-value {
   min-width: 0;
   overflow: hidden;
@@ -2089,12 +2309,6 @@ button {
   align-items: center;
   gap: var(--hrms-space-2);
   margin-top: var(--hrms-space-2);
-}
-
-.record-inline-actions .button {
-  min-height: 28px;
-  padding: 0 var(--hrms-space-2);
-  font-size: var(--hrms-font-size-xs);
 }
 
 .leave-trail-note {
@@ -2210,11 +2424,6 @@ button {
   font-size: var(--hrms-font-size-xxs);
 }
 
-.directory-toolbar .field input,
-.directory-toolbar .field select {
-  height: 34px;
-}
-
 .attendance-form {
   margin-top: var(--hrms-space-4);
   padding: var(--hrms-space-5);
@@ -2226,10 +2435,10 @@ button {
   gap: var(--hrms-space-2);
 }
 
-.attendance-row-actions .button {
-  height: 28px;
-  padding: 0 var(--hrms-space-2);
-  font-size: var(--hrms-font-size-xs);
+.attendance-actions-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--hrms-space-3);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2243,7 +2452,7 @@ button {
   max-width: 640px;
   width: 100%;
   margin: 0 auto;
-  padding: var(--hrms-space-6);
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
 }
 
 /* The greeting and the check-in are one card: the thing an employee opens the
@@ -2480,10 +2689,6 @@ button {
   max-width: none;
 }
 
-.profile-page .onboarding-flow-footer .button-secondary {
-  text-decoration: none;
-}
-
 /* ---------------------------------------------------------------------------
    Employee profile page.
 
@@ -2499,7 +2704,7 @@ button {
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  padding: var(--hrms-space-6);
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
 }
 
 /* Form-shaped profile pages get the same narrow measure as the onboarding flow —
@@ -2600,6 +2805,7 @@ button {
   font: inherit;
   font-size: var(--hrms-font-size-sm);
   font-weight: var(--hrms-font-weight-medium);
+  text-decoration: none;
   white-space: nowrap;
 }
 
@@ -2644,11 +2850,6 @@ button {
   margin: var(--hrms-space-4) 0;
   padding-top: var(--hrms-space-4);
   border-top: 1px solid var(--hrms-color-border-light);
-}
-
-.employee-detail-panel .button-full {
-  justify-content: center;
-  text-decoration: none;
 }
 
 @media (max-width: 1100px) {
@@ -2749,6 +2950,67 @@ button {
 }
 
 /* ---------------------------------------------------------------------------
+   Column header menu — the whole <th> is the trigger. The panel is portaled
+   (fixed) because the table's scroll container would clip an absolute one.
+   --------------------------------------------------------------------------- */
+.column-header-trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: var(--hrms-layout-table-row-height);
+  gap: var(--hrms-space-1);
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: inherit;
+}
+
+.column-header.cell-numeric .column-header-trigger {
+  justify-content: flex-end;
+}
+
+.column-header-trigger:hover {
+  color: var(--hrms-color-text-primary);
+}
+
+.column-header-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-header-caret {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.column-header-trigger:hover .column-header-caret,
+.column-header-trigger[aria-expanded='true'] .column-header-caret {
+  opacity: 1;
+}
+
+.column-header-trigger.is-sorted {
+  color: var(--hrms-color-text-primary);
+}
+
+.column-header-trigger.is-sorted .column-header-caret {
+  color: var(--hrms-color-accent-accent9);
+  opacity: 1;
+}
+
+.column-header-panel {
+  position: fixed;
+  right: auto;
+  z-index: 70;
+  min-width: 200px;
+}
+
+/* ---------------------------------------------------------------------------
    Directory toolbar — search, multi-select filter chips, and a live row count,
    sitting between the page header and the table (Deel's People table pattern).
    --------------------------------------------------------------------------- */
@@ -2766,7 +3028,7 @@ button {
   flex: 1 1 260px;
   max-width: 360px;
   gap: var(--hrms-space-2);
-  height: 34px;
+  height: 32px;
   padding: 0 var(--hrms-space-3);
   color: var(--hrms-color-text-tertiary);
   background: var(--hrms-color-background-secondary);
@@ -2797,33 +3059,6 @@ button {
   position: relative;
 }
 
-.filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--hrms-space-2);
-  height: 34px;
-  padding: 0 var(--hrms-space-3);
-  color: var(--hrms-color-text-secondary);
-  background: var(--hrms-color-background-secondary);
-  border: 1px solid var(--hrms-color-border-medium);
-  border-radius: var(--hrms-radius-sm);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--hrms-font-size-xs);
-  font-weight: var(--hrms-font-weight-medium);
-  white-space: nowrap;
-  transition: var(--hrms-animation-clickable-background-transition);
-}
-
-.filter-chip:hover {
-  border-color: var(--hrms-color-border-strong);
-}
-
-.filter-chip.is-active {
-  color: var(--hrms-color-text-primary);
-  border-color: var(--hrms-color-border-strong);
-}
-
 .filter-chip-count {
   display: grid;
   place-items: center;
@@ -2849,6 +3084,18 @@ button {
   border: 1px solid var(--hrms-color-border-medium);
   border-radius: var(--hrms-radius-sm);
   box-shadow: var(--hrms-box-shadow-strong);
+}
+
+/* The portaled copy: fixed so `.table-shell`'s overflow can't clip it, and
+   capped so a long option list can't run off the viewport. */
+.filter-menu-panel-floating {
+  position: fixed;
+  right: auto;
+  z-index: 70;
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - var(--hrms-space-4)));
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
 }
 
 .filter-menu-option {
@@ -2879,6 +3126,556 @@ button {
   text-align: left;
 }
 
+/* ---------------------------------------------------------------------------
+   Filter bar — nothing permanent while resting; applied filters materialize as
+   removable accent chips that double as their own dropdown triggers.
+   --------------------------------------------------------------------------- */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--hrms-space-2);
+}
+
+.filter-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hrms-space-1);
+  height: 24px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 1px dashed var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.filter-add-button:hover,
+.filter-add-button[aria-expanded='true'] {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border-color: var(--hrms-color-border-strong);
+}
+
+.filter-chip-applied {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
+  border: 1px solid var(--hrms-color-accent-accent6);
+  border-radius: var(--hrms-radius-sm);
+}
+
+.filter-chip-applied-main {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  gap: var(--hrms-space-1);
+  padding: 0 var(--hrms-space-1) 0 var(--hrms-space-2);
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  white-space: nowrap;
+}
+
+.filter-chip-applied-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-chip-applied .filter-chip-count {
+  min-width: 16px;
+  height: 16px;
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent5);
+  font-size: 10px;
+}
+
+.filter-chip-remove {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 100%;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--hrms-color-accent-accent6);
+  border-radius: 0 var(--hrms-radius-sm) var(--hrms-radius-sm) 0;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.filter-chip-remove:hover {
+  opacity: 1;
+  background: var(--hrms-color-accent-accent4);
+}
+
+.filter-menu-label {
+  padding: var(--hrms-space-1) var(--hrms-space-2) var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.filter-menu-option-button {
+  width: 100%;
+  justify-content: space-between;
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+   View bar — the row above every list: the view chip (name + live count) with
+   its saved-preset menu, Filter, Sort, and Options. Panels portal to <body>
+   because the table shell's overflow would clip an absolute one.
+   --------------------------------------------------------------------------- */
+.view-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  min-height: 44px;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-1) var(--hrms-space-4);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.view-bar-group {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--hrms-space-2);
+}
+
+.view-bar-group-end {
+  justify-content: flex-end;
+}
+
+.view-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+}
+
+.view-menu {
+  position: relative;
+}
+
+.view-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: 28px;
+  gap: var(--hrms-space-2);
+  padding: 0 var(--hrms-space-1) 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.view-chip:hover,
+.view-chip[aria-expanded='true'] {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.view-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-chip-count {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-save-button {
+  height: 24px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
+  border: 1px solid var(--hrms-color-accent-accent6);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-save-button:hover {
+  background: var(--hrms-color-accent-accent4);
+}
+
+.view-bar-button {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  gap: var(--hrms-space-1);
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 1px dashed var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-bar-button:hover,
+.view-bar-button[aria-expanded='true'] {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border-color: var(--hrms-color-border-strong);
+}
+
+.view-menu-panel-floating {
+  position: fixed;
+  z-index: 70;
+  display: grid;
+  align-content: start;
+  min-width: 260px;
+  max-width: 320px;
+  max-height: min(60vh, 420px);
+  gap: 1px;
+  padding: var(--hrms-space-2);
+  overflow-y: auto;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-strong);
+}
+
+.view-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  text-align: left;
+}
+
+.view-menu-item:hover {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.view-menu-item.is-active {
+  color: var(--hrms-color-text-primary);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-menu-spacer {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.view-menu-meta {
+  margin-left: auto;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  white-space: nowrap;
+}
+
+.view-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.view-menu-row .view-menu-item {
+  flex: 1;
+}
+
+.view-menu-row-heading {
+  margin-bottom: var(--hrms-space-1);
+  padding-bottom: var(--hrms-space-1);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.view-menu-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 2px;
+}
+
+.view-menu-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.view-menu-divider {
+  height: 1px;
+  margin: var(--hrms-space-1) 0;
+  background: var(--hrms-color-border-light);
+}
+
+.view-menu-label {
+  padding: var(--hrms-space-1) var(--hrms-space-2) var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-menu-hint {
+  margin: var(--hrms-space-1) var(--hrms-space-2) 0;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  line-height: var(--hrms-line-height-lg);
+}
+
+.view-menu-form {
+  display: flex;
+  gap: var(--hrms-space-1);
+  padding: var(--hrms-space-1);
+}
+
+.view-menu-form input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+}
+
+.view-menu-scroll {
+  display: grid;
+  gap: 1px;
+}
+
+.view-field-option {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  padding: 6px var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font-size: var(--hrms-font-size-xs);
+}
+
+.view-field-option:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.view-field-option.is-pinned,
+.view-field-option.is-pinned:hover {
+  color: var(--hrms-color-text-tertiary);
+  background: transparent;
+  cursor: default;
+}
+
+.view-field-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--hrms-color-accent-accent9);
+}
+
+.view-sort-index {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
+  border-radius: var(--hrms-radius-pill);
+  font-size: 10px;
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+/* ---------------------------------------------------------------------------
+   Record panel — inline create/edit fields inside the side panel. Read mode
+   shows a click-to-edit value; create mode shows the typed control throughout.
+   --------------------------------------------------------------------------- */
+.record-field-group {
+  margin-bottom: var(--hrms-space-5);
+}
+
+.record-field-group-title {
+  margin: 0 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.record-field {
+  display: grid;
+  grid-template-columns: minmax(110px, 38%) minmax(0, 1fr);
+  align-items: center;
+  min-height: 30px;
+  gap: var(--hrms-space-3);
+  padding: var(--hrms-space-1) 0;
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.record-field-list > .record-field:last-child {
+  border-bottom: 0;
+}
+
+.record-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-sm);
+}
+
+.record-field-required {
+  color: var(--hrms-color-text-danger);
+}
+
+.record-field-value {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.record-field-display {
+  max-width: 100%;
+  padding: 4px var(--hrms-space-2);
+  overflow: hidden;
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-field-display:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.record-field-display.is-empty {
+  color: var(--hrms-color-text-tertiary);
+  font-weight: var(--hrms-font-weight-regular);
+}
+
+.record-field-static {
+  padding: 4px var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-sm);
+  text-align: right;
+}
+
+.record-field-control {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+}
+
+.record-field-control:focus {
+  outline: 2px solid var(--hrms-color-border-blue);
+  outline-offset: 1px;
+}
+
+.record-field-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--hrms-color-accent-accent9);
+}
+
+/* The name fields that live in the panel header while creating a record. */
+.record-panel-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.record-panel-name-input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--hrms-radius-sm);
+  font: inherit;
+  font-size: var(--hrms-font-size-md);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.record-panel-name-input::placeholder {
+  color: var(--hrms-color-text-extra-light);
+  font-weight: var(--hrms-font-weight-regular);
+}
+
+.record-panel-name-input:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.record-panel-name-input:focus {
+  background: var(--hrms-color-background-primary);
+  border-color: var(--hrms-color-border-medium);
+  outline: none;
+}
+
+.record-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  margin-top: var(--hrms-space-5);
+}
+
+.record-panel-error {
+  margin-top: var(--hrms-space-3);
+}
+
 .directory-clear {
   font-size: var(--hrms-font-size-xs);
 }
@@ -2891,31 +3688,6 @@ button {
   white-space: nowrap;
 }
 
-/* Centred empty state — replaces the left-aligned paragraph that used to sit
-   inside the table shell. Covers "nothing yet", "nothing matched", and errors. */
-.directory-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--hrms-space-3);
-  padding: var(--hrms-space-12) var(--hrms-space-6);
-  color: var(--hrms-color-text-tertiary);
-  text-align: center;
-}
-
-.directory-empty-title {
-  margin: 0;
-  color: var(--hrms-color-text-primary);
-  font-size: var(--hrms-font-size-md);
-  font-weight: var(--hrms-font-weight-semi-bold);
-}
-
-.directory-empty p {
-  max-width: 44ch;
-  margin: 0;
-  font-size: var(--hrms-font-size-sm);
-}
-
 /* ---------------------------------------------------------------------------
    Employee onboarding flow.
 
@@ -2925,7 +3697,7 @@ button {
    near-single-column fields read far faster than one wide auto-fit grid.
    --------------------------------------------------------------------------- */
 .onboarding-page {
-  padding: var(--hrms-space-6);
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
 }
 
 .onboarding-flow {
@@ -3062,7 +3834,6 @@ button {
 
 .onboarding-card .field input,
 .onboarding-card .field select {
-  height: 40px;
   background: var(--hrms-color-background-primary);
 }
 
@@ -3248,7 +4019,7 @@ button {
 
 @media (max-width: 760px) {
   .onboarding-page {
-    padding: var(--hrms-space-3);
+    padding: 0 var(--hrms-space-3) var(--hrms-space-3);
   }
 
   .onboarding-field-pair {
@@ -3342,11 +4113,13 @@ button {
   color: var(--hrms-color-text-secondary);
 }
 
-.field-skeleton {
-  margin: var(--hrms-space-2) 0 0;
-  height: 14px;
-  width: 65%;
+.skeleton {
+  display: inline-block;
   border-radius: var(--hrms-radius-sm);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.skeleton:not(.skeleton-static) {
   background: linear-gradient(
     90deg,
     var(--hrms-color-background-tertiary) 25%,
@@ -3354,10 +4127,15 @@ button {
     var(--hrms-color-background-tertiary) 63%
   );
   background-size: 400% 100%;
-  animation: field-skeleton-shimmer 1.4s ease infinite;
+  animation: skeleton-shimmer 1.4s ease infinite;
 }
 
-@keyframes field-skeleton-shimmer {
+.skeleton-text {
+  display: grid;
+  gap: var(--hrms-space-2);
+}
+
+@keyframes skeleton-shimmer {
   0% {
     background-position: 100% 50%;
   }
@@ -3367,7 +4145,7 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .field-skeleton {
+  .skeleton:not(.skeleton-static) {
     animation: none;
   }
 }
@@ -3519,6 +4297,7 @@ button {
   .data-table-wrap,
   .employee-table-wrap {
     overflow-x: visible;
+    background: none;
   }
 
   /* min-width is what forces the horizontal scroll on desktop (.data-table sets
@@ -3710,8 +4489,9 @@ button {
   font-weight: var(--hrms-font-weight-medium);
 }
 
-.field input {
-  height: 36px;
+.field input,
+.access-role-control select {
+  height: 32px;
   padding: 0 var(--hrms-space-3);
   color: var(--hrms-color-text-primary);
   background: var(--hrms-color-background-secondary);
@@ -3720,7 +4500,7 @@ button {
 }
 
 .field select {
-  height: 36px;
+  height: 32px;
   padding: 0 var(--hrms-space-3);
   color: var(--hrms-color-text-primary);
   background: var(--hrms-color-background-secondary);
@@ -3750,7 +4530,7 @@ button {
   display: flex;
   align-items: center;
   gap: var(--hrms-space-3);
-  height: 36px;
+  height: 32px;
   padding: 0 var(--hrms-space-2);
   background: var(--hrms-color-background-secondary);
   border: 1px solid var(--hrms-color-border-medium);
@@ -3835,16 +4615,68 @@ button {
    start` keeps a short column from being stretched to the taller one, which
    is what produced a stray scrollbar on the side panel. */
 .client-workspace,
-.workspace-users-page,
-.client-portfolio-page,
-.hiring-page,
-.announcements-page,
-.feedback-page,
-.leave-page {
+.client-portfolio-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--hrms-layout-side-panel-width);
   align-items: start;
   gap: var(--hrms-space-6);
+}
+
+/* The users page has no second column to put there, so it is a plain
+   single-column frame instead of reserving an always-empty gutter. */
+.workspace-users-page {
+  display: block;
+}
+
+/* List + sliding record panel (Twenty-style): the panel is a flex sibling, so
+   the list reflows narrower instead of being covered. No backdrop, no overlay. */
+.list-with-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--hrms-space-6);
+}
+
+.list-with-panel > :not(.side-panel) {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.side-panel {
+  flex: 0 0 auto;
+  width: 0;
+  overflow: hidden;
+  outline: none;
+  transition: width var(--hrms-animation-duration-normal) ease;
+}
+
+.side-panel.is-open {
+  width: var(--hrms-layout-side-panel-width);
+}
+
+/* Fixed-width inside the clipping outer aside, so the content doesn't reflow
+   while the width animates. Chrome lifted from the old static preview panel. */
+.side-panel-body {
+  width: var(--hrms-layout-side-panel-width);
+  padding: var(--hrms-space-5);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-4);
+  margin-bottom: var(--hrms-space-4);
+}
+
+.side-panel-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-lg);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
 }
 
 .client-workspace-content,
@@ -3855,15 +4687,11 @@ button {
 .feedback-content,
 .leave-content {
   min-width: 0;
-  padding: var(--hrms-space-6);
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
 }
 
 .client-workspace-panel,
-.hiring-panel,
-.client-portfolio-panel,
-.announcements-panel,
-.feedback-panel,
-.leave-panel {
+.client-portfolio-panel {
   min-width: 0;
   padding: var(--hrms-space-5);
   background: var(--hrms-color-background-secondary);
@@ -3969,8 +4797,47 @@ button {
   gap: var(--hrms-space-2);
 }
 
-.table-title-row .button {
-  text-decoration: none;
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--hrms-space-4);
+  padding: var(--hrms-space-10) var(--hrms-space-6);
+  color: var(--hrms-color-text-tertiary);
+  text-align: center;
+}
+
+.empty-state-title {
+  margin: 0;
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-md);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
+.empty-state-copy {
+  max-width: 52ch;
+  margin: 0;
+  font-size: var(--hrms-font-size-sm);
+  line-height: var(--hrms-line-height-lg);
+}
+
+.empty-state-action {
+  margin-top: var(--hrms-space-2);
+}
+
+/* A table cell holding an empty state must not be forced to the 32px row
+   height (the previous `.table-empty` padding lost specificity to
+   `.data-table td`, so 24 usages rendered as a gray line of text). */
+.data-table td.table-empty,
+.employee-table td.table-empty {
+  height: auto;
+  padding: 0;
+}
+
+.data-table td .empty-state,
+.employee-table td .empty-state {
+  padding: var(--hrms-space-10) var(--hrms-space-6);
 }
 
 .table-empty {
@@ -4057,18 +4924,13 @@ button {
   min-width: 0;
 }
 
-.self-service-section {
-  padding: var(--hrms-space-5) 0;
-  border-bottom: 1px solid var(--hrms-color-border-light);
-}
-
-.self-service-section:first-child {
-  padding-top: 0;
-}
-
-.self-service-section:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
+/* Panel sections separate with a symmetric 16px (4px-grid) divider: 16px of
+   space above the rule and 16px below it, so stacked sections read evenly. The
+   panel's own padding owns the outer edges. */
+.self-service-section + .self-service-section {
+  margin-top: var(--hrms-space-4);
+  padding-top: var(--hrms-space-4);
+  border-top: 1px solid var(--hrms-color-border-light);
 }
 
 /* Client portfolio — "Needs attention" list in the side panel. Each row names a
@@ -4471,20 +5333,6 @@ button {
   grid-template-columns: minmax(150px, 1fr) auto;
 }
 
-.access-role-control select {
-  min-width: 0;
-  height: 32px;
-  padding: 0 var(--hrms-space-3);
-  color: var(--hrms-color-text-primary);
-  background: var(--hrms-color-background-secondary);
-  border: 1px solid var(--hrms-color-border-medium);
-  border-radius: var(--hrms-radius-sm);
-}
-
-.access-role-control .button {
-  min-height: 32px;
-}
-
 .access-role-static {
   color: var(--hrms-color-text-secondary);
   font-weight: var(--hrms-font-weight-medium);
@@ -4513,22 +5361,40 @@ button {
 @media (max-width: 1100px) {
   .client-workspace,
   .workspace-users-page,
-  .client-portfolio-page,
-  .hiring-page,
-  .announcements-page,
-  .feedback-page,
-  .leave-page {
+  .client-portfolio-page {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .client-workspace-panel,
-  .hiring-panel,
-  .client-portfolio-panel,
-  .announcements-panel,
-  .feedback-panel,
-  .leave-panel {
+  .client-portfolio-panel {
     border-top: 1px solid var(--hrms-color-border-light);
     border-left: 0;
+  }
+
+  /* The sliding rail doesn't fit beside the list, so it stacks underneath
+     instead of disappearing: on Leave, Feedback, and Hiring it holds the
+     page's only action form, and hiding it would strand those screens. */
+  .list-with-panel {
+    flex-direction: column;
+    gap: var(--hrms-space-4);
+  }
+
+  .list-with-panel > :not(.side-panel) {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .side-panel {
+    width: 100%;
+    transition: none;
+  }
+
+  .side-panel:not(.is-open) {
+    display: none;
+  }
+
+  .side-panel-body {
+    width: 100%;
   }
 }
 
@@ -4541,11 +5407,7 @@ button {
   .feedback-content,
   .leave-content,
   .client-workspace-panel,
-  .client-portfolio-panel,
-  .hiring-panel,
-  .announcements-panel,
-  .feedback-panel,
-  .leave-panel {
+  .client-portfolio-panel {
     padding: var(--hrms-space-3);
   }
 }

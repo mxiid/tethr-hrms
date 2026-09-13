@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
   IconCalendarPlus,
@@ -10,6 +11,10 @@ import {
 } from '@tabler/icons-react';
 import { useMemo, useState, type FormEvent } from 'react';
 
+import { StatusChip } from '../../../components/chip/StatusChip';
+import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { Modal } from '../../../components/modal/Modal';
+import { SkeletonRows } from '../../../components/skeleton/Skeleton';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { formatDate, fullName, type EmployeesData } from '../../employees/employee.shared';
@@ -53,7 +58,7 @@ const TABS: ReadonlyArray<{ readonly key: TabKey; readonly label: string }> = [
 
 // The timesheet lifecycle from timesheet.service: open → submitted → approved →
 // locked. Each status only offers the action that can follow it.
-const STATUS_COLORS: Record<string, string> = {
+const STATUS_COLORS: Record<string, MainColorName> = {
   open: 'blue',
   submitted: 'amber',
   approved: 'green',
@@ -125,21 +130,24 @@ export const TimeAttendancePage = () => {
     periodStart: isoDaysAgo(14),
     periodEnd: today(),
   });
+  const [openForm, setOpenForm] = useState<'entry' | 'period' | null>(null);
 
-  const run = async (action: () => Promise<unknown>, message: string): Promise<void> => {
+  const run = async (action: () => Promise<unknown>, message: string): Promise<boolean> => {
     setActionError(null);
     setNotice(null);
     try {
       await action();
       setNotice(message);
+      return true;
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : 'That action did not go through');
+      return false;
     }
   };
 
   const onRecordEntry = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    await run(async () => {
+    const ok = await run(async () => {
       await recordTimeEntry({
         variables: {
           input: {
@@ -153,11 +161,12 @@ export const TimeAttendancePage = () => {
       setEntryForm({ date: today(), hours: '8', note: '' });
       await refetchEntries();
     }, 'Time entry recorded');
+    if (ok) setOpenForm(null);
   };
 
   const onOpenTimesheet = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    await run(async () => {
+    const ok = await run(async () => {
       await openTimesheet({
         variables: {
           input: {
@@ -169,6 +178,7 @@ export const TimeAttendancePage = () => {
       });
       await refetchTimesheets();
     }, 'Timesheet opened');
+    if (ok) setOpenForm(null);
   };
 
   const timesheetAction = async (
@@ -199,10 +209,7 @@ export const TimeAttendancePage = () => {
             <h1 className="page-title" id="attendance-title">
               Time &amp; attendance
             </h1>
-            <p className="page-subtitle">
-              Hours worked and timesheet approvals. Employees clock in and out from their own
-              portal; corrections are recorded here.
-            </p>
+            <p className="page-subtitle">Review hours and approve timesheets.</p>
           </div>
         </header>
 
@@ -267,11 +274,11 @@ export const TimeAttendancePage = () => {
 
         {!employeesLoading && employees.length === 0 ? (
           <div className="table-shell">
-            <div className="directory-empty">
-              <IconClock size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-              <h2 className="directory-empty-title">No employees yet</h2>
-              <p>Onboard someone before recording time against them.</p>
-            </div>
+            <EmptyState
+              icon={IconClock}
+              title="No employees yet"
+              description="Onboard someone before recording time against them."
+            />
           </div>
         ) : null}
 
@@ -279,38 +286,44 @@ export const TimeAttendancePage = () => {
           <>
             <div className="table-shell">
               {entriesError ? (
-                <div className="directory-empty">
-                  <IconAlertTriangle size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-                  <h2 className="directory-empty-title">Could not load time entries</h2>
-                  <p>{entriesError.message}</p>
-                </div>
+                <EmptyState
+                  icon={IconAlertTriangle}
+                  title="Could not load time entries"
+                  description={entriesError.message}
+                />
               ) : !entriesLoading && entries.length === 0 ? (
-                <div className="directory-empty">
-                  <IconClock size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-                  <h2 className="directory-empty-title">No hours in this range</h2>
-                  <p>
-                    Nothing recorded for {activeEmployee ? fullName(activeEmployee) : 'this person'}{' '}
-                    between {formatDate(from)} and {formatDate(to)}.
-                  </p>
-                </div>
+                <EmptyState
+                  icon={IconClock}
+                  title="No hours in this range"
+                  description={`Nothing recorded for ${activeEmployee ? fullName(activeEmployee) : 'this person'} between ${formatDate(from)} and ${formatDate(to)}.`}
+                />
               ) : (
                 <div className="employee-table-wrap">
                   <table className="employee-table">
+                    <colgroup>
+                      <col style={{ width: '26%' }} />
+                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '56%' }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Date</th>
-                        <th>Hours</th>
+                        <th className="cell-numeric">Hours</th>
                         <th>Source</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {entries.map((entry) => (
-                        <tr key={entry.id}>
-                          <td data-label="Date">{formatDate(entry.date)}</td>
-                          <td data-label="Hours">{entry.hours.toFixed(2)}</td>
-                          <td className="truncate" data-label="Source">{entry.source}</td>
-                        </tr>
-                      ))}
+                      {entriesLoading ? (
+                        <SkeletonRows columnCount={3} rows={4} />
+                      ) : (
+                        entries.map((entry) => (
+                          <tr key={entry.id}>
+                            <td data-label="Date">{formatDate(entry.date)}</td>
+                            <td className="cell-numeric" data-label="Hours">{entry.hours.toFixed(2)}</td>
+                            <td className="truncate" data-label="Source">{entry.source}</td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -318,59 +331,19 @@ export const TimeAttendancePage = () => {
             </div>
 
             {canApprove ? (
-              <form className="table-shell attendance-form" onSubmit={(e) => void onRecordEntry(e)}>
-                <div className="section-title-row">
-                  <h2 className="section-title">Record hours</h2>
-                </div>
-                <p className="field-hint">
-                  For corrections and back-dated entries. Clock in/out entries arrive on their own.
-                </p>
-                <div className="field-group">
-                  <div className="field">
-                    <label htmlFor="entry-date">Date</label>
-                    <input
-                      id="entry-date"
-                      required
-                      type="date"
-                      value={entryForm.date}
-                      onChange={(event) =>
-                        setEntryForm((current) => ({ ...current, date: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="entry-hours">Hours</label>
-                    <input
-                      id="entry-hours"
-                      max={24}
-                      min={0}
-                      required
-                      step="0.25"
-                      type="number"
-                      value={entryForm.hours}
-                      onChange={(event) =>
-                        setEntryForm((current) => ({ ...current, hours: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="entry-note">Note</label>
-                    <input
-                      id="entry-note"
-                      value={entryForm.note}
-                      onChange={(event) =>
-                        setEntryForm((current) => ({ ...current, note: event.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="page-actions">
-                  <button className="button button-primary" disabled={recording} type="submit">
-                    <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {recording ? 'Recording...' : 'Record hours'}
-                  </button>
-                </div>
-              </form>
+              <div className="attendance-actions-row">
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  onClick={() => {
+                    setActionError(null);
+                    setOpenForm('entry');
+                  }}
+                >
+                  <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  Record hours
+                </button>
+              </div>
             ) : null}
           </>
         ) : null}
@@ -379,106 +352,106 @@ export const TimeAttendancePage = () => {
           <>
             <div className="table-shell">
               {timesheetsError ? (
-                <div className="directory-empty">
-                  <IconAlertTriangle size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-                  <h2 className="directory-empty-title">Could not load timesheets</h2>
-                  <p>{timesheetsError.message}</p>
-                </div>
+                <EmptyState
+                  icon={IconAlertTriangle}
+                  title="Could not load timesheets"
+                  description={timesheetsError.message}
+                />
               ) : !timesheetsLoading && timesheets.length === 0 ? (
-                <div className="directory-empty">
-                  <IconCalendarPlus size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-                  <h2 className="directory-empty-title">No timesheets yet</h2>
-                  <p>Open a period below to start collecting hours into a timesheet.</p>
-                </div>
+                <EmptyState
+                  icon={IconCalendarPlus}
+                  title="No timesheets yet"
+                  description="Open a period below to start collecting hours into a timesheet."
+                />
               ) : (
                 <div className="employee-table-wrap">
                   <table className="employee-table">
+                    <colgroup>
+                      <col style={{ width: '30%' }} />
+                      <col style={{ width: '16%' }} />
+                      <col style={{ width: '16%' }} />
+                      <col style={{ width: '38%' }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Period</th>
-                        <th>Total hours</th>
+                        <th className="cell-numeric">Total hours</th>
                         <th>Status</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {timesheets.map((timesheet) => (
-                        <tr key={timesheet.id}>
-                          <td>
-                            {formatDate(timesheet.periodStart)} – {formatDate(timesheet.periodEnd)}
-                          </td>
-                          <td data-label="Total hours">{timesheet.totalHours.toFixed(2)}</td>
-                          <td data-label="Status">
-                            <span
-                              className="chip"
-                              style={
-                                {
-                                  '--chip-color': `var(--hrms-color-tag-${
-                                    STATUS_COLORS[timesheet.status] ?? 'gray'
-                                  })`,
-                                } as React.CSSProperties
-                              }
-                            >
-                              <span className="chip-dot" />
-                              {timesheet.status}
-                            </span>
-                          </td>
-                          <td data-label="Actions">
-                            {canApprove ? (
-                              <div className="attendance-row-actions">
-                                {timesheet.status === 'open' ? (
-                                  <button
-                                    className="button button-secondary"
-                                    type="button"
-                                    onClick={() =>
-                                      void timesheetAction(timesheet.id, 'submit')
-                                    }
-                                  >
-                                    <IconSend
-                                      size={theme.icon.size.sm}
-                                      stroke={theme.icon.stroke.sm}
-                                    />
-                                    Submit
-                                  </button>
-                                ) : null}
-                                {timesheet.status === 'submitted' ? (
-                                  <button
-                                    className="button button-secondary"
-                                    type="button"
-                                    onClick={() =>
-                                      void timesheetAction(timesheet.id, 'approve')
-                                    }
-                                  >
-                                    <IconCheck
-                                      size={theme.icon.size.sm}
-                                      stroke={theme.icon.stroke.sm}
-                                    />
-                                    Approve
-                                  </button>
-                                ) : null}
-                                {timesheet.status === 'approved' ? (
-                                  <button
-                                    className="button button-secondary"
-                                    type="button"
-                                    onClick={() => void timesheetAction(timesheet.id, 'lock')}
-                                  >
-                                    <IconLock
-                                      size={theme.icon.size.sm}
-                                      stroke={theme.icon.stroke.sm}
-                                    />
-                                    Lock
-                                  </button>
-                                ) : null}
-                                {timesheet.status === 'locked' ? (
-                                  <span className="employee-secondary">Closed</span>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <span className="employee-secondary">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {timesheetsLoading ? (
+                        <SkeletonRows columnCount={4} rows={4} />
+                      ) : (
+                        timesheets.map((timesheet) => (
+                          <tr key={timesheet.id}>
+                            <td>
+                              {formatDate(timesheet.periodStart)} –{' '}
+                              {formatDate(timesheet.periodEnd)}
+                            </td>
+                            <td className="cell-numeric" data-label="Total hours">
+                              {timesheet.totalHours.toFixed(2)}
+                            </td>
+                            <td data-label="Status">
+                              <StatusChip
+                                color={STATUS_COLORS[timesheet.status] ?? 'gray'}
+                                label={timesheet.status}
+                              />
+                            </td>
+                            <td data-label="Actions">
+                              {canApprove ? (
+                                <div className="attendance-row-actions">
+                                  {timesheet.status === 'open' ? (
+                                    <button
+                                      className="button button-secondary"
+                                      type="button"
+                                      onClick={() => void timesheetAction(timesheet.id, 'submit')}
+                                    >
+                                      <IconSend
+                                        size={theme.icon.size.sm}
+                                        stroke={theme.icon.stroke.sm}
+                                      />
+                                      Submit
+                                    </button>
+                                  ) : null}
+                                  {timesheet.status === 'submitted' ? (
+                                    <button
+                                      className="button button-secondary"
+                                      type="button"
+                                      onClick={() => void timesheetAction(timesheet.id, 'approve')}
+                                    >
+                                      <IconCheck
+                                        size={theme.icon.size.sm}
+                                        stroke={theme.icon.stroke.sm}
+                                      />
+                                      Approve
+                                    </button>
+                                  ) : null}
+                                  {timesheet.status === 'approved' ? (
+                                    <button
+                                      className="button button-secondary"
+                                      type="button"
+                                      onClick={() => void timesheetAction(timesheet.id, 'lock')}
+                                    >
+                                      <IconLock
+                                        size={theme.icon.size.sm}
+                                        stroke={theme.icon.stroke.sm}
+                                      />
+                                      Lock
+                                    </button>
+                                  ) : null}
+                                  {timesheet.status === 'locked' ? (
+                                    <span className="employee-secondary">Closed</span>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <span className="employee-secondary">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -486,53 +459,132 @@ export const TimeAttendancePage = () => {
             </div>
 
             {canApprove ? (
-              <form
-                className="table-shell attendance-form"
-                onSubmit={(e) => void onOpenTimesheet(e)}
-              >
-                <div className="section-title-row">
-                  <h2 className="section-title">Open a timesheet</h2>
-                </div>
-                <div className="field-group">
-                  <div className="field">
-                    <label htmlFor="period-start">Period start</label>
-                    <input
-                      id="period-start"
-                      required
-                      type="date"
-                      value={periodForm.periodStart}
-                      onChange={(event) =>
-                        setPeriodForm((current) => ({
-                          ...current,
-                          periodStart: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="period-end">Period end</label>
-                    <input
-                      id="period-end"
-                      required
-                      type="date"
-                      value={periodForm.periodEnd}
-                      onChange={(event) =>
-                        setPeriodForm((current) => ({ ...current, periodEnd: event.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="page-actions">
-                  <button className="button button-primary" disabled={opening} type="submit">
-                    <IconCalendarPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {opening ? 'Opening...' : 'Open timesheet'}
-                  </button>
-                </div>
-              </form>
+              <div className="attendance-actions-row">
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  onClick={() => {
+                    setActionError(null);
+                    setOpenForm('period');
+                  }}
+                >
+                  <IconCalendarPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  Open timesheet
+                </button>
+              </div>
             ) : null}
           </>
         ) : null}
       </section>
+
+      <Modal
+        isOpen={openForm === 'entry'}
+        onClose={() => setOpenForm(null)}
+        title="Record hours"
+        width="md"
+      >
+        <p className="field-hint">
+          For corrections and back-dated entries. Clock in/out entries arrive on their own.
+        </p>
+        {actionError ? (
+          <p className="auth-error" role="alert">
+            {actionError}
+          </p>
+        ) : null}
+        <form className="config-form" onSubmit={(e) => void onRecordEntry(e)}>
+          <div className="field-group">
+            <div className="field">
+              <label htmlFor="entry-date">Date</label>
+              <input
+                id="entry-date"
+                required
+                type="date"
+                value={entryForm.date}
+                onChange={(event) =>
+                  setEntryForm((current) => ({ ...current, date: event.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="entry-hours">Hours</label>
+              <input
+                id="entry-hours"
+                max={24}
+                min={0}
+                required
+                step="0.25"
+                type="number"
+                value={entryForm.hours}
+                onChange={(event) =>
+                  setEntryForm((current) => ({ ...current, hours: event.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="entry-note">Note</label>
+            <input
+              id="entry-note"
+              value={entryForm.note}
+              onChange={(event) =>
+                setEntryForm((current) => ({ ...current, note: event.target.value }))
+              }
+            />
+          </div>
+          <button className="button button-primary button-full" disabled={recording} type="submit">
+            <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            {recording ? 'Recording...' : 'Record hours'}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={openForm === 'period'}
+        onClose={() => setOpenForm(null)}
+        title="Open a timesheet"
+        width="md"
+      >
+        {actionError ? (
+          <p className="auth-error" role="alert">
+            {actionError}
+          </p>
+        ) : null}
+        <form className="config-form" onSubmit={(e) => void onOpenTimesheet(e)}>
+          <div className="field-group">
+            <div className="field">
+              <label htmlFor="period-start">Period start</label>
+              <input
+                id="period-start"
+                required
+                type="date"
+                value={periodForm.periodStart}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({
+                    ...current,
+                    periodStart: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="period-end">Period end</label>
+              <input
+                id="period-end"
+                required
+                type="date"
+                value={periodForm.periodEnd}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, periodEnd: event.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <button className="button button-primary button-full" disabled={opening} type="submit">
+            <IconCalendarPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            {opening ? 'Opening...' : 'Open timesheet'}
+          </button>
+        </form>
+      </Modal>
     </main>
   );
 };

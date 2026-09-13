@@ -14,10 +14,11 @@ import {
   IconSpeakerphone,
   type TablerIcon,
 } from '@tabler/icons-react';
-import { Fragment, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { Fragment, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../app/download';
+import { StatusChip } from '../../../components/chip/StatusChip';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { ClockInOutCard } from '../../attendance/components/ClockInOutCard';
 import { useSelfClock } from '../../attendance/hooks/useSelfClock';
@@ -224,9 +225,6 @@ const formatDateTime = (value: string): string =>
     month: 'short',
     year: 'numeric',
   }).format(new Date(value));
-const chipStyle = (color: MainColorName): CSSProperties & { readonly '--chip-color': string } => ({
-  '--chip-color': `var(--hrms-color-tag-${color})`,
-});
 
 const requestColor: Record<ApprovalStatus, MainColorName> = {
   pending: 'amber',
@@ -472,10 +470,7 @@ export const EmployeeWorkspacePage = () => {
                       {request.dayCount.toFixed(1)} days
                     </div>
                   </div>
-                  <span className="chip" style={chipStyle(requestColor[request.status])}>
-                    <span className="chip-dot" />
-                    {requestLabel[request.status]}
-                  </span>
+                  <StatusChip color={requestColor[request.status]} label={requestLabel[request.status]} />
                 </div>
               ))}
               {sortedRequests.length === 0 ? (
@@ -643,10 +638,7 @@ export const EmployeeWorkspacePage = () => {
                       </td>
                       <td data-label="Days">{request.dayCount.toFixed(1)}</td>
                       <td data-label="Status">
-                        <span className="chip" style={chipStyle(requestColor[request.status])}>
-                          <span className="chip-dot" />
-                          {requestLabel[request.status]}
-                        </span>
+                        <StatusChip color={requestColor[request.status]} label={requestLabel[request.status]} />
                       </td>
                       <td data-label="Latest update">
                         <div className="employee-primary">

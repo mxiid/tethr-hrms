@@ -1,9 +1,13 @@
 ﻿import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
-import { IconLock, IconRefresh } from '@tabler/icons-react';
-import { Fragment, useState, type CSSProperties } from 'react';
+import { IconAlertTriangle, IconLock, IconRefresh, IconTable, IconX } from '@tabler/icons-react';
+import { Fragment, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../../app/download';
+import { StatusChip } from '../../../../components/chip/StatusChip';
+import { EmptyState } from '../../../../components/empty-state/EmptyState';
+import { Modal } from '../../../../components/modal/Modal';
+import { SkeletonRows } from '../../../../components/skeleton/Skeleton';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   PayrollReadinessBanner,
@@ -116,6 +120,8 @@ export const PayrollRunDetailPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
   const [taxInputs, setTaxInputs] = useState<Record<string, string>>({});
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [finalizeReason, setFinalizeReason] = useState('');
 
   const { data, loading, error: loadError, refetch } = useQuery<PayrollRunData>(
     PAYROLL_RUN_QUERY,
@@ -154,32 +160,42 @@ export const PayrollRunDetailPage = () => {
     { fetchPolicy: 'no-cache' },
   );
 
-  const runAction = async (action: () => Promise<unknown>, successMessage: string): Promise<void> => {
+  const runAction = async (action: () => Promise<unknown>, successMessage: string): Promise<boolean> => {
     setError(null);
     setMessage(null);
     try {
       await action();
       await refetch();
       setMessage(successMessage);
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Operation failed.');
+      return false;
     }
   };
 
-  const onFinalize = async (): Promise<void> => {
-    const readiness = readinessData?.payrollReadiness;
-    let overrideReason: string | undefined;
-    if (readiness && readiness.hardBlockerCount > 0) {
-      const reason = window.prompt(
-        `${readiness.hardBlockerCount} employee${readiness.hardBlockerCount === 1 ? '' : 's'} have hard blockers. Provide a reason to finalize anyway:`,
-      );
-      if (!reason || !reason.trim()) return;
-      overrideReason = reason.trim();
-    }
-    await runAction(
+  const submitFinalize = async (overrideReason?: string): Promise<void> => {
+    const ok = await runAction(
       () => finalizeRun({ variables: { runId, overrideReason } }),
       'Run finalized — payslips are locked and the billing handoff event was emitted.',
     );
+    if (!ok) return;
+    setFinalizeOpen(false);
+    setFinalizeReason('');
+  };
+
+  const requestFinalize = (): void => {
+    const readiness = readinessData?.payrollReadiness;
+    // While readiness is still loading we can't know whether blockers exist; a
+    // reasonless finalize would be rejected by the server, so wait (the button
+    // is disabled in that state) rather than guessing.
+    if (!readiness) return;
+    if (readiness.hardBlockerCount > 0) {
+      setFinalizeReason('');
+      setFinalizeOpen(true);
+      return;
+    }
+    void submitFinalize();
   };
 
   const onUpdateLineTax = async (lineId: string, raw: string): Promise<void> => {
@@ -216,8 +232,16 @@ export const PayrollRunDetailPage = () => {
     return (
       <main className="page-frame">
         <div className="employees-content">
-          <p className="auth-error" role="alert">Could not load this payroll run.</p>
-          <Link className="link-button" to="/payroll">Back to runs</Link>
+          <EmptyState
+            icon={IconAlertTriangle}
+            title="Could not load this payroll run"
+            description="It may have been removed, or the API is unreachable."
+            action={
+              <Link className="button button-secondary" to="/payroll">
+                Back to runs
+              </Link>
+            }
+          />
         </div>
       </main>
     );
@@ -251,7 +275,7 @@ export const PayrollRunDetailPage = () => {
                   onClick={() => {
                     void runAction(
                       () => regenerateRun({ variables: { runId } }),
-                      'Draft recomputed from current salaries and leave.',
+                      'Draft updated with the latest salaries and leave.',
                     );
                   }}
                 >
@@ -260,10 +284,9 @@ export const PayrollRunDetailPage = () => {
                 </button>
                 <button
                   className="button button-primary"
-                  disabled={finalizing || lines.length === 0}
-                  onClick={() => {
-                    void onFinalize();
-                  }}
+                  disabled={finalizing || lines.length === 0 || readinessData === undefined}
+                  onClick={requestFinalize}
+                  title={readinessData === undefined ? 'Checking readiness…' : undefined}
                   type="button"
                 >
                   <IconLock size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -301,33 +324,51 @@ export const PayrollRunDetailPage = () => {
               {isFinalized ? 'Locked lines (as disbursed)' : 'Draft lines'}
             </div>
             <div className="table-density">
-              {loading ? 'Loading…' : `${lines.length} employee${lines.length === 1 ? '' : 's'}`}
+              {loading ? '…' : `${lines.length} employee${lines.length === 1 ? '' : 's'}`}
             </div>
           </div>
           <div className="data-table-wrap">
             <table className="data-table">
+              <colgroup>
+                <col style={{ width: isFinalized ? '34%' : '30%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '12%' }} />
+                {!isFinalized ? <col style={{ width: '4%' }} /> : null}
+              </colgroup>
               <thead>
                 <tr>
                   <th>Employee</th>
-                  <th>Paid days</th>
-                  <th>LOP</th>
-                  <th>Gross</th>
-                  <th>Taxable</th>
-                  <th>Tax</th>
-                  <th>Net pay</th>
+                  <th className="cell-numeric">Paid days</th>
+                  <th className="cell-numeric">LOP</th>
+                  <th className="cell-numeric">Gross</th>
+                  <th className="cell-numeric">Taxable</th>
+                  <th className="cell-numeric">Tax</th>
+                  <th className="cell-numeric">Net pay</th>
                   {!isFinalized ? <th aria-label="Actions" /> : null}
                 </tr>
               </thead>
               <tbody>
-                {lines.length === 0 && !loading ? (
+                {loading ? <SkeletonRows columnCount={isFinalized ? 7 : 8} rows={4} /> : null}
+                {!loading && lines.length === 0 ? (
                   <tr>
-                    <td colSpan={isFinalized ? 7 : 8}>No lines — regenerate the draft.</td>
+                    <td className="table-empty" colSpan={isFinalized ? 7 : 8}>
+                      <EmptyState
+                        icon={IconTable}
+                        title="No lines in this run"
+                        description="Regenerate the draft to pull in current salaries and leave."
+                      />
+                    </td>
                   </tr>
-                ) : (
+                ) : null}
+                {!loading &&
                   lines.map((line) => (
                     <Fragment key={line.id}>
                       <tr>
-                        <td>
+                        <td data-label="Employee">
                           <button
                             className="link-button"
                             type="button"
@@ -347,29 +388,23 @@ export const PayrollRunDetailPage = () => {
                           </div>
                           {line.note ? <div className="employee-secondary">{line.note}</div> : null}
                         </td>
-                        <td>{line.payableDays}</td>
-                        <td>{line.lopDays}</td>
-                        <td>{run ? formatMoney(line.grossAmount, run.currency) : '—'}</td>
-                        <td>{run ? formatMoney(line.taxableAmount, run.currency) : '—'}</td>
-                        <td>
+                        <td className="cell-numeric" data-label="Paid days">{line.payableDays}</td>
+                        <td className="cell-numeric" data-label="LOP">{line.lopDays}</td>
+                        <td className="cell-numeric" data-label="Gross">{run ? formatMoney(line.grossAmount, run.currency) : '—'}</td>
+                        <td className="cell-numeric" data-label="Taxable">{run ? formatMoney(line.taxableAmount, run.currency) : '—'}</td>
+                        <td className="cell-numeric" data-label="Tax">
                           {formatMoney(line.incomeTax, run?.currency ?? 'PKR')}
                           {line.taxOverrideAmount !== null ? (
-                            <span
-                              className="chip"
-                              style={{ '--chip-color': 'var(--hrms-color-tag-amber)' } as CSSProperties}
-                            >
-                              <span className="chip-dot" />
-                              override
-                            </span>
+                            <StatusChip color="amber" label="override" />
                           ) : null}
                         </td>
-                        <td>
+                        <td className="cell-numeric" data-label="Net pay">
                           <strong>{formatMoney(line.netPayAmount, run?.currency ?? 'PKR')}</strong>
                         </td>
                         {!isFinalized ? (
-                          <td>
+                          <td data-label="Actions">
                             <button
-                              className="icon-button"
+                              className="icon-button row-hover-action"
                               title="Remove line"
                               type="button"
                               onClick={() => {
@@ -379,7 +414,7 @@ export const PayrollRunDetailPage = () => {
                                 );
                               }}
                             >
-                              ✕
+                              <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                             </button>
                           </td>
                         ) : null}
@@ -456,8 +491,7 @@ export const PayrollRunDetailPage = () => {
                         </tr>
                       ) : null}
                     </Fragment>
-                  ))
-                )}
+                  ))}
               </tbody>
             </table>
           </div>
@@ -469,45 +503,55 @@ export const PayrollRunDetailPage = () => {
               <div className="table-title" id="payslips-title">
                 Issued payslips
               </div>
-              <div className="table-density">{payslipsData.runPayslips.length} snapshots</div>
+              <div className="table-density">{payslipsData.runPayslips.length} payslips</div>
             </div>
             <div className="data-table-wrap">
               <table className="data-table">
+                <colgroup>
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '6%' }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Payslip</th>
                     <th>Employee</th>
                     <th>Pay date</th>
-                    <th>Paid / LOP</th>
-                    <th>Gross</th>
-                    <th>Tax</th>
-                    <th>Net pay</th>
+                    <th className="cell-numeric">Paid / LOP</th>
+                    <th className="cell-numeric">Gross</th>
+                    <th className="cell-numeric">Tax</th>
+                    <th className="cell-numeric">Net pay</th>
                     <th aria-label="Payslip PDF" />
                   </tr>
                 </thead>
                 <tbody>
                   {payslipsData.runPayslips.map((payslip) => (
                     <tr key={payslip.id}>
-                      <td>
+                      <td data-label="Payslip">
                         <div className="employee-primary">{payslip.payslipNumber}</div>
                       </td>
-                      <td>
+                      <td data-label="Employee">
                         <Link className="table-link" to={`/employees/${payslip.employeeId}`}>
                           {payslip.employeeName}
                         </Link>
                         <div className="employee-secondary">{payslip.employeeNumber}</div>
                       </td>
-                      <td>{payslip.payDate}</td>
-                      <td>
+                      <td data-label="Pay date">{payslip.payDate}</td>
+                      <td className="cell-numeric" data-label="Paid / LOP">
                         {payslip.paidDays}
                         {payslip.lopDays > 0 ? ` / LOP ${payslip.lopDays}` : ''}
                       </td>
-                      <td>{formatMoney(payslip.grossAmount, payslip.currency)}</td>
-                      <td>{formatMoney(payslip.incomeTaxAmount, payslip.currency)}</td>
-                      <td>
+                      <td className="cell-numeric" data-label="Gross">{formatMoney(payslip.grossAmount, payslip.currency)}</td>
+                      <td className="cell-numeric" data-label="Tax">{formatMoney(payslip.incomeTaxAmount, payslip.currency)}</td>
+                      <td className="cell-numeric" data-label="Net pay">
                         <strong>{formatMoney(payslip.netPayAmount, payslip.currency)}</strong>
                       </td>
-                      <td>
+                      <td data-label="PDF">
                         <button
                           className="button button-secondary"
                           type="button"
@@ -566,23 +610,13 @@ export const PayrollRunDetailPage = () => {
               </li>
               <li className="field-row">
                 <span>Status</span>
-                <span className="field-value">draft — fully recomputable</span>
+                <span className="field-value">Draft — editable until you finalize</span>
               </li>
             </ul>
             <p className="field-hint">
-              Finalizing writes an immutable payslip per line, locks the run, produces the bank
-              advice file, and notifies downstream billing.
+              Finalizing locks the run and creates a payslip for everyone. Use the Finalize button
+              above; you can then download bank advice for payment.
             </p>
-            <button
-              className="button button-primary button-full"
-              disabled={finalizing || lines.length === 0}
-              type="button"
-              onClick={() => {
-                void onFinalize();
-              }}
-            >
-              {finalizing ? 'Finalizing…' : 'Finalize & lock'}
-            </button>
           </div>
         ) : null}
 
@@ -590,12 +624,57 @@ export const PayrollRunDetailPage = () => {
           <div className="config-form">
             <h3 className="section-title">Adjust a line?</h3>
             <p className="field-hint">
-              This run is locked by design. Corrections ride the next monthly draft as catch-up
-              amounts so issued history stays immutable.
+              This run is locked to protect issued payslips. Corrections go into the next monthly
+              run.
             </p>
           </div>
         ) : null}
       </aside>
+
+      <Modal
+        isOpen={finalizeOpen}
+        onClose={() => setFinalizeOpen(false)}
+        title="Finalize with blockers"
+        width="sm"
+      >
+        <p className="field-hint">
+          {readinessData?.payrollReadiness
+            ? `${readinessData.payrollReadiness.hardBlockerCount} employee${
+                readinessData.payrollReadiness.hardBlockerCount === 1 ? '' : 's'
+              } still have hard blockers. Finalizing anyway needs a written reason — it is recorded on the run.`
+            : 'Finalizing anyway needs a written reason — it is recorded on the run.'}
+        </p>
+        {error ? <p className="auth-error" role="alert">{error}</p> : null}
+        <form
+          className="config-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!finalizeReason.trim()) return;
+            void submitFinalize(finalizeReason.trim());
+          }}
+        >
+          <div className="field">
+            <label htmlFor="finalize-reason">Reason</label>
+            <textarea
+              id="finalize-reason"
+              autoFocus
+              placeholder="e.g. Bank details pending for two joiners; paying this cycle and correcting next month."
+              required
+              rows={3}
+              value={finalizeReason}
+              onChange={(event) => setFinalizeReason(event.target.value)}
+            />
+          </div>
+          <button
+            className="button button-primary button-full"
+            disabled={finalizing || !finalizeReason.trim()}
+            type="submit"
+          >
+            <IconLock size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            {finalizing ? 'Finalizing…' : 'Finalize anyway'}
+          </button>
+        </form>
+      </Modal>
     </main>
   );
 };

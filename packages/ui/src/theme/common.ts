@@ -90,6 +90,8 @@ export const layout = {
     horizontalCellMargin: '8px',
     horizontalCellPadding: '8px',
     checkboxColumnWidth: '32px',
+    rowHeight: '32px',
+    fontSize: '13px',
   },
   modalWidth: {
     sm: '300px',

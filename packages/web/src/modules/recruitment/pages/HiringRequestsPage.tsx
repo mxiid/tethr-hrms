@@ -2,14 +2,30 @@ import { useMutation, useQuery } from '@apollo/client';
 import type { HiringRequestStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
+  IconAlertTriangle,
   IconBriefcase,
   IconClipboardCheck,
+  IconFilterOff,
   IconMessageCircle,
   IconPlus,
   IconRefresh,
 } from '@tabler/icons-react';
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
+import { StatusChip } from '../../../components/chip/StatusChip';
+import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { FieldGroup } from '../../../components/record-panel/FieldGroup';
+import { FieldRow, type RecordFieldOption } from '../../../components/record-panel/FieldRow';
+import { useInlineCreate } from '../../../components/record-panel/useInlineCreate';
+import { SidePanel } from '../../../components/side-panel/SidePanel';
+import {
+  DataTable,
+  toViewColumns,
+  type ColumnDefinition,
+  type DraftRow,
+} from '../../../components/table/DataTable';
+import { useListView } from '../../../components/view-bar/useListView';
+import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
@@ -88,36 +104,157 @@ const formatDateTime = (value: string): string =>
     year: 'numeric',
   }).format(new Date(value));
 
-const chipStyle = (color: MainColorName): CSSProperties & { readonly '--chip-color': string } => ({
-  '--chip-color': `var(--hrms-color-tag-${color})`,
-});
-
 const updateActorLabel = (actor: string): string => (actor === 'client' ? 'Client' : 'Tethr');
 
-const emptyRequest = {
+type HiringDraft = {
+  positionTitle: string;
+  headcount: string;
+  employmentType: string;
+  location: string;
+  preferredStartDate: string;
+  clientNote: string;
+};
+
+const emptyHiringDraft = (): HiringDraft => ({
   positionTitle: '',
   headcount: '1',
   employmentType: 'permanent',
   location: '',
   preferredStartDate: '',
   clientNote: '',
-};
+});
+
+const isHiringDraftComplete = (draft: HiringDraft): boolean =>
+  draft.positionTitle.trim() !== '';
+
+const EMPLOYMENT_TYPE_OPTIONS: readonly RecordFieldOption[] = [
+  { value: 'permanent', label: 'Permanent' },
+  { value: 'fixedTerm', label: 'Fixed term' },
+  { value: 'contractor', label: 'Contractor' },
+  { value: 'intern', label: 'Intern' },
+  { value: 'temporary', label: 'Temporary' },
+];
+
+const draftAsRequest = (draft: HiringDraft): HiringRequestRecord => ({
+  id: '__draft',
+  positionTitle: draft.positionTitle,
+  headcount: Number(draft.headcount) || 0,
+  employmentType: draft.employmentType,
+  location: draft.location || null,
+  preferredStartDate: draft.preferredStartDate || null,
+  clientNote: draft.clientNote || null,
+  tethrNote: null,
+  status: 'submitted',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  updates: [],
+});
 
 export const HiringRequestsPage = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
   const isTethr = user?.portal === 'tethr';
   const { data, loading, error, refetch } = useQuery<HiringRequestsData>(HIRING_REQUESTS_QUERY);
-  const [createRequest, { loading: creating }] = useMutation(CREATE_HIRING_REQUEST_MUTATION);
+  const [createRequest] = useMutation(CREATE_HIRING_REQUEST_MUTATION);
   const [updateRequest, { loading: updating }] = useMutation(UPDATE_HIRING_REQUEST_MUTATION);
-  const [requestForm, setRequestForm] = useState(emptyRequest);
-  const [formError, setFormError] = useState<string | null>(null);
   const requests = useMemo(() => data?.hiringRequests ?? [], [data]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = requests.find((request) => request.id === selectedId) ?? requests[0] ?? null;
+  const selected = requests.find((request) => request.id === selectedId) ?? null;
+  const view = useListView({ routeKey: '/hiring' });
+  const visibleRequests = useMemo(() => {
+    const selectedStatuses = view.filters.status ?? [];
+    if (selectedStatuses.length === 0) return requests;
+    return requests.filter((request) => selectedStatuses.includes(request.status));
+  }, [requests, view.filters.status]);
+  const columns: readonly ColumnDefinition<HiringRequestRecord>[] = [
+    {
+      key: 'role',
+      header: 'Role',
+      width: '28%',
+      hideable: false,
+      sortValue: (request) => request.positionTitle,
+      render: (request) => (
+        <>
+          <div className="employee-primary">{request.positionTitle}</div>
+          <div className="employee-secondary">{request.employmentType}</div>
+        </>
+      ),
+    },
+    {
+      key: 'headcount',
+      header: 'Headcount',
+      width: '12%',
+      align: 'right',
+      sortValue: (request) => request.headcount,
+      render: (request) => request.headcount,
+    },
+    {
+      key: 'location',
+      header: 'Location',
+      width: '16%',
+      sortValue: (request) => request.location ?? '',
+      render: (request) => request.location ?? '—',
+    },
+    {
+      key: 'start',
+      header: 'Target start',
+      width: '16%',
+      sortValue: (request) => request.preferredStartDate ?? '',
+      render: (request) =>
+        request.preferredStartDate ? formatDate(request.preferredStartDate) : '—',
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: '14%',
+      hideable: false,
+      sortValue: (request) => request.status,
+      render: (request) => (
+        <StatusChip color={statusColors[request.status]} label={statusLabels[request.status]} />
+      ),
+    },
+    {
+      key: 'updated',
+      header: 'Updated',
+      width: '14%',
+      sortValue: (request) => request.updatedAt,
+      render: (request) => formatDate(request.updatedAt),
+    },
+  ];
+  const filters = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: (Object.keys(statusLabels) as HiringRequestStatus[]).map((value) => ({
+        value,
+        label: statusLabels[value],
+      })),
+    },
+  ];
   const [updateForm, setUpdateForm] = useState({
     status: 'submitted' as HiringRequestStatus,
     tethrNote: '',
+  });
+  const create = useInlineCreate<HiringDraft, HiringRequestRecord>({
+    createEmptyDraft: emptyHiringDraft,
+    isComplete: isHiringDraftComplete,
+    createRecord: async (draft) => {
+      const result = await createRequest({
+        variables: {
+          input: {
+            positionTitle: draft.positionTitle.trim(),
+            headcount: Number(draft.headcount) || 1,
+            employmentType: draft.employmentType,
+            location: draft.location || undefined,
+            preferredStartDate: draft.preferredStartDate || undefined,
+            clientNote: draft.clientNote || undefined,
+          },
+        },
+      });
+      await refetch();
+      return result.data?.createHiringRequest ?? null;
+    },
+    onCreated: (record) => setSelectedId(record.id),
   });
   const selectedRequestId = selected?.id ?? null;
   const selectedStatus = selected?.status ?? null;
@@ -128,32 +265,17 @@ export const HiringRequestsPage = () => {
     setUpdateForm({ status: selectedStatus, tethrNote: selectedTethrNote ?? '' });
   }, [selectedRequestId, selectedStatus, selectedTethrNote]);
 
-  const onCreate = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    setFormError(null);
-    try {
-      await createRequest({
-        variables: {
-          input: {
-            positionTitle: requestForm.positionTitle,
-            headcount: Number(requestForm.headcount),
-            employmentType: requestForm.employmentType,
-            location: requestForm.location || undefined,
-            preferredStartDate: requestForm.preferredStartDate || undefined,
-            clientNote: requestForm.clientNote || undefined,
-          },
-        },
-      });
-      setRequestForm(emptyRequest);
-      await refetch();
-    } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : 'Could not submit hiring request');
-    }
-  };
-
   const selectRequest = (request: HiringRequestRecord): void => {
+    if (create.draft !== null) create.discard();
     setSelectedId(request.id);
     setUpdateForm({ status: request.status, tethrNote: request.tethrNote ?? '' });
+  };
+
+  // A fresh draft takes over the panel; clearing the selection means discarding
+  // it closes the panel rather than falling back to the last record opened.
+  const startCreate = (): void => {
+    setSelectedId(null);
+    create.start();
   };
 
   const onUpdate = async (event: FormEvent): Promise<void> => {
@@ -182,10 +304,10 @@ export const HiringRequestsPage = () => {
             <IconMessageCircle size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             <div>
               <div className="record-inline-actions">
-                <span className="chip" style={chipStyle(statusColors[update.status])}>
-                  <span className="chip-dot" />
-                  {statusLabels[update.status]}
-                </span>
+                <StatusChip
+                  color={statusColors[update.status]}
+                  label={statusLabels[update.status]}
+                />
                 <span className="employee-secondary">
                   {updateActorLabel(update.actor)} · {formatDateTime(update.createdAt)}
                 </span>
@@ -201,95 +323,192 @@ export const HiringRequestsPage = () => {
     </section>
   );
 
+  const draftRow: DraftRow<HiringRequestRecord> | null =
+    create.draft !== null
+      ? {
+          rowKey: '__draft',
+          renderCell: (column) => {
+            const draft = create.draft;
+            return draft ? column.render(draftAsRequest(draft)) : null;
+          },
+        }
+      : null;
+
   return (
-    <main className="hiring-page">
+    <main className="list-with-panel">
       <section className="hiring-content" aria-labelledby="hiring-title">
         <header className="page-header">
           <div>
             <h1 className="page-title" id="hiring-title">
               Hiring requests
             </h1>
-            <p className="page-subtitle">
-              Client demand and Tethr recruitment progress in one workflow.
-            </p>
+            <p className="page-subtitle">Track open roles from request to hire.</p>
           </div>
+          {!isTethr ? (
+            <div className="page-actions">
+              <button
+                className="button button-primary"
+                onClick={startCreate}
+                type="button"
+              >
+                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                New request
+              </button>
+            </div>
+          ) : null}
         </header>
 
-        <section className="table-shell">
-          <div className="table-title-row">
-            <div className="table-title">
-              <IconBriefcase size={theme.icon.size.md} />
-              Requests
-            </div>
-            <button
-              className="icon-button"
-              onClick={() => void refetch()}
-              title="Refresh requests"
-              type="button"
-            >
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
-          </div>
-          {error ? (
-            <p className="table-empty">Could not load hiring requests.</p>
-          ) : (
-            <div className="data-table-wrap">
-              <table className="data-table hiring-table">
-                <thead>
-                  <tr>
-                    <th>Role</th>
-                    <th>Headcount</th>
-                    <th>Location</th>
-                    <th>Target start</th>
-                    <th>Status</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {requests.map((request) => (
-                    <tr
-                      className={selected?.id === request.id ? 'is-selected' : ''}
-                      key={request.id}
-                      onClick={() => selectRequest(request)}
-                    >
-                      <td>
-                        <div className="employee-primary">{request.positionTitle}</div>
-                        <div className="employee-secondary">{request.employmentType}</div>
-                      </td>
-                      <td>{request.headcount}</td>
-                      <td>{request.location ?? '—'}</td>
-                      <td>
-                        {request.preferredStartDate ? formatDate(request.preferredStartDate) : '—'}
-                      </td>
-                      <td>
-                        <span className="chip" style={chipStyle(statusColors[request.status])}>
-                          <span className="chip-dot" />
-                          {statusLabels[request.status]}
-                        </span>
-                      </td>
-                      <td>{formatDate(request.updatedAt)}</td>
-                    </tr>
-                  ))}
-                  {!loading && requests.length === 0 ? (
-                    <tr>
-                      <td className="table-empty" colSpan={6}>
-                        No hiring requests yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <section className="table-shell" aria-label="Hiring requests">
+          <ViewBar
+            actions={
+              <button
+                className="icon-button"
+                onClick={() => void refetch()}
+                title="Refresh requests"
+                type="button"
+              >
+                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            }
+            columns={toViewColumns(columns)}
+            count={visibleRequests.length}
+            filters={filters}
+            view={view}
+            viewLabel="All requests"
+          />
+          <DataTable
+            columns={columns}
+            draftRow={draftRow}
+            emptyState={
+              error ? (
+                <EmptyState
+                  icon={IconAlertTriangle}
+                  title="Could not load hiring requests"
+                  description="Is the API running, and are you still signed in?"
+                />
+              ) : requests.length === 0 ? (
+                <EmptyState
+                  icon={IconBriefcase}
+                  title="No hiring requests yet"
+                  description="Requests submitted by clients will show up here for recruitment."
+                />
+              ) : (
+                <EmptyState
+                  icon={IconFilterOff}
+                  title="No requests match this filter"
+                  description="Clear the filter to see more."
+                  action={
+                    <button className="button button-secondary" onClick={view.clearFilters} type="button">
+                      Clear filters
+                    </button>
+                  }
+                />
+              )
+            }
+            getRowKey={(request) => request.id}
+            hiddenColumns={view.hiddenColumns}
+            loading={loading && !error}
+            onHideColumn={view.hideColumn}
+            onRowClick={selectRequest}
+            onSort={view.setSort}
+            rows={error ? [] : visibleRequests}
+            selectedRowKey={selected?.id ?? null}
+            sorts={view.sorts}
+            tableClassName="data-table hiring-table"
+          />
         </section>
       </section>
 
-      <aside
-        className="hiring-panel"
-        aria-label={isTethr ? 'Manage hiring request' : 'Submit hiring request'}
+      <SidePanel
+        isOpen={create.draft !== null || selected != null}
+        onClose={() => {
+          if (create.draft !== null) {
+            create.discard();
+            return;
+          }
+          setSelectedId(null);
+        }}
+        title={
+          create.draft !== null
+            ? 'New request'
+            : isTethr
+              ? 'Hiring request'
+              : 'Recruitment updates'
+        }
       >
-        {isTethr ? (
-          selected ? (
+        {create.draft !== null ? (
+          <div>
+            <FieldGroup title="Role">
+              <FieldRow
+                alwaysEditing
+                label="Role title"
+                onChange={(value) => create.patchDraft({ positionTitle: value })}
+                required
+                type="text"
+                value={create.draft.positionTitle}
+              />
+              <FieldRow
+                alwaysEditing
+                label="Headcount"
+                min={1}
+                onChange={(value) => create.patchDraft({ headcount: value })}
+                type="number"
+                value={create.draft.headcount}
+              />
+              <FieldRow
+                alwaysEditing
+                label="Employment type"
+                onChange={(value) => create.patchDraft({ employmentType: value })}
+                options={EMPLOYMENT_TYPE_OPTIONS}
+                type="select"
+                value={create.draft.employmentType}
+              />
+            </FieldGroup>
+            <FieldGroup title="Details">
+              <FieldRow
+                alwaysEditing
+                label="Location"
+                onChange={(value) => create.patchDraft({ location: value })}
+                type="text"
+                value={create.draft.location}
+              />
+              <FieldRow
+                alwaysEditing
+                label="Target start"
+                onChange={(value) => create.patchDraft({ preferredStartDate: value })}
+                type="date"
+                value={create.draft.preferredStartDate}
+              />
+              <FieldRow
+                alwaysEditing
+                label="Role brief"
+                onChange={(value) => create.patchDraft({ clientNote: value })}
+                placeholder="What the client needs"
+                type="text"
+                value={create.draft.clientNote}
+              />
+            </FieldGroup>
+            {create.error ? (
+              <p className="auth-error record-panel-error" role="alert">
+                {create.error}
+              </p>
+            ) : null}
+            <div className="record-panel-actions">
+              <button
+                className="button button-primary"
+                disabled={!create.canCreate || create.isSaving}
+                onClick={() => void create.commit()}
+                type="button"
+              >
+                {create.isSaving ? 'Submitting…' : 'Submit request'}
+              </button>
+              <button className="button button-secondary" onClick={create.discard} type="button">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : selected ? (
+          isTethr ? (
             <section>
               <div className="panel-title-row">
                 <div>
@@ -339,123 +558,19 @@ export const HiringRequestsPage = () => {
               </form>
             </section>
           ) : (
-            <p className="table-empty">Select a request to publish a recruitment update.</p>
+            <section>
+              <div className="panel-title-row">
+                <div>
+                  <div className="panel-kicker">Recruitment updates</div>
+                  <h2 className="panel-title">{selected.positionTitle}</h2>
+                </div>
+                <IconBriefcase size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              </div>
+              {renderUpdateTrail(selected)}
+            </section>
           )
-        ) : (
-          <section>
-            {selected ? (
-              <>
-                <div className="panel-title-row">
-                  <div>
-                    <div className="panel-kicker">Recruitment updates</div>
-                    <h2 className="panel-title">{selected.positionTitle}</h2>
-                  </div>
-                  <IconBriefcase size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
-                </div>
-                {renderUpdateTrail(selected)}
-              </>
-            ) : null}
-            <div className="panel-title-row">
-              <div>
-                <div className="panel-kicker">New request</div>
-                <h2 className="panel-title">Request a hire</h2>
-              </div>
-              <IconPlus size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
-            </div>
-            <form className="config-form" onSubmit={onCreate}>
-              {formError ? (
-                <p className="auth-error" role="alert">
-                  {formError}
-                </p>
-              ) : null}
-              <div className="field">
-                <label htmlFor="role-title">Role title</label>
-                <input
-                  id="role-title"
-                  required
-                  value={requestForm.positionTitle}
-                  onChange={(event) =>
-                    setRequestForm((current) => ({ ...current, positionTitle: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field-group">
-                <div className="field">
-                  <label htmlFor="headcount">Headcount</label>
-                  <input
-                    id="headcount"
-                    min="1"
-                    required
-                    type="number"
-                    value={requestForm.headcount}
-                    onChange={(event) =>
-                      setRequestForm((current) => ({ ...current, headcount: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="employment-type">Employment type</label>
-                  <select
-                    id="employment-type"
-                    value={requestForm.employmentType}
-                    onChange={(event) =>
-                      setRequestForm((current) => ({
-                        ...current,
-                        employmentType: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="permanent">Permanent</option>
-                    <option value="fixedTerm">Fixed term</option>
-                    <option value="contractor">Contractor</option>
-                    <option value="intern">Intern</option>
-                    <option value="temporary">Temporary</option>
-                  </select>
-                </div>
-              </div>
-              <div className="field-group">
-                <div className="field">
-                  <label htmlFor="location">Location</label>
-                  <input
-                    id="location"
-                    value={requestForm.location}
-                    onChange={(event) =>
-                      setRequestForm((current) => ({ ...current, location: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="target-date">Target start</label>
-                  <input
-                    id="target-date"
-                    type="date"
-                    value={requestForm.preferredStartDate}
-                    onChange={(event) =>
-                      setRequestForm((current) => ({
-                        ...current,
-                        preferredStartDate: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="client-note">Role brief</label>
-                <textarea
-                  id="client-note"
-                  value={requestForm.clientNote}
-                  onChange={(event) =>
-                    setRequestForm((current) => ({ ...current, clientNote: event.target.value }))
-                  }
-                />
-              </div>
-              <button className="button button-primary" disabled={creating} type="submit">
-                {creating ? 'Submitting...' : 'Submit request'}
-              </button>
-            </form>
-          </section>
-        )}
-      </aside>
+        ) : null}
+      </SidePanel>
     </main>
   );
 };

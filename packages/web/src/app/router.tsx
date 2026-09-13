@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { WorkspaceUsersPage } from '../modules/access/pages/WorkspaceUsersPage';
@@ -22,6 +23,16 @@ import { LeaveTriagePage } from '../modules/leave/pages/LeaveTriagePage';
 import { HiringRequestsPage } from '../modules/recruitment/pages/HiringRequestsPage';
 import { EmployeeWorkspacePage } from '../modules/self-service/pages/EmployeeWorkspacePage';
 import { MyProfilePage } from '../modules/self-service/pages/MyProfilePage';
+import { SettingsBillingPage } from '../modules/settings/pages/SettingsBillingPage';
+import { SettingsGeneralPage } from '../modules/settings/pages/SettingsGeneralPage';
+import { SettingsIndexRedirect, SettingsLayout } from '../modules/settings/pages/SettingsLayout';
+import { SettingsPayPage } from '../modules/settings/pages/SettingsPayPage';
+import { SettingsPayrollPage } from '../modules/settings/pages/SettingsPayrollPage';
+import {
+  SETTINGS_ROLE_KEYS,
+  SETTINGS_TABS,
+  type SettingsTabKey,
+} from '../modules/settings/settingsTabs';
 
 import { AppShell } from './AppShell';
 import { portalHome } from './portal';
@@ -31,6 +42,16 @@ import { RequirePortal } from './RequirePortal';
 const PortalHomeRedirect = () => {
   const { user } = useAuth();
   return <Navigate to={portalHome(user?.portal ?? 'none')} replace />;
+};
+
+// One page per settings tab; the guards that admit them live with the tab
+// definitions so the route, the sub-nav, and the page's own API calls agree.
+const SETTINGS_PAGES: Record<SettingsTabKey, ReactElement> = {
+  general: <SettingsGeneralPage />,
+  members: <WorkspaceUsersPage />,
+  billing: <SettingsBillingPage />,
+  payroll: <SettingsPayrollPage />,
+  pay: <SettingsPayPage />,
 };
 
 // Thin routing: public auth routes, then the authenticated app behind RequireAuth
@@ -94,6 +115,21 @@ export const AppRouter = () => (
             }
           >
             <Route path="/users" element={<WorkspaceUsersPage />} />
+          </Route>
+          <Route
+            element={<RequirePortal portals={['tethr', 'client']} roleKeys={SETTINGS_ROLE_KEYS} />}
+          >
+            <Route path="/settings" element={<SettingsLayout />}>
+              <Route index element={<SettingsIndexRedirect />} />
+              {SETTINGS_TABS.map((tab) => (
+                <Route
+                  element={<RequirePortal portals={tab.portals} roleKeys={tab.roleKeys} />}
+                  key={tab.key}
+                >
+                  <Route path={tab.key} element={SETTINGS_PAGES[tab.key]} />
+                </Route>
+              ))}
+            </Route>
           </Route>
           <Route element={<RequirePortal portals={['client']} />}>
             <Route path="/client" element={<ClientWorkspacePage />} />

@@ -1,21 +1,23 @@
 import { useMutation, useQuery } from '@apollo/client';
-import { IconAdjustments, IconPlus, IconRefresh } from '@tabler/icons-react';
-import { useState, type CSSProperties, type FormEvent } from 'react';
+import { IconAdjustments, IconAlertTriangle, IconCalendarStats, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 
+import { StatusChip } from '../../../../components/chip/StatusChip';
+import { EmptyState } from '../../../../components/empty-state/EmptyState';
 import { Modal } from '../../../../components/modal/Modal';
+import { DataTable, toViewColumns, type ColumnDefinition } from '../../../../components/table/DataTable';
+import { useListView } from '../../../../components/view-bar/useListView';
+import { ViewBar } from '../../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   PayrollReadinessBanner,
   type PayrollReadinessRecord,
 } from '../components/PayrollReadinessBanner';
 import {
-  ACTIVATE_TAX_SLAB_GROUP_MUTATION,
   CREATE_PAYROLL_RUN_MUTATION,
-  CREATE_TAX_SLAB_GROUP_MUTATION,
   PAYROLL_READINESS_QUERY,
   PAYROLL_RUNS_QUERY,
-  TAX_SLAB_GROUPS_QUERY,
 } from '../graphql/payroll.operations';
 
 type PayrollRunRecord = {
@@ -28,16 +30,7 @@ type PayrollRunRecord = {
   readonly finalizedAt: string | null;
 };
 
-type TaxSlabGroupRecord = {
-  readonly id: string;
-  readonly name: string;
-  readonly financialYearLabel: string;
-  readonly currency: string;
-  readonly isActive: boolean;
-};
-
 type RunsData = { readonly payrollRuns: readonly PayrollRunRecord[] };
-type TaxGroupsData = { readonly taxSlabGroups: readonly TaxSlabGroupRecord[] };
 
 const MONTH_LABELS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -51,14 +44,83 @@ const now = new Date();
 const defaultYear = now.getFullYear();
 const defaultMonth = now.getMonth() + 1;
 
+const RUN_COLUMNS: readonly ColumnDefinition<PayrollRunRecord>[] = [
+  {
+    key: 'period',
+    header: 'Period',
+    width: '30%',
+    hideable: false,
+    sortValue: (run) => periodKey(run.periodYear, run.periodMonth),
+    render: (run) => (
+      <>
+        <div className="employee-primary">{`${monthLabel(run.periodMonth)} ${run.periodYear}`}</div>
+        <div className="employee-secondary">{periodKey(run.periodYear, run.periodMonth)}</div>
+      </>
+    ),
+  },
+  {
+    key: 'workingDays',
+    header: 'Working days',
+    width: '17%',
+    align: 'right',
+    sortValue: (run) => run.standardWorkingDays,
+    render: (run) => run.standardWorkingDays,
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    width: '16%',
+    sortValue: (run) => run.status,
+    render: (run) => (
+      <StatusChip
+        color={run.status === 'finalized' ? 'green' : 'amber'}
+        label={run.status === 'finalized' ? 'Finalized' : 'Draft'}
+      />
+    ),
+  },
+  {
+    key: 'finalized',
+    header: 'Finalized',
+    width: '19%',
+    sortValue: (run) => run.finalizedAt ?? '',
+    render: (run) => (run.finalizedAt ? new Date(run.finalizedAt).toLocaleDateString() : '—'),
+  },
+  {
+    key: 'open',
+    header: '',
+    label: 'Open',
+    width: '18%',
+    hideable: false,
+    render: (run) => (
+      <Link className="table-link" to={`/payroll/${run.id}`}>
+        Open
+      </Link>
+    ),
+  },
+];
+
+const RUN_FILTERS = [
+  {
+    key: 'status',
+    label: 'Status',
+    options: [
+      { value: 'draft', label: 'Draft' },
+      { value: 'finalized', label: 'Finalized' },
+    ],
+  },
+] as const;
+
 export const PayrollPage = () => {
   const { theme } = useTheme();
+  const view = useListView({
+    routeKey: '/payroll',
+    defaultSorts: [{ key: 'period', direction: 'desc' }],
+  });
   const { data, loading, error, refetch } = useQuery<RunsData>(PAYROLL_RUNS_QUERY);
-  const { data: taxData, refetch: refetchTax } = useQuery<TaxGroupsData>(TAX_SLAB_GROUPS_QUERY);
 
   const [periodYear, setPeriodYear] = useState(defaultYear);
   const [periodMonth, setPeriodMonth] = useState(defaultMonth);
-  const [openModal, setOpenModal] = useState<'run' | 'tax' | null>(null);
+  const [openModal, setOpenModal] = useState<'run' | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const { data: readinessData } = useQuery<{ readonly payrollReadiness: PayrollReadinessRecord }>(
@@ -66,22 +128,20 @@ export const PayrollPage = () => {
     { variables: { periodYear, periodMonth } },
   );
 
-  const [taxGroupName, setTaxGroupName] = useState('');
-  const [taxGroupYear, setTaxGroupYear] = useState(`FY ${defaultYear}-${defaultYear + 1}`);
-
   const [createRun, { loading: creating }] = useMutation(CREATE_PAYROLL_RUN_MUTATION);
-  const [createTaxGroup, { loading: creatingTaxGroup }] = useMutation(
-    CREATE_TAX_SLAB_GROUP_MUTATION,
-  );
-  const [activateTaxGroup, { loading: activating }] = useMutation(
-    ACTIVATE_TAX_SLAB_GROUP_MUTATION,
-  );
 
-  const runs = [...(data?.payrollRuns ?? [])].sort((a, b) =>
-    periodKey(b.periodYear, b.periodMonth).localeCompare(periodKey(a.periodYear, a.periodMonth)),
-  );
-  const taxGroups = taxData?.taxSlabGroups ?? [];
-  const activeTaxGroup = taxGroups.find((group) => group.isActive) ?? null;
+  const runs = useMemo(() => data?.payrollRuns ?? [], [data?.payrollRuns]);
+  const visibleRuns = useMemo(() => {
+    const statuses = view.filters.status ?? [];
+    return statuses.length === 0 ? runs : runs.filter((run) => statuses.includes(run.status));
+  }, [runs, view.filters.status]);
+
+  const openNewRun = (): void => {
+    setFormError(null);
+    setPeriodYear(defaultYear);
+    setPeriodMonth(defaultMonth);
+    setOpenModal('run');
+  };
 
   const onCreateRun = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -97,19 +157,42 @@ export const PayrollPage = () => {
     }
   };
 
-  const onCreateTaxGroup = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    if (!taxGroupName.trim()) return;
-    try {
-      await createTaxGroup({
-        variables: { input: { name: taxGroupName.trim(), financialYearLabel: taxGroupYear.trim() } },
-        refetchQueries: [{ query: TAX_SLAB_GROUPS_QUERY }],
-      });
-      setTaxGroupName('');
-    } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : 'Could not create the slab group.');
-    }
-  };
+  const emptyState = error ? (
+    <EmptyState
+      icon={IconAlertTriangle}
+      title="Could not load payroll runs"
+      description="Is the API running, and are you still signed in?"
+      action={
+        <button className="button button-secondary" onClick={() => void refetch()} type="button">
+          <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          Try again
+        </button>
+      }
+    />
+  ) : runs.length === 0 ? (
+    <EmptyState
+      icon={IconCalendarStats}
+      title="No payroll runs yet"
+      description="Create the first run to compute pay for the period."
+      action={
+        <button className="button button-secondary" onClick={openNewRun} type="button">
+          <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          New run
+        </button>
+      }
+    />
+  ) : (
+    <EmptyState
+      icon={IconAlertTriangle}
+      title="No runs match this filter"
+      description="Clear the filter to see every run."
+      action={
+        <button className="button button-secondary" onClick={view.clearFilters} type="button">
+          Clear filters
+        </button>
+      }
+    />
+  );
 
   return (
     <main className="page-frame page-frame-single">
@@ -117,33 +200,14 @@ export const PayrollPage = () => {
         <header className="page-header">
           <div>
             <h1 className="page-title">Payroll</h1>
-            <p className="page-subtitle">
-              Monthly runs with working-day pro-rating, unpaid-leave reduction, and immutable
-              payslip snapshots.
-            </p>
+            <p className="page-subtitle">Run monthly payroll and issue payslips.</p>
           </div>
           <div className="page-actions">
-            <button
-              className="button button-secondary"
-              type="button"
-              onClick={() => {
-                setFormError(null);
-                setOpenModal('tax');
-              }}
-            >
+            <Link className="button button-secondary" to="/settings/payroll">
               <IconAdjustments size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Manage tax slabs
-            </button>
-            <button
-              className="button button-primary"
-              type="button"
-              onClick={() => {
-                setFormError(null);
-                setPeriodYear(defaultYear);
-                setPeriodMonth(defaultMonth);
-                setOpenModal('run');
-              }}
-            >
+            </Link>
+            <button className="button button-primary" type="button" onClick={openNewRun}>
               <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               New run
             </button>
@@ -158,78 +222,30 @@ export const PayrollPage = () => {
           </div>
         </header>
 
-        {error ? (
-          <p className="auth-error" role="alert">
-            Could not load payroll runs.
-          </p>
-        ) : null}
-
         {readinessData?.payrollReadiness ? (
           <PayrollReadinessBanner readiness={readinessData.payrollReadiness} />
         ) : null}
 
-        <section className="table-shell" aria-labelledby="runs-title">
-          <div className="table-title-row">
-            <div className="table-title" id="runs-title">
-              Payroll runs
-            </div>
-            <div className="table-density">{loading ? 'Loading…' : `${runs.length} total`}</div>
-          </div>
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Period</th>
-                  <th>Working days</th>
-                  <th>Status</th>
-                  <th>Finalized</th>
-                  <th aria-label="Open" />
-                </tr>
-              </thead>
-              <tbody>
-                {runs.length === 0 && !loading ? (
-                  <tr>
-                    <td colSpan={5}>No payroll runs yet — create the first one.</td>
-                  </tr>
-                ) : (
-                  runs.map((run) => (
-                    <tr key={run.id}>
-                      <td>
-                        <div className="employee-primary">
-                          {`${monthLabel(run.periodMonth)} ${run.periodYear}`}
-                        </div>
-                        <div className="employee-secondary">
-                          {periodKey(run.periodYear, run.periodMonth)}
-                        </div>
-                      </td>
-                      <td>{run.standardWorkingDays}</td>
-                      <td>
-                        <span
-                          className="chip"
-                          style={
-                            {
-                              '--chip-color': `var(--hrms-color-tag-${
-                                run.status === 'finalized' ? 'green' : 'amber'
-                              })`,
-                            } as CSSProperties
-                          }
-                        >
-                          <span className="chip-dot" />
-                          {run.status === 'finalized' ? 'Finalized' : 'Draft'}
-                        </span>
-                      </td>
-                      <td>{run.finalizedAt ? new Date(run.finalizedAt).toLocaleDateString() : '—'}</td>
-                      <td>
-                        <Link className="table-link" to={`/payroll/${run.id}`}>
-                          Open
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <section className="table-shell" aria-label="Payroll runs">
+          <ViewBar
+            columns={toViewColumns(RUN_COLUMNS)}
+            count={visibleRuns.length}
+            filters={RUN_FILTERS}
+            view={view}
+            viewLabel="All runs"
+          />
+          <DataTable
+            columns={RUN_COLUMNS}
+            emptyState={emptyState}
+            loading={loading}
+            rows={visibleRuns}
+            getRowKey={(run) => run.id}
+            hiddenColumns={view.hiddenColumns}
+            onHideColumn={view.hideColumn}
+            onSort={view.setSort}
+            skeletonRows={4}
+            sorts={view.sorts}
+          />
         </section>
       </div>
 
@@ -251,8 +267,8 @@ export const PayrollPage = () => {
           }}
         >
           <p className="field-hint">
-            Computes payable days per employee from the working calendar minus approved unpaid
-            leave; salaries pro-rate automatically for mid-month joiners.
+            Pay is calculated from each person's working days and approved unpaid leave, so
+            mid-month joiners are handled automatically.
           </p>
           <div className="field">
             <label htmlFor="run-year">Year</label>
@@ -291,80 +307,6 @@ export const PayrollPage = () => {
         </form>
       </Modal>
 
-      <Modal
-        isOpen={openModal === 'tax'}
-        onClose={() => setOpenModal(null)}
-        title="Withholding tax slabs"
-        width="lg"
-      >
-        {formError ? (
-          <p className="auth-error" role="alert">
-            {formError}
-          </p>
-        ) : null}
-        <form
-          className="config-form"
-          onSubmit={(event) => {
-            void onCreateTaxGroup(event);
-          }}
-        >
-          <p className="field-hint">
-            Active ladder:{' '}
-            <strong>{activeTaxGroup ? activeTaxGroup.financialYearLabel : 'none — tax computes as zero'}</strong>
-          </p>
-          {taxGroups.map((group) => (
-            <div className="inline-actions-row" key={group.id}>
-              <span className="truncate">
-                {group.name} · {group.financialYearLabel}
-              </span>
-              {group.isActive ? (
-                <span className="chip" style={{ '--chip-color': 'var(--hrms-color-tag-green)' } as CSSProperties}>
-                  <span className="chip-dot" />
-                  Active
-                </span>
-              ) : (
-                <button
-                  className="button button-secondary"
-                  disabled={activating}
-                  type="button"
-                  onClick={() => {
-                    void activateTaxGroup({
-                      variables: { groupId: group.id },
-                      refetchQueries: [{ query: TAX_SLAB_GROUPS_QUERY }],
-                    }).then(() => refetchTax());
-                  }}
-                >
-                  Activate
-                </button>
-              )}
-            </div>
-          ))}
-          <div className="field">
-            <label htmlFor="tax-group-name">New group name</label>
-            <input
-              id="tax-group-name"
-              placeholder="e.g. Finance Act 2026"
-              value={taxGroupName}
-              onChange={(event) => setTaxGroupName(event.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="tax-group-year">Financial year label</label>
-            <input
-              id="tax-group-year"
-              value={taxGroupYear}
-              onChange={(event) => setTaxGroupYear(event.target.value)}
-            />
-          </div>
-          <button className="button button-secondary button-full" disabled={creatingTaxGroup} type="submit">
-            Add slab group
-          </button>
-          <p className="field-hint">
-            Configure the band rows from the group&apos;s detail once created; the last band stays
-            open-ended.
-          </p>
-        </form>
-      </Modal>
     </main>
   );
 };

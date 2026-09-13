@@ -1,27 +1,19 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { CompensationChangeReason, PayComponentCategory, PayFrequency } from '@hrms/shared';
-import type { MainColorName } from '@hrms/ui';
-import { IconCurrencyDollar, IconPlus, IconRefresh } from '@tabler/icons-react';
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import type { CompensationChangeReason, PayFrequency } from '@hrms/shared';
+import { IconAlertTriangle, IconCurrencyDollar, IconRefresh, IconSettings } from '@tabler/icons-react';
+import { useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 
+import { EmptyState } from '../../../../components/empty-state/EmptyState';
 import { Modal } from '../../../../components/modal/Modal';
+import { SkeletonRows } from '../../../../components/skeleton/Skeleton';
 import { useTheme } from '../../../../providers/theme/useTheme';
+import { useAuth } from '../../../auth/hooks/useAuth';
 import {
   COMPENSATION_SETUP_QUERY,
-  CREATE_PAY_COMPONENT_MUTATION,
-  CREATE_SALARY_STRUCTURE_MUTATION,
   REVISE_SALARY_MUTATION,
   SALARY_REVISIONS_QUERY,
 } from '../graphql/compensation.operations';
-
-type PayComponentRecord = {
-  readonly id: string;
-  readonly name: string;
-  readonly code: string;
-  readonly category: PayComponentCategory;
-  readonly taxable: boolean;
-  readonly recurring: boolean;
-};
 
 type SalaryStructureRecord = {
   readonly id: string;
@@ -55,7 +47,6 @@ type CompensationEmployeeRecord = {
 };
 
 type CompensationSetupData = {
-  readonly payComponents: ReadonlyArray<PayComponentRecord>;
   readonly salaryStructures: ReadonlyArray<SalaryStructureRecord>;
   readonly employees: ReadonlyArray<CompensationEmployeeRecord>;
 };
@@ -64,30 +55,7 @@ type SalaryRevisionsData = {
   readonly salaryRevisions: ReadonlyArray<SalaryRevisionRecord>;
 };
 
-type CreatePayComponentData = { readonly createPayComponent: PayComponentRecord };
-type CreateSalaryStructureData = { readonly createSalaryStructure: SalaryStructureRecord };
 type ReviseSalaryData = { readonly reviseSalary: SalaryRevisionRecord };
-
-type ChipStyle = CSSProperties & { readonly '--chip-color': string };
-
-const categoryLabels: Record<PayComponentCategory, string> = {
-  earning: 'Earning',
-  deduction: 'Deduction',
-  employerContribution: 'Employer contribution',
-};
-
-const categoryColors: Record<PayComponentCategory, MainColorName> = {
-  earning: 'green',
-  deduction: 'tomato',
-  employerContribution: 'blue',
-};
-
-const payFrequencyLabels: Record<PayFrequency, string> = {
-  monthly: 'Monthly',
-  semiMonthly: 'Semi-monthly',
-  biweekly: 'Biweekly',
-  weekly: 'Weekly',
-};
 
 const reasonLabels: Record<CompensationChangeReason, string> = {
   hire: 'Hire',
@@ -98,21 +66,6 @@ const reasonLabels: Record<CompensationChangeReason, string> = {
 };
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
-
-const emptyPayComponentForm = {
-  name: '',
-  code: '',
-  category: 'earning' as PayComponentCategory,
-  taxable: true,
-  recurring: true,
-};
-
-const emptySalaryStructureForm = {
-  name: '',
-  code: '',
-  currency: 'USD',
-  payFrequency: 'monthly' as PayFrequency,
-};
 
 const emptyRevisionForm = {
   employeeId: '',
@@ -126,10 +79,6 @@ const emptyRevisionForm = {
 const fullName = (employee: CompensationEmployeeRecord): string =>
   `${employee.firstName} ${employee.lastName}`;
 
-const chipStyle = (color: MainColorName): ChipStyle => ({
-  '--chip-color': `var(--hrms-color-tag-${color})`,
-});
-
 const formatMoney = (amount: number, currency: string): string =>
   new Intl.NumberFormat('en', {
     currency,
@@ -142,21 +91,21 @@ const formatDate = (value: string): string =>
     new Date(`${value}T00:00:00`),
   );
 
-const normalizeCode = (value: string): string => value.trim().toUpperCase().replace(/\s+/g, '_');
-
 export const CompensationPage = () => {
   const { theme } = useTheme();
+  const { user } = useAuth();
+  // Both the revise mutation and the pay-setup page require compensation:write;
+  // tethrFinance holds compensation:read only and sees this page read-only.
+  const canWriteCompensation = Boolean(
+    user?.roleKeys.includes('tethrAdmin') ||
+      user?.roleKeys.includes('tethrHr') ||
+      user?.roleKeys.includes('clientAdmin'),
+  );
   const { data, loading, error, refetch } =
     useQuery<CompensationSetupData>(COMPENSATION_SETUP_QUERY);
-  const [createPayComponent, { loading: creatingComponent }] = useMutation<CreatePayComponentData>(
-    CREATE_PAY_COMPONENT_MUTATION,
-  );
-  const [createSalaryStructure, { loading: creatingStructure }] =
-    useMutation<CreateSalaryStructureData>(CREATE_SALARY_STRUCTURE_MUTATION);
   const [reviseSalary, { loading: revisingSalary }] =
     useMutation<ReviseSalaryData>(REVISE_SALARY_MUTATION);
 
-  const payComponents = useMemo(() => data?.payComponents ?? [], [data]);
   const salaryStructures = useMemo(() => data?.salaryStructures ?? [], [data]);
   const employees = useMemo(() => data?.employees ?? [], [data]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
@@ -177,30 +126,14 @@ export const CompensationPage = () => {
   const salaryRevisions = useMemo(() => revisionsData?.salaryRevisions ?? [], [revisionsData]);
   const currentSalary = salaryRevisions.find((revision) => revision.validTo === null) ?? null;
 
-  const [payComponentForm, setPayComponentForm] = useState(emptyPayComponentForm);
-  const [salaryStructureForm, setSalaryStructureForm] = useState(emptySalaryStructureForm);
   const [revisionForm, setRevisionForm] = useState(emptyRevisionForm);
-  const [openModal, setOpenModal] = useState<'component' | 'structure' | 'revision' | null>(
-    null,
-  );
+  const [openModal, setOpenModal] = useState<'revision' | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const clearFeedback = (): void => {
     setFormError(null);
     setFormMessage(null);
-  };
-
-  const openComponentModal = (): void => {
-    clearFeedback();
-    setPayComponentForm(emptyPayComponentForm);
-    setOpenModal('component');
-  };
-
-  const openStructureModal = (): void => {
-    clearFeedback();
-    setSalaryStructureForm(emptySalaryStructureForm);
-    setOpenModal('structure');
   };
 
   const openRevisionModal = (): void => {
@@ -216,57 +149,6 @@ export const CompensationPage = () => {
   const closeModal = (): void => {
     clearFeedback();
     setOpenModal(null);
-  };
-
-  const onCreatePayComponent = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    clearFeedback();
-    try {
-      await createPayComponent({
-        variables: {
-          input: {
-            name: payComponentForm.name.trim(),
-            code: normalizeCode(payComponentForm.code),
-            category: payComponentForm.category,
-            taxable: payComponentForm.taxable,
-            recurring: payComponentForm.recurring,
-          },
-        },
-      });
-      await refetch();
-      setPayComponentForm(emptyPayComponentForm);
-      setOpenModal(null);
-      setFormMessage('Pay component created.');
-    } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : 'Could not create pay component');
-    }
-  };
-
-  const onCreateSalaryStructure = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    clearFeedback();
-    try {
-      const result = await createSalaryStructure({
-        variables: {
-          input: {
-            name: salaryStructureForm.name.trim(),
-            code: normalizeCode(salaryStructureForm.code),
-            currency: salaryStructureForm.currency.trim().toUpperCase(),
-            payFrequency: salaryStructureForm.payFrequency,
-          },
-        },
-      });
-      await refetch();
-      setSalaryStructureForm(emptySalaryStructureForm);
-      setRevisionForm((current) => ({
-        ...current,
-        salaryStructureId: result.data?.createSalaryStructure.id ?? current.salaryStructureId,
-      }));
-      setOpenModal(null);
-      setFormMessage('Salary structure created.');
-    } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : 'Could not create salary structure');
-    }
   };
 
   const onReviseSalary = async (event: FormEvent): Promise<void> => {
@@ -322,9 +204,15 @@ export const CompensationPage = () => {
             <h1 className="page-title" id="compensation-title">
               Compensation
             </h1>
-            <p className="page-subtitle">Pay setup and effective-dated salary revisions.</p>
+            <p className="page-subtitle">Salary history and raises. Setup lives in settings.</p>
           </div>
           <div className="page-actions">
+            {canWriteCompensation ? (
+              <Link className="button button-secondary" to="/settings/pay">
+                <IconSettings size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                Manage pay setup
+              </Link>
+            ) : null}
             <button
               className="button button-secondary"
               type="button"
@@ -336,15 +224,7 @@ export const CompensationPage = () => {
           </div>
         </header>
 
-        <section className="metric-strip" aria-label="Compensation summary">
-          <div className="metric-card">
-            <div className="metric-label">Pay components</div>
-            <div className="metric-value">{loading ? '—' : payComponents.length}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Salary structures</div>
-            <div className="metric-value">{loading ? '—' : salaryStructures.length}</div>
-          </div>
+        <section className="metric-strip metric-strip-2" aria-label="Compensation summary">
           <div className="metric-card">
             <div className="metric-label">Employees</div>
             <div className="metric-value">{loading ? '—' : employees.length}</div>
@@ -366,123 +246,6 @@ export const CompensationPage = () => {
         ) : null}
         {formMessage ? <p className="form-success">{formMessage}</p> : null}
 
-        <div className="compensation-grid">
-          <section className="table-shell" aria-labelledby="pay-components-title">
-            <div className="table-title-row">
-              <div className="table-title" id="pay-components-title">
-                Pay components
-              </div>
-              <div className="panel-actions">
-                <div className="table-density">
-                  {loading
-                    ? 'Loading…'
-                    : `${payComponents.length} component${payComponents.length === 1 ? '' : 's'}`}
-                </div>
-                <button className="button button-secondary" type="button" onClick={openComponentModal}>
-                  <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  New component
-                </button>
-              </div>
-            </div>
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Component</th>
-                    <th>Category</th>
-                    <th>Taxable</th>
-                    <th>Recurring</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payComponents.length === 0 ? (
-                    <tr>
-                      <td colSpan={4}>No pay components yet.</td>
-                    </tr>
-                  ) : (
-                    payComponents.map((component) => (
-                      <tr key={component.id}>
-                        <td>
-                          <div className="employee-primary">{component.name}</div>
-                          <div className="employee-secondary">{component.code}</div>
-                        </td>
-                        <td>
-                          <span
-                            className="chip"
-                            style={chipStyle(categoryColors[component.category])}
-                          >
-                            <span className="chip-dot" />
-                            {categoryLabels[component.category]}
-                          </span>
-                        </td>
-                        <td>{component.taxable ? 'Yes' : 'No'}</td>
-                        <td>{component.recurring ? 'Yes' : 'No'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="table-shell" aria-labelledby="salary-structures-title">
-            <div className="table-title-row">
-              <div className="table-title" id="salary-structures-title">
-                Salary structures
-              </div>
-              <div className="panel-actions">
-                <div className="table-density">
-                  {loading
-                    ? 'Loading…'
-                    : `${salaryStructures.length} structure${salaryStructures.length === 1 ? '' : 's'}`}
-                </div>
-                <button className="button button-secondary" type="button" onClick={openStructureModal}>
-                  <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  New structure
-                </button>
-              </div>
-            </div>
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Structure</th>
-                    <th>Currency</th>
-                    <th>Frequency</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {salaryStructures.length === 0 ? (
-                    <tr>
-                      <td colSpan={4}>No salary structures yet.</td>
-                    </tr>
-                  ) : (
-                    salaryStructures.map((structure) => (
-                      <tr key={structure.id}>
-                        <td>
-                          <div className="employee-primary">{structure.name}</div>
-                          <div className="employee-secondary">{structure.code}</div>
-                        </td>
-                        <td>{structure.currency}</td>
-                        <td>{payFrequencyLabels[structure.payFrequency]}</td>
-                        <td>
-                          <span
-                            className="chip"
-                            style={chipStyle(structure.isActive ? 'green' : 'gray')}
-                          >
-                            <span className="chip-dot" />
-                            {structure.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
 
         <section className="table-shell" aria-labelledby="salary-history-title">
           <div className="table-title-row">
@@ -493,19 +256,32 @@ export const CompensationPage = () => {
               <div className="table-density">
                 {selectedEmployee ? fullName(selectedEmployee) : 'No employee selected'}
               </div>
-              <button className="button button-secondary" type="button" onClick={openRevisionModal}>
-                <IconCurrencyDollar size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                Revise salary
-              </button>
+              {canWriteCompensation ? (
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  onClick={openRevisionModal}
+                >
+                  <IconCurrencyDollar size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  Revise salary
+                </button>
+              ) : null}
             </div>
           </div>
           <div className="data-table-wrap">
             <table className="data-table salary-history-table">
+              <colgroup>
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '36%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Effective from</th>
                   <th>Effective to</th>
-                  <th>Annual amount</th>
+                  <th className="cell-numeric">Annual amount</th>
                   <th>Reason</th>
                   <th>Note</th>
                 </tr>
@@ -513,24 +289,34 @@ export const CompensationPage = () => {
               <tbody>
                 {revisionsError ? (
                   <tr>
-                    <td colSpan={5}>Could not load salary revisions.</td>
+                    <td className="table-empty" colSpan={5}>
+                      <EmptyState
+                        icon={IconAlertTriangle}
+                        title="Could not load salary revisions"
+                        description="Is the API running, and are you still signed in?"
+                      />
+                    </td>
                   </tr>
                 ) : loadingRevisions ? (
-                  <tr>
-                    <td colSpan={5}>Loading salary revisions…</td>
-                  </tr>
+                  <SkeletonRows columnCount={5} rows={3} />
                 ) : salaryRevisions.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>No salary revisions for this employee.</td>
+                    <td className="table-empty" colSpan={5}>
+                      <EmptyState
+                        icon={IconCurrencyDollar}
+                        title="No salary revisions for this employee"
+                        description="Use Revise salary to set the first one."
+                      />
+                    </td>
                   </tr>
                 ) : (
                   salaryRevisions.map((revision) => (
                     <tr key={revision.id}>
-                      <td>{formatDate(revision.validFrom)}</td>
-                      <td>{revision.validTo ? formatDate(revision.validTo) : 'Current'}</td>
-                      <td>{formatMoney(revision.annualAmount, revision.currency)}</td>
-                      <td>{reasonLabels[revision.reason]}</td>
-                      <td className="truncate">{revision.note ?? '—'}</td>
+                      <td data-label="Effective from">{formatDate(revision.validFrom)}</td>
+                      <td data-label="Effective to">{revision.validTo ? formatDate(revision.validTo) : 'Current'}</td>
+                      <td className="cell-numeric" data-label="Annual amount">{formatMoney(revision.annualAmount, revision.currency)}</td>
+                      <td data-label="Reason">{reasonLabels[revision.reason]}</td>
+                      <td className="truncate" data-label="Note">{revision.note ?? '—'}</td>
                     </tr>
                   ))
                 )}
@@ -539,171 +325,6 @@ export const CompensationPage = () => {
           </div>
         </section>
       </section>
-
-      <Modal
-        isOpen={openModal === 'component'}
-        onClose={closeModal}
-        title="New pay component"
-        width="md"
-      >
-        {formError ? (
-          <p className="auth-error" role="alert">
-            {formError}
-          </p>
-        ) : null}
-        <form className="config-form" onSubmit={onCreatePayComponent}>
-          <div className="field">
-            <label htmlFor="component-name">Name</label>
-            <input
-              id="component-name"
-              required
-              value={payComponentForm.name}
-              onChange={(event) =>
-                setPayComponentForm((current) => ({ ...current, name: event.target.value }))
-              }
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="component-code">Code</label>
-            <input
-              id="component-code"
-              required
-              value={payComponentForm.code}
-              onChange={(event) =>
-                setPayComponentForm((current) => ({ ...current, code: event.target.value }))
-              }
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="component-category">Category</label>
-            <select
-              id="component-category"
-              value={payComponentForm.category}
-              onChange={(event) =>
-                setPayComponentForm((current) => ({
-                  ...current,
-                  category: event.target.value as PayComponentCategory,
-                }))
-              }
-            >
-              {Object.entries(categoryLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <label className="checkbox-field">
-            <input
-              checked={payComponentForm.taxable}
-              type="checkbox"
-              onChange={(event) =>
-                setPayComponentForm((current) => ({ ...current, taxable: event.target.checked }))
-              }
-            />
-            Taxable
-          </label>
-          <label className="checkbox-field">
-            <input
-              checked={payComponentForm.recurring}
-              type="checkbox"
-              onChange={(event) =>
-                setPayComponentForm((current) => ({ ...current, recurring: event.target.checked }))
-              }
-            />
-            Recurring
-          </label>
-          <button
-            className="button button-primary button-full"
-            disabled={creatingComponent}
-            type="submit"
-          >
-            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {creatingComponent ? 'Saving…' : 'Add component'}
-          </button>
-        </form>
-      </Modal>
-
-      <Modal
-        isOpen={openModal === 'structure'}
-        onClose={closeModal}
-        title="New salary structure"
-        width="md"
-      >
-        {formError ? (
-          <p className="auth-error" role="alert">
-            {formError}
-          </p>
-        ) : null}
-        <form className="config-form" onSubmit={onCreateSalaryStructure}>
-          <div className="field">
-            <label htmlFor="structure-name">Name</label>
-            <input
-              id="structure-name"
-              required
-              value={salaryStructureForm.name}
-              onChange={(event) =>
-                setSalaryStructureForm((current) => ({ ...current, name: event.target.value }))
-              }
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="structure-code">Code</label>
-            <input
-              id="structure-code"
-              required
-              value={salaryStructureForm.code}
-              onChange={(event) =>
-                setSalaryStructureForm((current) => ({ ...current, code: event.target.value }))
-              }
-            />
-          </div>
-          <div className="field-group">
-            <div className="field">
-              <label htmlFor="structure-currency">Currency</label>
-              <input
-                id="structure-currency"
-                maxLength={3}
-                required
-                value={salaryStructureForm.currency}
-                onChange={(event) =>
-                  setSalaryStructureForm((current) => ({
-                    ...current,
-                    currency: event.target.value.toUpperCase(),
-                  }))
-                }
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="structure-frequency">Frequency</label>
-              <select
-                id="structure-frequency"
-                value={salaryStructureForm.payFrequency}
-                onChange={(event) =>
-                  setSalaryStructureForm((current) => ({
-                    ...current,
-                    payFrequency: event.target.value as PayFrequency,
-                  }))
-                }
-              >
-                {Object.entries(payFrequencyLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <button
-            className="button button-primary button-full"
-            disabled={creatingStructure}
-            type="submit"
-          >
-            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {creatingStructure ? 'Saving…' : 'Add structure'}
-          </button>
-        </form>
-      </Modal>
 
       <Modal
         isOpen={openModal === 'revision'}

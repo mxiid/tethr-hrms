@@ -165,6 +165,15 @@ export const REMOVE_INVOICE_LINE_MUTATION = gql`
   }
 `;
 
+export const UPDATE_INVOICE_LINE_MUTATION = gql`
+  mutation UpdateInvoiceLine($input: UpdateInvoiceLineInput!) {
+    updateInvoiceLine(input: $input) {
+      id
+      totalAmount
+    }
+  }
+`;
+
 export const ISSUE_INVOICE_MUTATION = gql`
   mutation IssueInvoice($invoiceId: ID!) {
     issueInvoice(invoiceId: $invoiceId) {

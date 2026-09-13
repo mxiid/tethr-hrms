@@ -25,6 +25,13 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
   const { theme } = useTheme();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  // Read through a ref so the open/close effect doesn't depend on the inline
+  // handler identity — otherwise it would re-run (and steal focus back to the
+  // dialog) on every keystroke in a form.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -33,20 +40,27 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
       }
     };
     document.addEventListener('keydown', onKeyDown);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const focusFrame = window.requestAnimationFrame(() => dialogRef.current?.focus());
+    const focusFrame = window.requestAnimationFrame(() => {
+      const dialog = dialogRef.current;
+      // A field with `autoFocus` has already taken focus during commit; only
+      // fall back to the dialog itself when nothing inside it did.
+      if (dialog && !dialog.contains(document.activeElement)) {
+        dialog.focus();
+      }
+    });
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
       window.cancelAnimationFrame(focusFrame);
       previouslyFocused.current?.focus?.();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
@@ -72,12 +86,7 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
       >
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
-          <button
-            aria-label="Close"
-            className="icon-button"
-            onClick={onClose}
-            type="button"
-          >
+          <button aria-label="Close" className="icon-button" onClick={onClose} type="button">
             <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           </button>
         </div>

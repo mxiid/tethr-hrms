@@ -1,8 +1,7 @@
-import { useApolloClient, useLazyQuery, useMutation, useQuery } from '@apollo/client';
-import { WORKSPACE_BRAND_COLORS, type PortalKind, type WorkspaceBrandColor } from '@hrms/shared';
+import { useApolloClient, useLazyQuery, useQuery } from '@apollo/client';
+import type { PortalKind, WorkspaceBrandColor } from '@hrms/shared';
 import {
   IconArrowsRightLeft,
-  IconBell,
   IconBriefcase,
   IconBuildingCommunity,
   IconChevronDown,
@@ -19,6 +18,7 @@ import {
   IconPlaneDeparture,
   IconReportMoney,
   IconSearch,
+  IconSettings,
   IconSitemap,
   IconSpeakerphone,
   IconSun,
@@ -29,7 +29,7 @@ import {
   type TablerIcon,
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   HAS_OTHER_WORKSPACES_QUERY,
@@ -39,10 +39,7 @@ import { useAuth, type WorkspaceOption } from '../modules/auth/hooks/useAuth';
 import { EMPLOYEES_QUERY } from '../modules/employees/graphql/employee.operations';
 import { INVOICES_JUMP_QUERY } from '../modules/finance/billing/graphql/billing.operations';
 import { PAYROLL_RUNS_QUERY } from '../modules/finance/payroll/graphql/payroll.operations';
-import {
-  MY_ORGANIZATION_QUERY,
-  UPDATE_MY_ORGANIZATION_BRAND_COLOR_MUTATION,
-} from '../modules/organization/graphql/organization.operations';
+import { MY_ORGANIZATION_QUERY } from '../modules/organization/graphql/organization.operations';
 import { useTheme } from '../providers/theme/useTheme';
 
 import { portalHome, portalLabel } from './portal';
@@ -235,10 +232,6 @@ export const AppShell = () => {
   }, [openMenu]);
 
   const { data: orgData } = useQuery<MyOrganizationData>(MY_ORGANIZATION_QUERY);
-  const [updateBrandColor, { loading: savingColor }] = useMutation(
-    UPDATE_MY_ORGANIZATION_BRAND_COLOR_MUTATION,
-    { refetchQueries: [{ query: MY_ORGANIZATION_QUERY }] },
-  );
   const { data: workspacesData } = useQuery<{ readonly hasOtherWorkspaces: boolean }>(
     HAS_OTHER_WORKSPACES_QUERY,
   );
@@ -417,11 +410,6 @@ export const AppShell = () => {
   const organization = orgData?.myOrganization;
   const brandColor = (organization?.brandColor ?? 'gray') as WorkspaceBrandColor;
   const chipColorVar = { '--chip-color': `var(--hrms-color-tag-${brandColor})` } as CSSProperties;
-
-  const onSelectColor = async (color: WorkspaceBrandColor): Promise<void> => {
-    if (!canManageOrganization || savingColor || color === brandColor) return;
-    await updateBrandColor({ variables: { input: { brandColor: color } } });
-  };
 
   const onLogout = async (): Promise<void> => {
     await logout();
@@ -662,9 +650,6 @@ export const AppShell = () => {
           )}
 
           <div className="topbar-actions">
-            <button className="icon-button" title="Notifications" type="button">
-              <IconBell size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
             <button
               className="icon-button"
               onClick={toggle}
@@ -699,30 +684,11 @@ export const AppShell = () => {
                     </div>
                   </div>
 
-                  {/* Only admins can repaint the workspace, so the swatches are
-                      hidden outright for everyone else rather than shown greyed
-                      out next to a note explaining why they don't work. */}
                   {canManageOrganization ? (
-                    <div className="account-dropdown-section">
-                      <div className="account-dropdown-label">Workspace color</div>
-                      <div className="color-swatch-grid">
-                        {WORKSPACE_BRAND_COLORS.map((color) => (
-                          <button
-                            key={color}
-                            aria-label={color}
-                            aria-pressed={brandColor === color}
-                            className={`color-swatch${brandColor === color ? ' is-selected' : ''}`}
-                            disabled={savingColor}
-                            style={
-                              { '--swatch-color': `var(--hrms-color-tag-${color})` } as CSSProperties
-                            }
-                            title={color}
-                            type="button"
-                            onClick={() => void onSelectColor(color)}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                    <Link className="account-dropdown-settings" to="/settings">
+                      <IconSettings size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                      Workspace settings
+                    </Link>
                   ) : null}
 
                   <button

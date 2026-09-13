@@ -1,9 +1,14 @@
 import { useMutation, useQuery } from '@apollo/client';
 import type { AnnouncementAudience } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
-import { IconDeviceFloppy, IconPin, IconSpeakerphone } from '@tabler/icons-react';
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { IconDeviceFloppy, IconFilterOff, IconPin, IconPlus, IconSpeakerphone } from '@tabler/icons-react';
+import { useMemo, useState, type FormEvent } from 'react';
 
+import { StatusChip } from '../../../components/chip/StatusChip';
+import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { FilterBar } from '../../../components/filter-bar/FilterBar';
+import { Modal } from '../../../components/modal/Modal';
+import { SkeletonText } from '../../../components/skeleton/Skeleton';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
@@ -53,10 +58,6 @@ const audienceColor: Record<AnnouncementAudience, MainColorName> = {
   employee: 'amber',
 };
 
-const chipStyle = (color: MainColorName): CSSProperties & { readonly '--chip-color': string } => ({
-  '--chip-color': `var(--hrms-color-tag-${color})`,
-});
-
 const formatDateTime = (value: string): string =>
   new Intl.DateTimeFormat('en', {
     day: '2-digit',
@@ -80,11 +81,20 @@ export const AnnouncementsPage = () => {
   const { data, loading, error, refetch } = useQuery<AnnouncementsData>(ANNOUNCEMENTS_QUERY);
   const [publishAnnouncement, { loading: publishing }] = useMutation(PUBLISH_ANNOUNCEMENT_MUTATION);
   const [form, setForm] = useState<AnnouncementForm>(emptyForm);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const announcements = useMemo(() => data?.announcements ?? [], [data]);
   const pinnedCount = announcements.filter((announcement) => announcement.isPinned).length;
+  const [filters, setFilters] = useState<Record<string, readonly string[]>>({});
+  const visibleAnnouncements = useMemo(() => {
+    const audiences = filters.audience ?? [];
+    if (audiences.length === 0) return announcements;
+    return announcements.filter((announcement) => audiences.includes(announcement.audience));
+  }, [announcements, filters]);
+  const onFilterChange = (key: string, selectedValues: readonly string[]): void =>
+    setFilters((current) => ({ ...current, [key]: selectedValues }));
 
   const onSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -104,6 +114,7 @@ export const AnnouncementsPage = () => {
       });
       setForm(emptyForm);
       setNotice('Announcement published');
+      setIsFormOpen(false);
       await refetch();
     } catch (caught) {
       setFormError(caught instanceof Error ? caught.message : 'Could not publish announcement');
@@ -111,18 +122,37 @@ export const AnnouncementsPage = () => {
   };
 
   return (
-    <main className="announcements-page">
+    <main className="page-frame page-frame-single">
       <section className="announcements-content" aria-labelledby="announcements-title">
         <header className="page-header">
           <div>
             <h1 className="page-title" id="announcements-title">
               News bulletin
             </h1>
-            <p className="page-subtitle">Pinned and recent updates for this workspace.</p>
+            <p className="page-subtitle">News and updates for your workspace.</p>
           </div>
+          {canPublish ? (
+            <div className="page-actions">
+              <button
+                className="button button-primary"
+                onClick={() => {
+                  setFormError(null);
+                  setNotice(null);
+                  setForm(emptyForm);
+                  setIsFormOpen(true);
+                }}
+                type="button"
+              >
+                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                Add announcement
+              </button>
+            </div>
+          ) : null}
         </header>
 
-        <div className="metric-strip employee-metrics">
+        {notice ? <p className="form-success">{notice}</p> : null}
+
+        <div className="metric-strip metric-strip-2 employee-metrics">
           <div className="metric-card">
             <div className="metric-label">Visible posts</div>
             <div className="metric-value">{loading ? '...' : announcements.length}</div>
@@ -131,14 +161,6 @@ export const AnnouncementsPage = () => {
             <div className="metric-label">Pinned</div>
             <div className="metric-value">{loading ? '...' : pinnedCount}</div>
           </div>
-          <div className="metric-card">
-            <div className="metric-label">Portal</div>
-            <div className="metric-value">{user?.portal ?? 'none'}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Access</div>
-            <div className="metric-value">{canPublish ? 'Publish' : 'Read'}</div>
-          </div>
         </div>
 
         <section className="table-shell">
@@ -146,29 +168,80 @@ export const AnnouncementsPage = () => {
             <div className="table-title">
               <IconSpeakerphone size={theme.icon.size.md} /> Announcements
             </div>
-            <div className="table-density">
-              {announcements.length} update{announcements.length === 1 ? '' : 's'}
+            <div className="panel-actions">
+              <FilterBar
+                filters={[
+                  {
+                    key: 'audience',
+                    label: 'Audience',
+                    options: (Object.keys(audienceLabel) as AnnouncementAudience[]).map((value) => ({
+                      value,
+                      label: audienceLabel[value],
+                    })),
+                  },
+                ]}
+                values={filters}
+                onChange={onFilterChange}
+              />
+              <div className="table-density">
+                {loading
+                  ? '…'
+                  : visibleAnnouncements.length === announcements.length
+                    ? `${announcements.length} update${announcements.length === 1 ? '' : 's'}`
+                    : `${visibleAnnouncements.length} of ${announcements.length}`}
+              </div>
             </div>
           </div>
-          {error ? <p className="table-empty">Could not load announcements.</p> : null}
-          {!error && announcements.length === 0 ? (
-            <p className="table-empty">
-              {loading ? 'Loading announcements...' : 'No announcements are visible yet.'}
-            </p>
+          {error ? (
+            <EmptyState
+              icon={IconSpeakerphone}
+              title="Could not load announcements"
+              description="Is the API running, and are you still signed in?"
+            />
+          ) : null}
+          {loading ? (
+            <div className="announcement-list">
+              <SkeletonText lines={3} />
+              <SkeletonText lines={2} />
+            </div>
+          ) : null}
+          {!loading && !error && announcements.length === 0 ? (
+            <EmptyState
+              icon={IconSpeakerphone}
+              title="No announcements yet"
+              description="Publish one to reach the whole workspace, or a single portal."
+            />
+          ) : null}
+          {!loading && !error && announcements.length > 0 && visibleAnnouncements.length === 0 ? (
+            <EmptyState
+              icon={IconFilterOff}
+              title="No announcements match this audience"
+              description="Clear the filter to see them all."
+              action={
+                <button
+                  className="button button-secondary"
+                  onClick={() => setFilters({})}
+                  type="button"
+                >
+                  Clear filters
+                </button>
+              }
+            />
           ) : null}
           <div className="announcement-list">
-            {announcements.map((announcement) => (
+            {visibleAnnouncements.map((announcement) => (
               <article className="announcement-item" key={announcement.id}>
                 <div className="announcement-meta">
-                  <span className="chip" style={chipStyle(audienceColor[announcement.audience])}>
-                    <span className="chip-dot" />
-                    {audienceLabel[announcement.audience]}
-                  </span>
+                  <StatusChip
+                    color={audienceColor[announcement.audience]}
+                    label={audienceLabel[announcement.audience]}
+                  />
                   {announcement.isPinned ? (
-                    <span className="chip" style={chipStyle('amber')}>
-                      <IconPin size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                      Pinned
-                    </span>
+                    <StatusChip
+                      color="amber"
+                      icon={<IconPin size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />}
+                      label="Pinned"
+                    />
                   ) : null}
                   <span>{formatDateTime(announcement.publishedAt)}</span>
                 </div>
@@ -185,109 +258,88 @@ export const AnnouncementsPage = () => {
         </section>
       </section>
 
-      <aside className="announcements-panel" aria-label="Announcement controls">
-        {canPublish ? (
-          <section className="self-service-section">
-            <div className="panel-title-row">
-              <div>
-                <div className="panel-kicker">Tethr HR</div>
-                <h2 className="panel-title">Publish update</h2>
-              </div>
-              <IconSpeakerphone size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+      {canPublish ? (
+        <Modal
+          isOpen={isFormOpen}
+          onClose={() => setIsFormOpen(false)}
+          title="Publish announcement"
+          width="md"
+        >
+          <form className="config-form" onSubmit={onSubmit}>
+            {formError ? (
+              <p className="auth-error" role="alert">
+                {formError}
+              </p>
+            ) : null}
+            <div className="field">
+              <label htmlFor="announcement-title">Title</label>
+              <input
+                id="announcement-title"
+                required
+                value={form.title}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, title: event.target.value }))
+                }
+              />
             </div>
-            <form className="config-form" onSubmit={onSubmit}>
-              {notice ? <p className="form-success">{notice}</p> : null}
-              {formError ? (
-                <p className="auth-error" role="alert">
-                  {formError}
-                </p>
-              ) : null}
-              <div className="field">
-                <label htmlFor="announcement-title">Title</label>
-                <input
-                  id="announcement-title"
-                  required
-                  value={form.title}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, title: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="announcement-audience">Audience</label>
-                <select
-                  id="announcement-audience"
-                  value={form.audience}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      audience: event.target.value as AnnouncementAudience,
-                    }))
-                  }
-                >
-                  {Object.entries(audienceLabel).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="announcement-body">Message</label>
-                <textarea
-                  id="announcement-body"
-                  required
-                  value={form.body}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, body: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="announcement-expires">Expires</label>
-                <input
-                  id="announcement-expires"
-                  type="date"
-                  value={form.expiresAt}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, expiresAt: event.target.value }))
-                  }
-                />
-              </div>
-              <label className="checkbox-field">
-                <input
-                  checked={form.isPinned}
-                  type="checkbox"
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, isPinned: event.target.checked }))
-                  }
-                />
-                Pin this update
-              </label>
-              <button className="button button-primary" disabled={publishing} type="submit">
-                <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                {publishing ? 'Publishing...' : 'Publish'}
-              </button>
-            </form>
-          </section>
-        ) : (
-          <section className="self-service-section">
-            <div className="panel-kicker">Bulletin</div>
-            <div className="field-list">
-              <div className="field-row">
-                <span className="field-label">Newest</span>
-                <span className="field-value">
-                  {announcements[0] ? formatDate(announcements[0].publishedAt) : '-'}
-                </span>
-              </div>
-              <div className="field-row">
-                <span className="field-label">Pinned</span>
-                <span className="field-value">{pinnedCount}</span>
-              </div>
+            <div className="field">
+              <label htmlFor="announcement-audience">Audience</label>
+              <select
+                id="announcement-audience"
+                value={form.audience}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    audience: event.target.value as AnnouncementAudience,
+                  }))
+                }
+              >
+                {Object.entries(audienceLabel).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
-          </section>
-        )}
-      </aside>
+            <div className="field">
+              <label htmlFor="announcement-body">Message</label>
+              <textarea
+                id="announcement-body"
+                required
+                value={form.body}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, body: event.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="announcement-expires">Expires</label>
+              <input
+                id="announcement-expires"
+                type="date"
+                value={form.expiresAt}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, expiresAt: event.target.value }))
+                }
+              />
+            </div>
+            <label className="checkbox-field">
+              <input
+                checked={form.isPinned}
+                type="checkbox"
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, isPinned: event.target.checked }))
+                }
+              />
+              Pin this update
+            </label>
+            <button className="button button-primary" disabled={publishing} type="submit">
+              <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              {publishing ? 'Publishing...' : 'Publish'}
+            </button>
+          </form>
+        </Modal>
+      ) : null}
     </main>
   );
 };

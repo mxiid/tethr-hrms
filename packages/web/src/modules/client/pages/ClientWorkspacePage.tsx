@@ -8,15 +8,19 @@ import {
   IconChevronDown,
   IconCircleCheck,
   IconCurrencyDollar,
+  IconFileInvoice,
   IconLock,
   IconUserPlus,
   IconUsersGroup,
   type TablerIcon,
 } from '@tabler/icons-react';
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../app/download';
+import { StatusChip } from '../../../components/chip/StatusChip';
+import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { SkeletonRows } from '../../../components/skeleton/Skeleton';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
@@ -168,7 +172,7 @@ export const ClientWorkspacePage = () => {
             <h1 className="page-title" id="client-workspace-title">
               People overview
             </h1>
-            <p className="page-subtitle">Your workforce and the actions that affect it.</p>
+            <p className="page-subtitle">Your team, and what needs your attention.</p>
           </div>
         </header>
 
@@ -243,13 +247,20 @@ export const ClientWorkspacePage = () => {
             </Link>
           </div>
           {error ? (
-            <p className="table-empty">
-              Could not load employees. Check that the API is running and this account has client
-              access.
-            </p>
+            <EmptyState
+              icon={IconUsersGroup}
+              title="Could not load employees"
+              description="Check that the API is running and this account has client access."
+            />
           ) : (
             <div className="data-table-wrap">
               <table className="data-table client-employee-table">
+                <colgroup>
+                  <col style={{ width: '34%' }} />
+                  <col style={{ width: '28%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '20%' }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Employee</th>
@@ -259,35 +270,34 @@ export const ClientWorkspacePage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.slice(0, 8).map((employee) => (
-                    <tr key={employee.id}>
-                      <td>
-                        <div className="employee-primary">
-                          {employee.firstName} {employee.lastName}
-                        </div>
-                        <div className="employee-secondary">{employee.employeeNumber}</div>
-                      </td>
-                      <td>{employee.workEmail ?? '—'}</td>
-                      <td>{formatDate(employee.hireDate)}</td>
-                      <td>
-                        <span
-                          className="chip"
-                          style={
-                            {
-                              '--chip-color': `var(--hrms-color-tag-${statusColors[employee.employmentStatus]})`,
-                            } as CSSProperties
-                          }
-                        >
-                          <span className="chip-dot" />
-                          {statusLabels[employee.employmentStatus]}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {loading ? <SkeletonRows columnCount={4} rows={4} /> : null}
+                  {!loading &&
+                    employees.slice(0, 8).map((employee) => (
+                      <tr key={employee.id}>
+                        <td data-label="Employee">
+                          <div className="employee-primary">
+                            {employee.firstName} {employee.lastName}
+                          </div>
+                          <div className="employee-secondary">{employee.employeeNumber}</div>
+                        </td>
+                        <td data-label="Work email">{employee.workEmail ?? '—'}</td>
+                        <td data-label="Joined">{formatDate(employee.hireDate)}</td>
+                        <td data-label="Employment">
+                          <StatusChip
+                            color={statusColors[employee.employmentStatus]}
+                            label={statusLabels[employee.employmentStatus]}
+                          />
+                        </td>
+                      </tr>
+                    ))}
                   {!loading && employees.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="table-empty">
-                        No employees are available in this workspace yet.
+                        <EmptyState
+                          icon={IconUsersGroup}
+                          title="No employees in this workspace yet"
+                          description="They appear here once Tethr onboards them."
+                        />
                       </td>
                     </tr>
                   ) : null}
@@ -400,43 +410,59 @@ function ClientInvoicesSection() {
     <section className="table-shell" aria-labelledby="client-invoices-title">
       <div className="table-title-row">
         <div className="table-title" id="client-invoices-title">Invoices</div>
-        <div className="table-density">{loading ? 'Loading…' : `${rows.length}`}</div>
+        <div className="table-density">{loading ? '…' : `${rows.length}`}</div>
       </div>
       <div className="data-table-wrap">
         <table className="data-table">
+          <colgroup>
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '28%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '8%' }} />
+          </colgroup>
           <thead>
             <tr>
               <th>Number</th>
               <th>Covers</th>
               <th>Issued</th>
               <th>Due</th>
-              <th>Total</th>
+              <th className="cell-numeric">Total</th>
               <th>Status</th>
               <th aria-label="Download" />
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && !loading ? (
-              <tr><td colSpan={7}>No invoices issued yet.</td></tr>
-            ) : (
+            {loading ? <SkeletonRows columnCount={7} rows={3} /> : null}
+            {!loading && rows.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="table-empty">
+                  <EmptyState
+                    icon={IconFileInvoice}
+                    title="No invoices issued yet"
+                    description="They appear here as soon as Tethr issues them."
+                  />
+                </td>
+              </tr>
+            ) : null}
+            {!loading &&
               rows.map((invoice) => (
                 <tr key={invoice.id}>
-                  <td><span className="employee-primary">{invoice.number}</span></td>
-                  <td>{`${invoice.groupName ?? ''} ${invoice.type} · ${invoiceMonthNames[invoice.serviceMonth - 1]} ${invoice.serviceYear}`}</td>
-                  <td>{invoice.issueDate}</td>
-                  <td>{invoice.dueDate}</td>
-                  <td><strong>{money(invoice.totalAmount, invoice.currency)}</strong></td>
-                  <td>
-                    <span
-                      className="chip"
-                      style={{ '--chip-color': `var(--hrms-color-tag-${invoice.status === 'paid' ? 'green' : 'blue'})` } as CSSProperties}
-                    >
-                      <span className="chip-dot" />
-                      {invoice.status}
-                    </span>
+                  <td data-label="Number"><span className="employee-primary">{invoice.number}</span></td>
+                  <td data-label="Covers">{`${invoice.groupName ?? ''} ${invoice.type} · ${invoiceMonthNames[invoice.serviceMonth - 1]} ${invoice.serviceYear}`}</td>
+                  <td data-label="Issued">{invoice.issueDate}</td>
+                  <td data-label="Due">{invoice.dueDate}</td>
+                  <td className="cell-numeric" data-label="Total"><strong>{money(invoice.totalAmount, invoice.currency)}</strong></td>
+                  <td data-label="Status">
+                    <StatusChip
+                      color={invoice.status === 'paid' ? 'green' : 'blue'}
+                      label={invoiceStatusLabels[invoice.status] ?? invoice.status}
+                    />
                   </td>
-                  <td>
-                    <span className="row-actions">
+                  <td data-label="Download">
+                    <span className="row-actions row-hover-action">
                       <button
                         className="button button-secondary"
                         type="button"
@@ -464,8 +490,7 @@ function ClientInvoicesSection() {
                     </span>
                   </td>
                 </tr>
-              ))
-            )}
+              ))}
           </tbody>
         </table>
       </div>
@@ -473,6 +498,12 @@ function ClientInvoicesSection() {
     </section>
   );
 }
+
+const invoiceStatusLabels: Record<string, string> = {
+  draft: 'Draft',
+  issued: 'Issued',
+  paid: 'Paid',
+};
 
 type ClientCostBreakdown = {
   readonly totalBilled: number;
@@ -516,10 +547,14 @@ function ClientSpendSection() {
       </div>
       <div className="data-table-wrap">
         <table className="data-table">
+          <colgroup>
+            <col style={{ width: '60%' }} />
+            <col style={{ width: '40%' }} />
+          </colgroup>
           <thead>
             <tr>
               <th>Employee</th>
-              <th>Billed to date</th>
+              <th className="cell-numeric">Billed to date</th>
             </tr>
           </thead>
           <tbody>
@@ -530,7 +565,7 @@ function ClientSpendSection() {
                     {entry.employeeName ?? entry.employeeId}
                   </Link>
                 </td>
-                <td>{money(entry.total, breakdown.currency)}</td>
+                <td className="cell-numeric">{money(entry.total, breakdown.currency)}</td>
               </tr>
             ))}
           </tbody>

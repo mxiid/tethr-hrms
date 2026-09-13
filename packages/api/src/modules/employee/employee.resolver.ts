@@ -271,25 +271,49 @@ export class EmployeeResolver {
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async updateEmployee(@Args('input') input: UpdateEmployeeInput): Promise<EmployeeType> {
     const user = await this.authService.getCurrentUser().catch(() => null);
+    // Absent (`undefined`) means "leave alone"; explicit `null` means "clear".
+    // Collapsing both with `??` made every cleared field silently revert.
     const employee = await this.employeeService.update(
       input.employeeId,
       {
-        firstName: input.firstName ?? undefined,
-        middleName: input.middleName ?? undefined,
-        lastName: input.lastName ?? undefined,
-        salutation: (input.salutation as Salutation | undefined) ?? undefined,
-        workEmail: input.workEmail ?? undefined,
-        roleTitle: input.roleTitle ?? undefined,
-        dateOfBirth: (input.dateOfBirth as IsoDate | undefined) ?? undefined,
-        probationEndDate: (input.probationEndDate as IsoDate | undefined) ?? undefined,
-        hireDate: (input.hireDate as IsoDate | undefined) ?? undefined,
-        scheduledConfirmationDate: (input.scheduledConfirmationDate as IsoDate | undefined) ?? undefined,
-        finalConfirmationDate: (input.finalConfirmationDate as IsoDate | undefined) ?? undefined,
-        contractEndDate: (input.contractEndDate as IsoDate | undefined) ?? undefined,
-        noticePeriodDays: input.noticePeriodDays ?? undefined,
-        retirementDate: (input.retirementDate as IsoDate | undefined) ?? undefined,
-        holidayCalendarId: input.holidayCalendarId ? toId<HolidayCalendarId>(input.holidayCalendarId) : undefined,
-        workerType: (input.workerType as WorkerType | undefined) ?? undefined,
+        firstName: input.firstName,
+        middleName: input.middleName,
+        lastName: input.lastName,
+        salutation: input.salutation === undefined ? undefined : (input.salutation as Salutation | null),
+        workEmail: input.workEmail,
+        roleTitle: input.roleTitle,
+        dateOfBirth:
+          input.dateOfBirth === undefined ? undefined : (input.dateOfBirth as IsoDate | null),
+        probationEndDate:
+          input.probationEndDate === undefined
+            ? undefined
+            : (input.probationEndDate as IsoDate | null),
+        hireDate: input.hireDate === undefined ? undefined : (input.hireDate as IsoDate | null),
+        scheduledConfirmationDate:
+          input.scheduledConfirmationDate === undefined
+            ? undefined
+            : (input.scheduledConfirmationDate as IsoDate | null),
+        finalConfirmationDate:
+          input.finalConfirmationDate === undefined
+            ? undefined
+            : (input.finalConfirmationDate as IsoDate | null),
+        contractEndDate:
+          input.contractEndDate === undefined
+            ? undefined
+            : (input.contractEndDate as IsoDate | null),
+        noticePeriodDays: input.noticePeriodDays,
+        retirementDate:
+          input.retirementDate === undefined
+            ? undefined
+            : (input.retirementDate as IsoDate | null),
+        holidayCalendarId:
+          input.holidayCalendarId === undefined
+            ? undefined
+            : input.holidayCalendarId === null
+              ? null
+              : toId<HolidayCalendarId>(input.holidayCalendarId),
+        workerType:
+          input.workerType === undefined ? undefined : (input.workerType as WorkerType | null),
       },
       user ? toId<UserId>(user.id) : null,
     );

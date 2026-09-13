@@ -2,14 +2,26 @@ import { useMutation, useQuery } from '@apollo/client';
 import type { ApprovalStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
+  IconAlertTriangle,
   IconCheck,
   IconClock,
+  IconFilterOff,
   IconPlaneDeparture,
   IconUserCheck,
   IconX,
 } from '@tabler/icons-react';
-import { useMemo, useState, type CSSProperties, type FormEvent, type MouseEvent } from 'react';
+import { useMemo, useState, type FormEvent, type MouseEvent } from 'react';
 
+import { StatusChip } from '../../../components/chip/StatusChip';
+import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { SidePanel } from '../../../components/side-panel/SidePanel';
+import {
+  DataTable,
+  toViewColumns,
+  type ColumnDefinition,
+} from '../../../components/table/DataTable';
+import { useListView } from '../../../components/view-bar/useListView';
+import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
@@ -59,10 +71,6 @@ const statusColor: Record<ApprovalStatus, MainColorName> = {
   cancelled: 'gray',
 };
 
-const chipStyle = (color: MainColorName): CSSProperties & { readonly '--chip-color': string } => ({
-  '--chip-color': `var(--hrms-color-tag-${color})`,
-});
-
 const formatDate = (value: string): string =>
   new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
     new Date(`${value}T00:00:00`),
@@ -95,7 +103,89 @@ export const LeaveTriagePage = () => {
     [data?.leaveTypes],
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = requests.find((request) => request.id === selectedId) ?? requests[0] ?? null;
+  const selected = requests.find((request) => request.id === selectedId) ?? null;
+  const view = useListView({ routeKey: '/leave' });
+  const visibleRequests = useMemo(
+    () =>
+      requests.filter((request) => {
+        const statuses = view.filters.status ?? [];
+        const types = view.filters.type ?? [];
+        if (statuses.length > 0 && !statuses.includes(request.status)) return false;
+        if (types.length > 0 && !types.includes(request.leaveTypeId)) return false;
+        return true;
+      }),
+    [requests, view.filters.status, view.filters.type],
+  );
+  const columns: readonly ColumnDefinition<LeaveRequestRecord>[] = [
+    {
+      key: 'employee',
+      header: 'Employee',
+      width: '24%',
+      hideable: false,
+      sortValue: (request) => fullName(employees.get(request.employeeId)),
+      render: (request) => {
+        const employee = employees.get(request.employeeId);
+        return (
+          <>
+            <div className="employee-primary">{fullName(employee)}</div>
+            <div className="employee-secondary">
+              {employee?.employeeNumber ?? request.employeeId}
+            </div>
+          </>
+        );
+      },
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      width: '16%',
+      sortValue: (request) => leaveTypes.get(request.leaveTypeId)?.name ?? 'Leave',
+      render: (request) => leaveTypes.get(request.leaveTypeId)?.name ?? 'Leave',
+    },
+    {
+      key: 'dates',
+      header: 'Dates',
+      width: '30%',
+      sortValue: (request) => request.startDate,
+      render: (request) => `${formatDate(request.startDate)} - ${formatDate(request.endDate)}`,
+    },
+    {
+      key: 'days',
+      header: 'Days',
+      width: '12%',
+      align: 'right',
+      sortValue: (request) => request.dayCount,
+      render: (request) => request.dayCount.toFixed(1),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: '18%',
+      hideable: false,
+      sortValue: (request) => request.status,
+      render: (request) => (
+        <StatusChip color={statusColor[request.status]} label={statusLabel[request.status]} />
+      ),
+    },
+  ];
+  const filters = [
+    {
+      key: 'status',
+      label: 'Status',
+      options: (Object.keys(statusLabel) as ApprovalStatus[]).map((value) => ({
+        value,
+        label: statusLabel[value],
+      })),
+    },
+    {
+      key: 'type',
+      label: 'Type',
+      options: [...leaveTypes.values()].map((leaveType) => ({
+        value: leaveType.id,
+        label: leaveType.name,
+      })),
+    },
+  ];
   const selectedEmployee = selected ? employees.get(selected.employeeId) : undefined;
   const [note, setNote] = useState('');
   const [decisionError, setDecisionError] = useState<string | null>(null);
@@ -157,18 +247,18 @@ export const LeaveTriagePage = () => {
   };
 
   return (
-    <main className="leave-page">
+    <main className="list-with-panel">
       <section className="leave-content" aria-labelledby="leave-title">
         <header className="page-header">
           <div>
             <h1 className="page-title" id="leave-title">
               Leave triage
             </h1>
-            <p className="page-subtitle">Team leave requests across employees and clients.</p>
+            <p className="page-subtitle">Review and decide on time-off requests.</p>
           </div>
         </header>
 
-        <div className="metric-strip employee-metrics">
+        <div className="metric-strip metric-strip-3 employee-metrics">
           <div className="metric-card">
             <div className="metric-label">Pending</div>
             <div className="metric-value">{loading ? '...' : pendingCount}</div>
@@ -183,82 +273,63 @@ export const LeaveTriagePage = () => {
             <div className="metric-label">Total</div>
             <div className="metric-value">{loading ? '...' : requests.length}</div>
           </div>
-          <div className="metric-card">
-            <div className="metric-label">Mode</div>
-            <div className="metric-value">{canDecide ? 'Triage' : 'Monitor'}</div>
-          </div>
         </div>
 
-        <section className="table-shell">
-          <div className="table-title-row">
-            <div className="table-title">
-              <IconPlaneDeparture size={theme.icon.size.md} /> Requests
-            </div>
-            <div className="table-density">
-              {requests.length} request{requests.length === 1 ? '' : 's'}
-            </div>
-          </div>
-          <div className="data-table-wrap">
-            <table className="data-table leave-triage-table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Type</th>
-                  <th>Dates</th>
-                  <th>Days</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {error ? (
-                  <tr>
-                    <td colSpan={5} className="table-empty">
-                      Could not load leave requests.
-                    </td>
-                  </tr>
-                ) : null}
-                {!error && requests.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="table-empty">
-                      {loading ? 'Loading leave requests...' : 'No leave requests yet.'}
-                    </td>
-                  </tr>
-                ) : null}
-                {requests.map((request) => {
-                  const employee = employees.get(request.employeeId);
-                  return (
-                    <tr
-                      className={request.id === selected?.id ? 'is-selected' : ''}
-                      key={request.id}
-                      onClick={() => setSelectedId(request.id)}
-                    >
-                      <td>
-                        <div className="employee-primary">{fullName(employee)}</div>
-                        <div className="employee-secondary">
-                          {employee?.employeeNumber ?? request.employeeId}
-                        </div>
-                      </td>
-                      <td>{leaveTypes.get(request.leaveTypeId)?.name ?? 'Leave'}</td>
-                      <td>
-                        {formatDate(request.startDate)} - {formatDate(request.endDate)}
-                      </td>
-                      <td>{request.dayCount.toFixed(1)}</td>
-                      <td>
-                        <span className="chip" style={chipStyle(statusColor[request.status])}>
-                          <span className="chip-dot" />
-                          {statusLabel[request.status]}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <section className="table-shell" aria-label="Leave requests">
+          <ViewBar
+            columns={toViewColumns(columns)}
+            count={visibleRequests.length}
+            filters={filters}
+            view={view}
+            viewLabel="All requests"
+          />
+          <DataTable
+            columns={columns}
+            emptyState={
+              error ? (
+                <EmptyState
+                  icon={IconAlertTriangle}
+                  title="Could not load leave requests"
+                  description="Is the API running, and are you still signed in?"
+                />
+              ) : requests.length === 0 ? (
+                <EmptyState
+                  icon={IconPlaneDeparture}
+                  title="No leave requests yet"
+                  description="Requests submitted by employees will show up here for review."
+                />
+              ) : (
+                <EmptyState
+                  icon={IconFilterOff}
+                  title="No requests match these filters"
+                  description="Clear a filter to see more."
+                  action={
+                    <button className="button button-secondary" onClick={view.clearFilters} type="button">
+                      Clear filters
+                    </button>
+                  }
+                />
+              )
+            }
+            getRowKey={(request) => request.id}
+            hiddenColumns={view.hiddenColumns}
+            loading={loading && !error}
+            onHideColumn={view.hideColumn}
+            onRowClick={(request) => setSelectedId(request.id)}
+            onSort={view.setSort}
+            rows={error ? [] : visibleRequests}
+            selectedRowKey={selected?.id ?? null}
+            sorts={view.sorts}
+            tableClassName="data-table leave-triage-table"
+          />
         </section>
       </section>
 
-      <aside className="leave-panel" aria-label="Leave request details">
+      <SidePanel
+        isOpen={selected != null}
+        onClose={() => setSelectedId(null)}
+        title="Leave request"
+      >
         {selected ? (
           <section className="self-service-section">
             <div className="panel-title-row">
@@ -274,10 +345,7 @@ export const LeaveTriagePage = () => {
             <div className="field-list">
               <div className="field-row">
                 <span className="field-label">Status</span>
-                <span className="chip" style={chipStyle(statusColor[selected.status])}>
-                  <span className="chip-dot" />
-                  {statusLabel[selected.status]}
-                </span>
+                <StatusChip color={statusColor[selected.status]} label={statusLabel[selected.status]} />
               </div>
               <div className="field-row">
                 <span className="field-label">Dates</span>
@@ -345,10 +413,8 @@ export const LeaveTriagePage = () => {
               </form>
             ) : null}
           </section>
-        ) : (
-          <p className="page-subtitle">Select a request to review it.</p>
-        )}
-      </aside>
+        ) : null}
+      </SidePanel>
     </main>
   );
 };

@@ -1,7 +1,16 @@
 import { useMutation, useQuery } from '@apollo/client';
-import { IconBuildingCommunity, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBuildingCommunity, IconFilterOff, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 
+import { StatusChip } from '../../../components/chip/StatusChip';
+import { EmptyState } from '../../../components/empty-state/EmptyState';
+import {
+  DataTable,
+  toViewColumns,
+  type ColumnDefinition,
+} from '../../../components/table/DataTable';
+import { useListView } from '../../../components/view-bar/useListView';
+import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
 import {
   NEW_CLIENT_OPTION,
@@ -68,6 +77,59 @@ export const ClientPortfolioPage = () => {
   const totalWorkspaces = clients.reduce((sum, client) => sum + client.workspaces.length, 0);
   const clientsWithWorkspace = clients.filter((client) => client.workspaces.length > 0).length;
   const incompleteClients = clients.filter((client) => client.workspaces.length === 0);
+  const view = useListView({ routeKey: '/clients' });
+  const visibleClients = useMemo(() => {
+    const currencies = view.filters.currency ?? [];
+    if (currencies.length === 0) return clients;
+    return clients.filter((client) =>
+      client.workspaces.some((workspace) => currencies.includes(workspace.defaultCurrency)),
+    );
+  }, [clients, view.filters.currency]);
+  const columns: readonly ColumnDefinition<ClientRecord>[] = [
+    {
+      key: 'client',
+      header: 'Client',
+      width: '30%',
+      hideable: false,
+      sortValue: (client) => client.name,
+      render: (client) => <div className="employee-primary">{client.name}</div>,
+    },
+    {
+      key: 'workspaces',
+      header: 'Workspaces',
+      width: '30%',
+      sortValue: (client) => client.workspaces.length,
+      render: (client) =>
+        client.workspaces.length === 0
+          ? '-'
+          : client.workspaces.map((workspace) => workspace.displayName).join(', '),
+    },
+    {
+      key: 'currencies',
+      header: 'Currencies',
+      width: '22%',
+      sortValue: (client) =>
+        Array.from(new Set(client.workspaces.map((workspace) => workspace.defaultCurrency))).join(', '),
+      render: (client) =>
+        Array.from(
+          new Set(client.workspaces.map((workspace) => workspace.defaultCurrency)),
+        ).join(', ') || '-',
+    },
+    {
+      key: 'created',
+      header: 'Created',
+      width: '18%',
+      sortValue: (client) => client.createdAt,
+      render: (client) => formatDate(client.createdAt),
+    },
+  ];
+  const filters = [
+    {
+      key: 'currency',
+      label: 'Currency',
+      options: currencyList.map((currency) => ({ value: currency, label: currency })),
+    },
+  ];
   const isDemoClient = (name: string): boolean => /\(demo\)/i.test(name);
   const liveClientCount = clients.filter((client) => !isDemoClient(client.name)).length;
   const demoClientCount = clients.length - liveClientCount;
@@ -138,7 +200,7 @@ export const ClientPortfolioPage = () => {
             <h1 className="page-title" id="client-portfolio-title">
               Client portfolio
             </h1>
-            <p className="page-subtitle">Clients and their workspaces, managed by Tethr Admin.</p>
+            <p className="page-subtitle">Your clients and the workspaces they use.</p>
           </div>
           <div className="page-actions">
             <button
@@ -175,64 +237,68 @@ export const ClientPortfolioPage = () => {
 
         {notice ? <p className="form-success">{notice}</p> : null}
 
-        <section className="table-shell">
-          <div className="table-title-row">
-            <div className="table-title">
-              <IconBuildingCommunity size={theme.icon.size.md} />
-              Clients
-            </div>
-            <button
-              className="icon-button"
-              onClick={() => void refetch()}
-              title="Refresh clients"
-              type="button"
-            >
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
-          </div>
-          {error ? (
-            <p className="table-empty">Could not load clients.</p>
-          ) : (
-            <div className="data-table-wrap">
-              <table className="data-table client-portfolio-table">
-                <thead>
-                  <tr>
-                    <th>Client</th>
-                    <th>Workspaces</th>
-                    <th>Currencies</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {clients.map((client) => (
-                    <tr key={client.id}>
-                      <td>
-                        <div className="employee-primary">{client.name}</div>
-                      </td>
-                      <td data-label="Workspaces">
-                        {client.workspaces.length === 0
-                          ? '-'
-                          : client.workspaces.map((workspace) => workspace.displayName).join(', ')}
-                      </td>
-                      <td data-label="Currencies">
-                        {Array.from(
-                          new Set(client.workspaces.map((workspace) => workspace.defaultCurrency)),
-                        ).join(', ') || '-'}
-                      </td>
-                      <td data-label="Created">{formatDate(client.createdAt)}</td>
-                    </tr>
-                  ))}
-                  {!loading && clients.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="table-empty">
-                        No clients onboarded yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <section className="table-shell" aria-label="Clients">
+          <ViewBar
+            actions={
+              <button
+                className="icon-button"
+                onClick={() => void refetch()}
+                title="Refresh clients"
+                type="button"
+              >
+                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            }
+            columns={toViewColumns(columns)}
+            count={visibleClients.length}
+            filters={filters}
+            view={view}
+            viewLabel="All clients"
+          />
+          <DataTable
+            columns={columns}
+            emptyState={
+              error ? (
+                <EmptyState
+                  icon={IconAlertTriangle}
+                  title="Could not load clients"
+                  description="Is the API running, and are you still signed in?"
+                />
+              ) : clients.length === 0 ? (
+                <EmptyState
+                  icon={IconBuildingCommunity}
+                  title="No clients onboarded yet"
+                  description="Onboard the first workspace to start the portfolio."
+                  action={
+                    <button className="button button-secondary" onClick={() => startOnboarding()} type="button">
+                      <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      New workspace
+                    </button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  icon={IconFilterOff}
+                  title="No clients match this currency"
+                  description="Clear the filter to see the whole portfolio."
+                  action={
+                    <button className="button button-secondary" onClick={view.clearFilters} type="button">
+                      Clear filters
+                    </button>
+                  }
+                />
+              )
+            }
+            getRowKey={(client) => client.id}
+            hiddenColumns={view.hiddenColumns}
+            loading={loading && !error}
+            onHideColumn={view.hideColumn}
+            onSort={view.setSort}
+            rows={error ? [] : visibleClients}
+            skeletonRows={4}
+            sorts={view.sorts}
+            tableClassName="data-table client-portfolio-table"
+          />
         </section>
       </section>
 
@@ -281,7 +347,7 @@ export const ClientPortfolioPage = () => {
           <div className="section-title-row">
             <h3 className="section-title">Needs attention</h3>
             {incompleteClients.length > 0 ? (
-              <span className="chip chip-amber">{incompleteClients.length}</span>
+              <StatusChip color="amber" label={String(incompleteClients.length)} showDot={false} />
             ) : null}
           </div>
           {incompleteClients.length === 0 ? (
