@@ -8,9 +8,9 @@ export type EmailMessage = {
   readonly text: string;
 };
 
-export interface EmailTransport {
+export type EmailTransport = {
   send(message: EmailMessage): Promise<void>;
-}
+};
 
 // Resend over HTTP — one POST, no SDK. The API key is server-only; the web app
 // never sees it (unlike a client-side email SDK).

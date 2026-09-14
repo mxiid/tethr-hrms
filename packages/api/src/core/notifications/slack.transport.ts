@@ -2,9 +2,9 @@ import { Logger } from '@nestjs/common';
 
 import { ValidationFailedError } from '../../common/errors';
 
-export interface SlackTransport {
+export type SlackTransport = {
   post(text: string): Promise<void>;
-}
+};
 
 // Incoming-webhook delivery. Slack responds with "ok" (200) on success.
 export class WebhookSlackTransport implements SlackTransport {
