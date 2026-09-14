@@ -1,5 +1,8 @@
 import type { PortalKind } from '@hrms/shared';
 
+// One home per portal, no duplication. Tethr manages many clients and has no
+// hand-built overview, so the customizable widget Dashboard is its home. Client
+// and employee each have a purpose-built landing page instead.
 export const portalHome = (portal: PortalKind): string => {
   if (portal === 'tethr') return '/dashboard';
   if (portal === 'client') return '/client';

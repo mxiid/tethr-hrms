@@ -11,6 +11,8 @@ import { DatabaseModule } from './core/database/database.module';
 import { DocumentsModule } from './core/documents/documents.module';
 import { EventsModule } from './core/events/events.module';
 import { NotificationModule } from './core/notifications/notification.module';
+import { QueueModule } from './core/queue/queue.module';
+import { PlatformScopeModule } from './core/tenancy/platform-scope.module';
 import { TenancyModule } from './core/tenancy/tenancy.module';
 import { TenantContextMiddleware } from './core/tenancy/tenant-context.middleware';
 import { WorkflowModule } from './core/workflow/workflow.module';
@@ -18,15 +20,14 @@ import { HealthResolver } from './health/health.resolver';
 import { AccountModule } from './modules/account/account.module';
 import { AssignmentModule } from './modules/assignment/assignment.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
-import { BillingModule } from './modules/billing';
 import { ClientsModule } from './modules/clients/clients.module';
-import { CompensationModule } from './modules/compensation/compensation.module';
 import { EmployeeModule } from './modules/employee/employee.module';
 import { EmployeeRecordsModule } from './modules/employee-records/employee-records.module';
 import { EngagementModule } from './modules/engagement/engagement.module';
+import { FinanceModule } from './modules/finance';
+import { FormsModule } from './modules/forms/forms.module';
 import { LeaveModule } from './modules/leave/leave.module';
 import { OrganizationModule } from './modules/organization/organization.module';
-import { PayrollModule } from './modules/payroll';
 import { PositionModule } from './modules/position/position.module';
 import { RecruitmentModule } from './modules/recruitment/recruitment.module';
 
@@ -37,12 +38,14 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
     ConfigModule,
     DatabaseModule,
     TenancyModule,
+    PlatformScopeModule,
     EventsModule,
     AuditModule,
     AuthModule,
     AuthzModule,
     WorkflowModule,
     NotificationModule,
+    QueueModule,
     DocumentsModule,
     // Code-first GraphQL. Schema is generated in memory at boot from the
     // decorators on resolvers and types (architecture.md §2.5, §11).
@@ -65,10 +68,9 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
     AssignmentModule,
     LeaveModule,
     AttendanceModule,
-    CompensationModule,
-    PayrollModule,
-    BillingModule,
+    FinanceModule,
     RecruitmentModule,
+    FormsModule,
     EngagementModule,
     EmployeeRecordsModule,
     AccountModule,

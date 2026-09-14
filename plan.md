@@ -229,7 +229,10 @@ packages/
 │           ├── leave/
 │           ├── attendance/
 │           ├── compensation/
-│           ├── payroll/
+│           ├── finance/        # money-movement group: pay + payroll + billing
+│           │   ├── compensation/   # the nav's "Pay"
+│           │   ├── payroll/
+│           │   └── billing/
 │           └── …
 ├── worker/                 # background jobs (payroll runs, accruals, reports)
 ├── web/                    # frontend SPA — feature module per HR module

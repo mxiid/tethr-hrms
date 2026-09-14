@@ -1,23 +1,36 @@
-import { useMutation, useQuery } from '@apollo/client';
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import type { ApprovalStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconCalendarEvent,
+  IconArrowLeft,
+  IconFileText,
+  IconChevronRight,
   IconClock,
-  IconDeviceFloppy,
   IconMessageCircle,
   IconPlaneDeparture,
+  IconPlayerPlay,
+  IconPlayerStop,
   IconSpeakerphone,
-  IconUserCircle,
+  type TablerIcon,
 } from '@tabler/icons-react';
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { Fragment, useMemo, useState, type FormEvent } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 
+import { downloadBase64File } from '../../../app/download';
+import { StatusChip } from '../../../components/chip/StatusChip';
 import { useTheme } from '../../../providers/theme/useTheme';
+import { ClockInOutCard } from '../../attendance/components/ClockInOutCard';
+import { useSelfClock } from '../../attendance/hooks/useSelfClock';
 import { SUBMIT_MY_FEEDBACK_MUTATION } from '../../engagement/graphql/engagement.operations';
+import {
+  MY_PAYSLIP_PDF_QUERY,
+  MY_PAYSLIP_QUERY,
+  MY_PAYSLIPS_QUERY,
+} from '../../finance/payroll/graphql/payroll.operations';
 import {
   MY_WORKSPACE_QUERY,
   SUBMIT_MY_LEAVE_REQUEST_MUTATION,
-  UPDATE_MY_EMPLOYEE_PROFILE_MUTATION,
 } from '../graphql/self-service.operations';
 
 type EmployeeRecord = {
@@ -109,16 +122,6 @@ type SalaryRecord = {
   readonly reason: string;
 };
 
-type AnnouncementRecord = {
-  readonly id: string;
-  readonly title: string;
-  readonly body: string;
-  readonly audience: string;
-  readonly isPinned: boolean;
-  readonly publishedAt: string;
-  readonly expiresAt: string | null;
-};
-
 type WorkspaceData = {
   readonly myEmployee: EmployeeRecord;
   readonly myEmployeeProfile: EmployeeProfileRecord | null;
@@ -130,56 +133,71 @@ type WorkspaceData = {
   readonly myLeaveRequests: readonly LeaveRequestRecord[];
   readonly upcomingHolidays: readonly HolidayRecord[];
   readonly myCurrentSalaryRevision: SalaryRecord | null;
-  readonly announcements: readonly AnnouncementRecord[];
 };
 
-type ProfileForm = {
-  photoUrl: string;
-  personalEmail: string;
-  phone: string;
-  addressLine1: string;
-  addressLine2: string;
-  city: string;
-  region: string;
-  countryCode: string;
-  postalCode: string;
-  permanentAddressLine1: string;
-  permanentAddressLine2: string;
-  permanentCity: string;
-  permanentRegion: string;
-  permanentCountryCode: string;
-  permanentPostalCode: string;
-  currentAccommodationType: string;
-  permanentAccommodationType: string;
-  preferredContactChannel: string;
-  emergencyContactName: string;
-  emergencyContactPhone: string;
-  emergencyContactRelation: string;
-};
+type EmployeeViewKey = 'attendance' | 'leave' | 'payslips' | 'holidays' | 'feedback';
 
-const emptyProfile: ProfileForm = {
-  photoUrl: '',
-  personalEmail: '',
-  phone: '',
-  addressLine1: '',
-  addressLine2: '',
-  city: '',
-  region: '',
-  countryCode: '',
-  postalCode: '',
-  permanentAddressLine1: '',
-  permanentAddressLine2: '',
-  permanentCity: '',
-  permanentRegion: '',
-  permanentCountryCode: '',
-  permanentPostalCode: '',
-  currentAccommodationType: '',
-  permanentAccommodationType: '',
-  preferredContactChannel: '',
-  emergencyContactName: '',
-  emergencyContactPhone: '',
-  emergencyContactRelation: '',
-};
+type HomeCounts = { readonly leaveDays: number; readonly upcomingHolidays: number };
+
+// The pages this component renders behind /me/*. Each one is titled from here so
+// the sub-page header and the launcher never drift apart.
+const EMPLOYEE_VIEWS: ReadonlyArray<{
+  readonly key: EmployeeViewKey;
+  readonly label: string;
+  readonly blurb: string;
+}> = [
+  {
+    key: 'attendance',
+    label: 'Attendance',
+    blurb: 'Check in, check out, and see the hours already recorded.',
+  },
+  { key: 'leave', label: 'Leave', blurb: 'Request time off and track what you have left.' },
+  { key: 'payslips', label: 'Payslips', blurb: 'Every payslip issued to you, with a PDF.' },
+  { key: 'holidays', label: 'Holidays', blurb: 'Public holidays on your calendar.' },
+  { key: 'feedback', label: 'Feedback', blurb: 'Tell HR what is working and what is not.' },
+];
+
+// The home screen is a launcher: check in at the top, then one row per thing an
+// employee actually does. Nothing here exposes how the rest of the product is
+// laid out — an employee only ever sees their own five destinations.
+const QUICK_LINKS: ReadonlyArray<{
+  readonly to: string;
+  readonly label: string;
+  readonly icon: TablerIcon;
+  readonly meta: (counts: HomeCounts) => string;
+}> = [
+  {
+    to: '/me/leave',
+    label: 'Request leave',
+    icon: IconPlaneDeparture,
+    meta: (counts) => `${counts.leaveDays.toFixed(1)} days available`,
+  },
+  {
+    to: '/me/attendance',
+    label: 'My attendance',
+    icon: IconClock,
+    meta: () => 'Hours recorded',
+  },
+  { to: '/me/payslips', label: 'View payslips', icon: IconFileText, meta: () => 'Download a PDF' },
+  {
+    to: '/me/holidays',
+    label: 'Upcoming holidays',
+    icon: IconCalendarEvent,
+    meta: (counts) => `${counts.upcomingHolidays} in the next 120 days`,
+  },
+  {
+    to: '/announcements',
+    label: 'Company news',
+    icon: IconSpeakerphone,
+    meta: () => 'Announcements from HR',
+  },
+  {
+    to: '/me/feedback',
+    label: 'Share feedback',
+    icon: IconMessageCircle,
+    meta: () => 'Tell HR what is working',
+  },
+];
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const addDays = (date: Date, amount: number): string => {
@@ -207,19 +225,6 @@ const formatDateTime = (value: string): string =>
     month: 'short',
     year: 'numeric',
   }).format(new Date(value));
-const formatMoney = (value: number, currency: string): string =>
-  new Intl.NumberFormat('en', { style: 'currency', currency, maximumFractionDigits: 0 }).format(
-    value,
-  );
-const daysUntil = (value: string): number =>
-  Math.max(0, Math.ceil((new Date(`${value}T00:00:00`).getTime() - Date.now()) / 86_400_000));
-const daysSince = (value: string): number =>
-  Math.max(0, Math.floor((Date.now() - new Date(`${value}T00:00:00`).getTime()) / 86_400_000));
-const initials = (employee: EmployeeRecord): string =>
-  `${employee.firstName.charAt(0)}${employee.lastName.charAt(0)}`.toUpperCase();
-const chipStyle = (color: MainColorName): CSSProperties & { readonly '--chip-color': string } => ({
-  '--chip-color': `var(--hrms-color-tag-${color})`,
-});
 
 const requestColor: Record<ApprovalStatus, MainColorName> = {
   pending: 'amber',
@@ -235,37 +240,57 @@ const requestLabel: Record<ApprovalStatus, string> = {
   cancelled: 'Cancelled',
 };
 
-const workerTypeLabels: Record<string, string> = {
-  permanent: 'Permanent',
-  fixedTerm: 'Fixed term',
-  contractor: 'Contractor',
-  intern: 'Intern',
-  temporary: 'Temporary',
-};
+type EmployeeHomeHeroProps = { readonly firstName: string };
 
-const profileFrom = (profile: EmployeeProfileRecord | null): ProfileForm => ({
-  photoUrl: profile?.photoUrl ?? '',
-  personalEmail: profile?.personalEmail ?? '',
-  phone: profile?.phone ?? '',
-  addressLine1: profile?.addressLine1 ?? '',
-  addressLine2: profile?.addressLine2 ?? '',
-  city: profile?.city ?? '',
-  region: profile?.region ?? '',
-  countryCode: profile?.countryCode ?? '',
-  postalCode: profile?.postalCode ?? '',
-  permanentAddressLine1: profile?.permanentAddressLine1 ?? '',
-  permanentAddressLine2: profile?.permanentAddressLine2 ?? '',
-  permanentCity: profile?.permanentCity ?? '',
-  permanentRegion: profile?.permanentRegion ?? '',
-  permanentCountryCode: profile?.permanentCountryCode ?? '',
-  permanentPostalCode: profile?.permanentPostalCode ?? '',
-  currentAccommodationType: profile?.currentAccommodationType ?? '',
-  permanentAccommodationType: profile?.permanentAccommodationType ?? '',
-  preferredContactChannel: profile?.preferredContactChannel ?? '',
-  emergencyContactName: profile?.emergencyContactName ?? '',
-  emergencyContactPhone: profile?.emergencyContactPhone ?? '',
-  emergencyContactRelation: profile?.emergencyContactRelation ?? '',
-});
+// The check-in card doubles as the greeting: the one thing an employee opens the
+// app to do sits above everything else, the way a phone HR app puts it.
+const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
+  const { theme } = useTheme();
+  const clock = useSelfClock();
+
+  const status = clock.todayEntry
+    ? `${clock.todayEntry.hours.toFixed(2)} hours recorded today`
+    : clock.latestEntry
+      ? `Last recorded ${clock.latestEntry.hours.toFixed(2)} hours on ${formatDate(clock.latestEntry.date)}`
+      : 'No hours recorded yet';
+
+  return (
+    <section className="me-hero">
+      <h1 className="me-hero-title" id="employee-workspace-title">
+        Hey, {firstName}
+      </h1>
+      <p className="me-hero-status">{status}</p>
+
+      {clock.notice ? <p className="form-success">{clock.notice}</p> : null}
+      {clock.error ? (
+        <p className="auth-error" role="alert">
+          {clock.error}
+        </p>
+      ) : null}
+
+      <div className="me-hero-actions">
+        <button
+          className="me-hero-button"
+          disabled={clock.clockingIn}
+          type="button"
+          onClick={() => void clock.clockIn()}
+        >
+          <IconPlayerPlay size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          {clock.clockingIn ? 'Checking in...' : 'Check in'}
+        </button>
+        <button
+          className="me-hero-button"
+          disabled={clock.clockingOut}
+          type="button"
+          onClick={() => void clock.clockOut()}
+        >
+          <IconPlayerStop size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          {clock.clockingOut ? 'Checking out...' : 'Check out'}
+        </button>
+      </div>
+    </section>
+  );
+};
 
 export const EmployeeWorkspacePage = () => {
   const { theme } = useTheme();
@@ -281,32 +306,22 @@ export const EmployeeWorkspacePage = () => {
   const [submitFeedback, { loading: submittingFeedback }] = useMutation(
     SUBMIT_MY_FEEDBACK_MUTATION,
   );
-  const [updateProfile, { loading: savingProfile }] = useMutation(
-    UPDATE_MY_EMPLOYEE_PROFILE_MUTATION,
-  );
   const [leaveForm, setLeaveForm] = useState({
     leaveTypeId: '',
     startDate: '',
     endDate: '',
     reason: '',
   });
-  const [profileForm, setProfileForm] = useState<ProfileForm>(emptyProfile);
   const [feedbackForm, setFeedbackForm] = useState({
     category: 'general',
     subject: '',
     body: '',
   });
   const [leaveError, setLeaveError] = useState<string | null>(null);
-  const [profileNotice, setProfileNotice] = useState<string | null>(null);
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setProfileForm(profileFrom(data?.myEmployeeProfile ?? null));
-  }, [data?.myEmployeeProfile]);
-
   const employee = data?.myEmployee;
-  const currentSalary = data?.myCurrentSalaryRevision ?? null;
   const leaveTypesById = useMemo(
     () => new Map(data?.leaveTypes.map((type) => [type.id, type]) ?? []),
     [data?.leaveTypes],
@@ -315,7 +330,18 @@ export const EmployeeWorkspacePage = () => {
     () => (data?.myLeaveBalances ?? []).reduce((sum, balance) => sum + balance.availableDays, 0),
     [data?.myLeaveBalances],
   );
-  const probationDays = employee?.probationEndDate ? daysUntil(employee.probationEndDate) : null;
+  const homeCounts: HomeCounts = {
+    leaveDays: totalLeave,
+    upcomingHolidays: (data?.upcomingHolidays ?? []).length,
+  };
+
+  // Which page is open follows the route, so back/forward and a shared link all
+  // behave. Anything that is not a known view falls back to the launcher.
+  const { pathname } = useLocation();
+  const segment = pathname.replace(/^\/me\/?/, '');
+  const activeView = EMPLOYEE_VIEWS.find((entry) => entry.key === segment) ?? null;
+  const view: EmployeeViewKey | 'home' = activeView ? activeView.key : 'home';
+
   const sortedRequests = useMemo(
     () =>
       [...(data?.myLeaveRequests ?? [])].sort((left, right) =>
@@ -323,8 +349,6 @@ export const EmployeeWorkspacePage = () => {
       ),
     [data?.myLeaveRequests],
   );
-  const announcements = data?.announcements ?? [];
-  const latestAnnouncements = useMemo(() => announcements.slice(0, 3), [announcements]);
   const holidayGroups = useMemo<HolidayMonthGroup[]>(() => {
     const groups = new Map<string, HolidayRecord[]>();
     for (const holiday of [...(data?.upcomingHolidays ?? [])].sort((left, right) =>
@@ -362,20 +386,6 @@ export const EmployeeWorkspacePage = () => {
     }
   };
 
-  const onProfileSubmit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    setProfileNotice(null);
-    await updateProfile({
-      variables: {
-        input: Object.fromEntries(
-          Object.entries(profileForm).map(([key, value]) => [key, value || null]),
-        ),
-      },
-    });
-    setProfileNotice('Profile updated');
-    await refetch();
-  };
-
   const onFeedbackSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     setFeedbackNotice(null);
@@ -411,152 +421,240 @@ export const EmployeeWorkspacePage = () => {
   }
 
   return (
-    <main className="employee-workspace">
-      <section className="employee-workspace-content" aria-labelledby="employee-workspace-title">
-        <header className="page-header">
-          <div>
-            <h1 className="page-title" id="employee-workspace-title">
-              Good day, {employee.firstName}
-            </h1>
-            <p className="page-subtitle">Your employment, time away, and pay at a glance.</p>
-          </div>
-          <div className="employee-identity">
-            {data?.myEmployeeProfile?.photoUrl ? (
-              <img
-                alt="Your profile"
-                className="employee-identity-photo"
-                src={data.myEmployeeProfile.photoUrl}
-              />
-            ) : (
-              <span
-                className="employee-avatar employee-identity-avatar"
-                style={chipStyle('violet')}
-              >
-                {initials(employee)}
-              </span>
-            )}
+    <main className="employee-app">
+      {view === 'home' ? (
+        <>
+          <EmployeeHomeHero firstName={employee.firstName} />
+
+          <section className="me-section">
+            <h2 className="me-section-title">Quick links</h2>
+            <nav className="app-tiles" aria-label="Quick links">
+              {QUICK_LINKS.map((link) => {
+                const LinkIcon = link.icon;
+                return (
+                  <Link className="app-tile" key={link.to} to={link.to}>
+                    <span className="app-tile-icon">
+                      <LinkIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    </span>
+                    <span className="app-tile-copy">
+                      <span className="app-tile-label">{link.label}</span>
+                      <span className="app-tile-meta">{link.meta(homeCounts)}</span>
+                    </span>
+                    <IconChevronRight size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  </Link>
+                );
+              })}
+            </nav>
+          </section>
+
+          {/* The last few requests, not the full table — the table lives on the
+              leave page, and this is only here to answer "did mine go through?". */}
+          <section className="me-section">
+            <div className="me-section-head">
+              <h2 className="me-section-title">My requests</h2>
+              {sortedRequests.length > 0 ? (
+                <Link className="me-section-link" to="/me/leave">
+                  View all
+                </Link>
+              ) : null}
+            </div>
+            <div className="stack-list stack-card">
+              {sortedRequests.slice(0, 4).map((request) => (
+                <div className="stack-row" key={request.id}>
+                  <div className="stack-row-copy">
+                    <div className="employee-primary">
+                      {leaveTypesById.get(request.leaveTypeId)?.name ?? 'Leave'}
+                    </div>
+                    <div className="employee-secondary">
+                      {formatDate(request.startDate)} - {formatDate(request.endDate)} ·{' '}
+                      {request.dayCount.toFixed(1)} days
+                    </div>
+                  </div>
+                  <StatusChip color={requestColor[request.status]} label={requestLabel[request.status]} />
+                </div>
+              ))}
+              {sortedRequests.length === 0 ? (
+                <div className="table-empty">You have no requests</div>
+              ) : null}
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
+          <Link className="profile-back" to="/me">
+            <IconArrowLeft size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            My workspace
+          </Link>
+          <header className="page-header">
             <div>
-              <div className="employee-primary">
-                {employee.firstName} {employee.lastName}
+              <h1 className="page-title" id="employee-workspace-title">
+                {activeView?.label ?? 'My workspace'}
+              </h1>
+              <p className="page-subtitle">{activeView?.blurb ?? ''}</p>
+            </div>
+          </header>
+
+          {view === 'attendance' ? <ClockInOutCard /> : null}
+
+          {view === 'leave' ? (
+            <>
+          <section className="table-shell employee-form-card">
+            <div className="panel-title-row">
+              <div>
+                <div className="panel-kicker">Time off</div>
+                <h2 className="panel-title">Request leave</h2>
               </div>
-              <div className="employee-secondary">{employee.employeeNumber}</div>
+              <IconPlaneDeparture size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
-          </div>
-        </header>
-
-        <div className="metric-strip employee-metrics">
-          <div className="metric-card">
-            <div className="metric-label">Leave available</div>
-            <div className="metric-value">{totalLeave.toFixed(1)} days</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Current salary</div>
-            <div className="metric-value">
-              {currentSalary
-                ? formatMoney(currentSalary.annualAmount / 12, currentSalary.currency)
-                : 'Not available'}
-            </div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Days with company</div>
-            <div className="metric-value">{daysSince(employee.hireDate)}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Probation</div>
-            <div className="metric-value">
-              {probationDays === null ? 'Not set' : `${probationDays} days left`}
-            </div>
-          </div>
-        </div>
-
-        <section className="table-shell">
-          <div className="table-title-row">
-            <div className="table-title">
-              <IconUserCircle size={theme.icon.size.md} /> Employment facts
-            </div>
-            <div className="table-density">Self-service</div>
-          </div>
-          <div className="field-list">
-            <div className="field-row">
-              <span className="field-label">Date of joining</span>
-              <span className="field-value">{formatDate(employee.hireDate)}</span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Days since joining</span>
-              <span className="field-value">{daysSince(employee.hireDate)}</span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Probation end</span>
-              <span className="field-value">
-                {employee.probationEndDate ? formatDate(employee.probationEndDate) : 'Not set'}
-              </span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Days left in probation</span>
-              <span className="field-value">
-                {probationDays === null ? 'Not set' : `${probationDays} days`}
-              </span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Annual salary</span>
-              <span className="field-value">
-                {currentSalary
-                  ? formatMoney(currentSalary.annualAmount, currentSalary.currency)
-                  : 'Not available'}
-              </span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Monthly salary</span>
-              <span className="field-value">
-                {currentSalary
-                  ? formatMoney(currentSalary.annualAmount / 12, currentSalary.currency)
-                  : 'Not available'}
-              </span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Work email</span>
-              <span className="field-value">{employee.workEmail ?? 'Not set'}</span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Worker type</span>
-              <span className="field-value">
-                {workerTypeLabels[employee.workerType] ?? employee.workerType}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        <div className="self-service-grid">
+            <form className="config-form" onSubmit={onLeaveSubmit}>
+              {leaveError ? (
+                <p className="auth-error" role="alert">
+                  {leaveError}
+                </p>
+              ) : null}
+              <div className="field">
+                <label htmlFor="leave-type">Leave type</label>
+                <select
+                  id="leave-type"
+                  required
+                  value={leaveForm.leaveTypeId}
+                  onChange={(event) =>
+                    setLeaveForm((current) => ({ ...current, leaveTypeId: event.target.value }))
+                  }
+                >
+                  <option value="">Select type</option>
+                  {data.leaveTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field-group">
+                <div className="field">
+                  <label htmlFor="leave-start">Start date</label>
+                  <input
+                    id="leave-start"
+                    required
+                    type="date"
+                    value={leaveForm.startDate}
+                    onChange={(event) =>
+                      setLeaveForm((current) => ({ ...current, startDate: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="leave-end">End date</label>
+                  <input
+                    id="leave-end"
+                    required
+                    type="date"
+                    value={leaveForm.endDate}
+                    onChange={(event) =>
+                      setLeaveForm((current) => ({ ...current, endDate: event.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label htmlFor="leave-reason">Reason</label>
+                <textarea
+                  id="leave-reason"
+                  value={leaveForm.reason}
+                  onChange={(event) =>
+                    setLeaveForm((current) => ({ ...current, reason: event.target.value }))
+                  }
+                />
+              </div>
+              <button className="button button-primary" disabled={submittingLeave} type="submit">
+                {submittingLeave ? 'Submitting...' : 'Submit request'}
+              </button>
+            </form>
+          </section>
+            <section className="table-shell">
+              <div className="table-title-row">
+                <div className="table-title">
+                  <IconPlaneDeparture size={theme.icon.size.md} /> Leave balance
+                </div>
+                <div className="table-density">{new Date().getFullYear()}</div>
+              </div>
+              <div className="data-table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Available</th>
+                      <th>Used</th>
+                      <th>Pending</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.myLeaveBalances.map((balance) => (
+                      <tr key={balance.id}>
+                        <td>{leaveTypesById.get(balance.leaveTypeId)?.name ?? 'Leave'}</td>
+                        <td data-label="Available">{balance.availableDays.toFixed(1)} days</td>
+                        <td data-label="Used">{balance.usedDays.toFixed(1)} days</td>
+                        <td data-label="Pending">{balance.pendingDays.toFixed(1)} days</td>
+                      </tr>
+                    ))}
+                    {data.myLeaveBalances.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="table-empty">
+                          Your balances will appear once leave policies are assigned.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           <section className="table-shell">
             <div className="table-title-row">
               <div className="table-title">
-                <IconPlaneDeparture size={theme.icon.size.md} /> Leave balance
+                <IconClock size={theme.icon.size.md} /> Leave requests
               </div>
-              <div className="table-density">{new Date().getFullYear()}</div>
+              <div className="table-density">
+                {sortedRequests.length} record{sortedRequests.length === 1 ? '' : 's'}
+              </div>
             </div>
             <div className="data-table-wrap">
-              <table className="data-table">
+              <table className="data-table leave-request-table">
                 <thead>
                   <tr>
                     <th>Type</th>
-                    <th>Available</th>
-                    <th>Used</th>
-                    <th>Pending</th>
+                    <th>Dates</th>
+                    <th>Days</th>
+                    <th>Status</th>
+                    <th>Latest update</th>
+                    <th>Tethr note</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.myLeaveBalances.map((balance) => (
-                    <tr key={balance.id}>
-                      <td>{leaveTypesById.get(balance.leaveTypeId)?.name ?? 'Leave'}</td>
-                      <td>{balance.availableDays.toFixed(1)} days</td>
-                      <td>{balance.usedDays.toFixed(1)} days</td>
-                      <td>{balance.pendingDays.toFixed(1)} days</td>
+                  {sortedRequests.map((request) => (
+                    <tr key={request.id}>
+                      <td>{leaveTypesById.get(request.leaveTypeId)?.name ?? 'Leave'}</td>
+                      <td data-label="Dates">
+                        {formatDate(request.startDate)} - {formatDate(request.endDate)}
+                      </td>
+                      <td data-label="Days">{request.dayCount.toFixed(1)}</td>
+                      <td data-label="Status">
+                        <StatusChip color={requestColor[request.status]} label={requestLabel[request.status]} />
+                      </td>
+                      <td data-label="Latest update">
+                        <div className="employee-primary">
+                          {request.decidedAt ? 'Decision recorded' : 'Submitted'}
+                        </div>
+                        <div className="employee-secondary">
+                          {formatDateTime(request.decidedAt ?? request.submittedAt)}
+                        </div>
+                      </td>
+                      <td className="truncate">{request.decisionNote ?? request.reason ?? '—'}</td>
                     </tr>
                   ))}
-                  {data.myLeaveBalances.length === 0 ? (
+                  {sortedRequests.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="table-empty">
-                        Your balances will appear once leave policies are assigned.
+                      <td colSpan={6} className="table-empty">
+                        No leave requests yet.
                       </td>
                     </tr>
                   ) : null}
@@ -564,403 +662,317 @@ export const EmployeeWorkspacePage = () => {
               </table>
             </div>
           </section>
+            </>
+          ) : null}
 
-          <section className="table-shell">
-            <div className="table-title-row">
-              <div className="table-title">
-                <IconCalendarEvent size={theme.icon.size.md} /> Upcoming holidays
-              </div>
-              <div className="table-density">Next 120 days</div>
-            </div>
-            <div className="holiday-calendar">
-              {holidayGroups.map((group) => (
-                <section className="holiday-month" key={group.key}>
-                  <div className="holiday-month-title">{group.label}</div>
-                  <div className="holiday-date-grid">
-                    {group.holidays.map((holiday) => (
-                      <div className="holiday-date-tile" key={holiday.id}>
-                        <div className="holiday-date-box">
-                          <span>{formatWeekday(holiday.date)}</span>
-                          <strong>{formatDay(holiday.date)}</strong>
-                        </div>
-                        <div className="holiday-date-copy">
-                          <div className="employee-primary">{holiday.name}</div>
-                          <div className="employee-secondary">{formatDate(holiday.date)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ))}
-              {holidayGroups.length === 0 ? (
-                <div className="table-empty">No upcoming holidays on your calendar.</div>
-              ) : null}
-            </div>
-          </section>
-        </div>
+          {view === 'payslips' ? <MyPayslipsSection /> : null}
 
-        <section className="table-shell bulletin-shell">
-          <div className="table-title-row">
-            <div className="table-title">
-              <IconSpeakerphone size={theme.icon.size.md} /> News bulletin
-            </div>
-            <div className="table-density">
-              {announcements.length} update{announcements.length === 1 ? '' : 's'}
-            </div>
-          </div>
-          <div className="announcement-list compact-announcement-list">
-            {latestAnnouncements.map((announcement) => (
-              <article className="announcement-item" key={announcement.id}>
-                <div className="announcement-meta">
-                  {announcement.isPinned ? (
-                    <span className="chip" style={chipStyle('amber')}>
-                      <span className="chip-dot" />
-                      Pinned
-                    </span>
-                  ) : null}
-                  <span>{formatDate(announcement.publishedAt.slice(0, 10))}</span>
+          {view === 'holidays' ? (
+            <section className="table-shell">
+              <div className="table-title-row">
+                <div className="table-title">
+                  <IconCalendarEvent size={theme.icon.size.md} /> Upcoming holidays
                 </div>
-                <h2 className="announcement-title">{announcement.title}</h2>
-                <p className="announcement-body">{announcement.body}</p>
-              </article>
-            ))}
-            {latestAnnouncements.length === 0 ? (
-              <p className="table-empty">No announcements are visible yet.</p>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="table-shell">
-          <div className="table-title-row">
-            <div className="table-title">
-              <IconClock size={theme.icon.size.md} /> Leave requests
-            </div>
-            <div className="table-density">
-              {sortedRequests.length} record{sortedRequests.length === 1 ? '' : 's'}
-            </div>
-          </div>
-          <div className="data-table-wrap">
-            <table className="data-table leave-request-table">
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Dates</th>
-                  <th>Days</th>
-                  <th>Status</th>
-                  <th>Latest update</th>
-                  <th>Tethr note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedRequests.map((request) => (
-                  <tr key={request.id}>
-                    <td>{leaveTypesById.get(request.leaveTypeId)?.name ?? 'Leave'}</td>
-                    <td>
-                      {formatDate(request.startDate)} - {formatDate(request.endDate)}
-                    </td>
-                    <td>{request.dayCount.toFixed(1)}</td>
-                    <td>
-                      <span className="chip" style={chipStyle(requestColor[request.status])}>
-                        <span className="chip-dot" />
-                        {requestLabel[request.status]}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="employee-primary">
-                        {request.decidedAt ? 'Decision recorded' : 'Submitted'}
-                      </div>
-                      <div className="employee-secondary">
-                        {formatDateTime(request.decidedAt ?? request.submittedAt)}
-                      </div>
-                    </td>
-                    <td className="truncate">{request.decisionNote ?? request.reason ?? '—'}</td>
-                  </tr>
+                <div className="table-density">Next 120 days</div>
+              </div>
+              <div className="holiday-calendar">
+                {holidayGroups.map((group) => (
+                  <section className="holiday-month" key={group.key}>
+                    <div className="holiday-month-title">{group.label}</div>
+                    <div className="holiday-date-grid">
+                      {group.holidays.map((holiday) => (
+                        <div className="holiday-date-tile" key={holiday.id}>
+                          <div className="holiday-date-box">
+                            <span>{formatWeekday(holiday.date)}</span>
+                            <strong>{formatDay(holiday.date)}</strong>
+                          </div>
+                          <div className="holiday-date-copy">
+                            <div className="employee-primary">{holiday.name}</div>
+                            <div className="employee-secondary">{formatDate(holiday.date)}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 ))}
-                {sortedRequests.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="table-empty">
-                      No leave requests yet.
-                    </td>
-                  </tr>
+                {holidayGroups.length === 0 ? (
+                  <div className="table-empty">No upcoming holidays on your calendar.</div>
                 ) : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </section>
+              </div>
+            </section>
+          ) : null}
 
-      <aside className="self-service-panel" aria-label="Employee actions">
-        <section className="self-service-section">
-          <div className="panel-title-row">
-            <div>
-              <div className="panel-kicker">Time off</div>
-              <h2 className="panel-title">Request leave</h2>
+          {view === 'feedback' ? (
+          <section className="table-shell employee-form-card">
+            <div className="panel-title-row">
+              <div>
+                <div className="panel-kicker">Feedback</div>
+                <h2 className="panel-title">Share feedback</h2>
+              </div>
+              <IconMessageCircle size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
-            <IconPlaneDeparture size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
-          </div>
-          <form className="config-form" onSubmit={onLeaveSubmit}>
-            {leaveError ? (
-              <p className="auth-error" role="alert">
-                {leaveError}
-              </p>
-            ) : null}
-            <div className="field">
-              <label htmlFor="leave-type">Leave type</label>
-              <select
-                id="leave-type"
-                required
-                value={leaveForm.leaveTypeId}
-                onChange={(event) =>
-                  setLeaveForm((current) => ({ ...current, leaveTypeId: event.target.value }))
-                }
-              >
-                <option value="">Select type</option>
-                {data.leaveTypes.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field-group">
+            <form className="config-form" onSubmit={onFeedbackSubmit}>
+              {feedbackNotice ? <p className="form-success">{feedbackNotice}</p> : null}
+              {feedbackError ? (
+                <p className="auth-error" role="alert">
+                  {feedbackError}
+                </p>
+              ) : null}
               <div className="field">
-                <label htmlFor="leave-start">Start date</label>
+                <label htmlFor="feedback-category">Category</label>
+                <select
+                  id="feedback-category"
+                  value={feedbackForm.category}
+                  onChange={(event) =>
+                    setFeedbackForm((current) => ({ ...current, category: event.target.value }))
+                  }
+                >
+                  <option value="general">General</option>
+                  <option value="people">People</option>
+                  <option value="pay">Pay</option>
+                  <option value="leave">Leave</option>
+                  <option value="workplace">Workplace</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="feedback-subject">Subject</label>
                 <input
-                  id="leave-start"
+                  id="feedback-subject"
                   required
-                  type="date"
-                  value={leaveForm.startDate}
+                  value={feedbackForm.subject}
                   onChange={(event) =>
-                    setLeaveForm((current) => ({ ...current, startDate: event.target.value }))
+                    setFeedbackForm((current) => ({ ...current, subject: event.target.value }))
                   }
                 />
               </div>
               <div className="field">
-                <label htmlFor="leave-end">End date</label>
-                <input
-                  id="leave-end"
+                <label htmlFor="feedback-body">Feedback</label>
+                <textarea
+                  id="feedback-body"
                   required
-                  type="date"
-                  value={leaveForm.endDate}
+                  value={feedbackForm.body}
                   onChange={(event) =>
-                    setLeaveForm((current) => ({ ...current, endDate: event.target.value }))
+                    setFeedbackForm((current) => ({ ...current, body: event.target.value }))
                   }
                 />
               </div>
-            </div>
-            <div className="field">
-              <label htmlFor="leave-reason">Reason</label>
-              <textarea
-                id="leave-reason"
-                value={leaveForm.reason}
-                onChange={(event) =>
-                  setLeaveForm((current) => ({ ...current, reason: event.target.value }))
-                }
-              />
-            </div>
-            <button className="button button-primary" disabled={submittingLeave} type="submit">
-              {submittingLeave ? 'Submitting...' : 'Submit request'}
-            </button>
-          </form>
-        </section>
-
-        <section className="self-service-section">
-          <div className="panel-title-row">
-            <div>
-              <div className="panel-kicker">Personal details</div>
-              <h2 className="panel-title">Profile</h2>
-            </div>
-            <IconUserCircle size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
-          </div>
-          <form className="config-form" onSubmit={onProfileSubmit}>
-            {profileNotice ? <p className="form-success">{profileNotice}</p> : null}
-            <div className="field">
-              <label htmlFor="profile-photo">Photo URL</label>
-              <input
-                id="profile-photo"
-                type="url"
-                value={profileForm.photoUrl}
-                onChange={(event) =>
-                  setProfileForm((current) => ({ ...current, photoUrl: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field-group">
-              <div className="field">
-                <label htmlFor="profile-email">Personal email</label>
-                <input
-                  id="profile-email"
-                  type="email"
-                  value={profileForm.personalEmail}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({ ...current, personalEmail: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="profile-phone">Phone</label>
-                <input
-                  id="profile-phone"
-                  value={profileForm.phone}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({ ...current, phone: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="field">
-              <label htmlFor="profile-address-1">Address</label>
-              <input
-                id="profile-address-1"
-                value={profileForm.addressLine1}
-                onChange={(event) =>
-                  setProfileForm((current) => ({ ...current, addressLine1: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="profile-address-2">Address line 2</label>
-              <input
-                id="profile-address-2"
-                value={profileForm.addressLine2}
-                onChange={(event) =>
-                  setProfileForm((current) => ({ ...current, addressLine2: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field-group">
-              <div className="field">
-                <label htmlFor="profile-city">City</label>
-                <input
-                  id="profile-city"
-                  value={profileForm.city}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({ ...current, city: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="profile-region">Region</label>
-                <input
-                  id="profile-region"
-                  value={profileForm.region}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({ ...current, region: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="field-group">
-              <div className="field">
-                <label htmlFor="profile-country">Country code</label>
-                <input
-                  id="profile-country"
-                  maxLength={2}
-                  value={profileForm.countryCode}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({
-                      ...current,
-                      countryCode: event.target.value.toUpperCase(),
-                    }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="profile-postal">Postal code</label>
-                <input
-                  id="profile-postal"
-                  value={profileForm.postalCode}
-                  onChange={(event) =>
-                    setProfileForm((current) => ({ ...current, postalCode: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <button className="button button-secondary" disabled={savingProfile} type="submit">
-              <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              {savingProfile ? 'Saving...' : 'Save profile'}
-            </button>
-          </form>
-        </section>
-
-        <section className="self-service-section">
-          <div className="panel-title-row">
-            <div>
-              <div className="panel-kicker">Feedback</div>
-              <h2 className="panel-title">Share feedback</h2>
-            </div>
-            <IconMessageCircle size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
-          </div>
-          <form className="config-form" onSubmit={onFeedbackSubmit}>
-            {feedbackNotice ? <p className="form-success">{feedbackNotice}</p> : null}
-            {feedbackError ? (
-              <p className="auth-error" role="alert">
-                {feedbackError}
-              </p>
-            ) : null}
-            <div className="field">
-              <label htmlFor="feedback-category">Category</label>
-              <select
-                id="feedback-category"
-                value={feedbackForm.category}
-                onChange={(event) =>
-                  setFeedbackForm((current) => ({ ...current, category: event.target.value }))
-                }
-              >
-                <option value="general">General</option>
-                <option value="people">People</option>
-                <option value="pay">Pay</option>
-                <option value="leave">Leave</option>
-                <option value="workplace">Workplace</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="feedback-subject">Subject</label>
-              <input
-                id="feedback-subject"
-                required
-                value={feedbackForm.subject}
-                onChange={(event) =>
-                  setFeedbackForm((current) => ({ ...current, subject: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="feedback-body">Feedback</label>
-              <textarea
-                id="feedback-body"
-                required
-                value={feedbackForm.body}
-                onChange={(event) =>
-                  setFeedbackForm((current) => ({ ...current, body: event.target.value }))
-                }
-              />
-            </div>
-            <button className="button button-secondary" disabled={submittingFeedback} type="submit">
-              <IconMessageCircle size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              {submittingFeedback ? 'Submitting...' : 'Submit feedback'}
-            </button>
-          </form>
-        </section>
-
-        <section className="self-service-section employment-summary">
-          <div className="panel-kicker">Employment</div>
-          <div className="field-list">
-            <div className="field-row">
-              <span className="field-label">Joined</span>
-              <span className="field-value">{formatDate(employee.hireDate)}</span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Work email</span>
-              <span className="field-value">{employee.workEmail ?? '—'}</span>
-            </div>
-            <div className="field-row">
-              <span className="field-label">Employment type</span>
-              <span className="field-value">{employee.workerType}</span>
-            </div>
-          </div>
-        </section>
-      </aside>
+              <button className="button button-secondary" disabled={submittingFeedback} type="submit">
+                <IconMessageCircle size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                {submittingFeedback ? 'Submitting...' : 'Submit feedback'}
+              </button>
+            </form>
+          </section>
+          ) : null}
+        </>
+      )}
     </main>
   );
 };
+
+type PayslipLineRecord = {
+  readonly id: string;
+  readonly componentCode: string;
+  readonly componentName: string;
+  readonly category: string;
+  readonly taxable: boolean;
+  readonly dependsOnPaymentDays: boolean;
+  readonly defaultAmount: number;
+  readonly amount: number;
+  readonly sourceType: string | null;
+};
+
+type PayslipRowRecord = {
+  readonly id: string;
+  readonly payslipNumber: string;
+  readonly periodYear: number;
+  readonly periodMonth: number;
+  readonly payDate: string;
+  readonly currency: string;
+  readonly paidDays: number;
+  readonly standardWorkingDays: number;
+  readonly lopDays: number;
+  readonly grossAmount: number;
+  readonly taxableAmount: number;
+  readonly incomeTaxAmount: number;
+  readonly netPayAmount: number;
+};
+
+type PayslipDetailRecord = PayslipRowRecord & {
+  readonly notes: string | null;
+  readonly lines?: readonly PayslipLineRecord[];
+};
+
+function MyPayslipsSection() {
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { data, loading } = useQuery<{ readonly myPayslips: readonly PayslipRowRecord[] }>(
+    MY_PAYSLIPS_QUERY,
+  );
+  const [loadPdf] = useLazyQuery<{ readonly myPayslipPdf: string }>(MY_PAYSLIP_PDF_QUERY, {
+    fetchPolicy: 'no-cache',
+  });
+  const [loadDetail, { data: detailData, loading: detailLoading }] = useLazyQuery<{
+    readonly myPayslip: PayslipDetailRecord;
+  }>(MY_PAYSLIP_QUERY, { fetchPolicy: 'cache-first' });
+
+  const rows = data?.myPayslips ?? [];
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const money = (value: number, currency: string): string =>
+    new Intl.NumberFormat('en', { currency, maximumFractionDigits: 0, style: 'currency' }).format(value);
+
+  // Year-to-date, the single most-asked payslip question (plan Phase 4 #24).
+  const currentYear = new Date().getFullYear();
+  const ytd = rows
+    .filter((row) => row.periodYear === currentYear)
+    .reduce(
+      (totals, row) => ({
+        gross: totals.gross + row.grossAmount,
+        tax: totals.tax + row.incomeTaxAmount,
+        net: totals.net + row.netPayAmount,
+        currency: row.currency,
+      }),
+      { gross: 0, tax: 0, net: 0, currency: rows[0]?.currency ?? 'PKR' },
+    );
+
+  const detail = detailData?.myPayslip ?? null;
+  const dayRatio = (payslip: PayslipDetailRecord): string =>
+    payslip.standardWorkingDays > 0
+      ? `${payslip.paidDays} of ${payslip.standardWorkingDays} days`
+      : `${payslip.paidDays} days`;
+
+  return (
+    <section className="table-shell" aria-labelledby="my-payslips-title">
+      <div className="table-title-row">
+        <div className="table-title" id="my-payslips-title">My payslips</div>
+        <div className="table-density">{loading ? 'Loading…' : `${rows.length}`}</div>
+      </div>
+      {rows.length > 0 ? (
+        <div className="field-list">
+          <div className="field-row">
+            <span className="field-label">{currentYear} year to date</span>
+            <span className="field-value">
+              {money(ytd.gross, ytd.currency)} gross · {money(ytd.tax, ytd.currency)} tax ·{' '}
+              <strong>{money(ytd.net, ytd.currency)} net</strong>
+            </span>
+          </div>
+        </div>
+      ) : null}
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Payslip</th>
+              <th>Period</th>
+              <th>Pay date</th>
+              <th>Paid / days</th>
+              <th>Gross</th>
+              <th>Tax</th>
+              <th>Net pay</th>
+              <th aria-label="Download" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && !loading ? (
+              <tr><td colSpan={8}>No payslips issued yet.</td></tr>
+            ) : (
+              rows.map((payslip) => (
+                <Fragment key={payslip.id}>
+                  <tr>
+                    <td>
+                      <button
+                        className="link-button"
+                        type="button"
+                        onClick={() => {
+                          const next = expandedId === payslip.id ? null : payslip.id;
+                          setExpandedId(next);
+                          if (next) {
+                            void loadDetail({ variables: { payslipId: payslip.id } });
+                          }
+                        }}
+                      >
+                        <span className="employee-primary">{payslip.payslipNumber}</span>
+                      </button>
+                    </td>
+                    <td data-label="Period">{monthNames[payslip.periodMonth - 1]} {payslip.periodYear}</td>
+                    <td data-label="Pay date">{payslip.payDate}</td>
+                    <td>{payslip.paidDays}{payslip.lopDays > 0 ? ` / LOP ${payslip.lopDays}` : ''}</td>
+                    <td>{money(payslip.grossAmount, payslip.currency)}</td>
+                    <td>{money(payslip.incomeTaxAmount, payslip.currency)}</td>
+                    <td><strong>{money(payslip.netPayAmount, payslip.currency)}</strong></td>
+                    <td>
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => {
+                          void (async () => {
+                            setError(null);
+                            try {
+                              const result = await loadPdf({ variables: { payslipId: payslip.id } });
+                              if (!result.data) return;
+                              downloadBase64File(`${payslip.payslipNumber}.pdf`, result.data.myPayslipPdf);
+                            } catch (cause) {
+                              setError(cause instanceof Error ? cause.message : 'Could not render PDF.');
+                            }
+                          })();
+                        }}
+                      >
+                        PDF
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedId === payslip.id ? (
+                    <tr>
+                      <td colSpan={8}>
+                        {detailLoading || !detail || detail.id !== payslip.id ? (
+                          <p className="field-hint">Loading breakdown…</p>
+                        ) : (
+                          <div className="record-list">
+                            <div className="record-item">
+                              <span>Paid for {dayRatio(detail)}</span>
+                              <span className="employee-secondary">
+                                {detail.lopDays > 0 ? `${detail.lopDays} unpaid day(s)` : 'no unpaid leave'}
+                              </span>
+                            </div>
+                            {(detail.lines ?? []).map((line) => (
+                              <div className="record-item" key={line.id}>
+                                <span>
+                                  {line.componentName}{' '}
+                                  <span className="employee-secondary">
+                                    ({line.category}
+                                    {line.sourceType ? ` · from ${line.sourceType}` : ''})
+                                  </span>
+                                </span>
+                                <span>
+                                  {line.dependsOnPaymentDays && line.defaultAmount !== line.amount ? (
+                                    <span className="employee-secondary">
+                                      {money(line.defaultAmount, detail.currency)} × {dayRatio(detail)} ={' '}
+                                    </span>
+                                  ) : null}
+                                  <strong>{money(line.amount, detail.currency)}</strong>
+                                  {line.taxable ? '' : ' · non-taxable'}
+                                </span>
+                              </div>
+                            ))}
+                            <div className="record-item">
+                              <span>Income tax withheld</span>
+                              <span>{money(detail.incomeTaxAmount, detail.currency)}</span>
+                            </div>
+                            <div className="record-item">
+                              <strong>Net pay</strong>
+                              <strong>{money(detail.netPayAmount, detail.currency)}</strong>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {error ? <p className="auth-error" role="alert">{error}</p> : null}
+    </section>
+  );
+}

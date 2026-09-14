@@ -20,6 +20,7 @@ import type {
 import type { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import type { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+import type { WorkflowService } from '../../core/workflow';
 import type { EmployeeDirectoryService, EmployeeService } from '../employee';
 
 import { EmployeeRecordsService } from './employee-records.service';
@@ -27,6 +28,7 @@ import type { EmployeeAssessment } from './entities/employee-assessment.entity';
 import type { EmployeeDocumentLink } from './entities/employee-document-link.entity';
 import type { EmployeeHrRecord } from './entities/employee-hr-record.entity';
 import type { EmployeeOnboardingTask } from './entities/employee-onboarding-task.entity';
+import type { BankDetailChangeRequest } from './entities/bank-detail-change-request.entity';
 
 const ORG = toId<OrganizationId>('org-1');
 const EMPLOYEE = toId<EmployeeId>('employee-1');
@@ -100,6 +102,14 @@ const buildService = (links: EmployeeDocumentLink[] = []) => {
       }),
     ),
   } as unknown as TenantScopedRepository<EmployeeOnboardingTask>;
+  const bankChangeRequests = {
+    create: jest.fn((value: unknown) => value),
+    save: jest.fn((value: Record<string, unknown>) =>
+      Promise.resolve({ id: 'bank-request-1', createdAt: new Date(), ...value }),
+    ),
+    find: jest.fn().mockResolvedValue([]),
+    findById: jest.fn().mockResolvedValue(null),
+  } as unknown as TenantScopedRepository<BankDetailChangeRequest>;
   const manager = {
     create: jest.fn((_entity: unknown, value: unknown) => value),
     save: jest.fn((value: Record<string, unknown>) =>
@@ -150,6 +160,10 @@ const buildService = (links: EmployeeDocumentLink[] = []) => {
     getOrganizationId: jest.fn().mockReturnValue(ORG),
   } as unknown as TenantContextService;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+  const workflow = {
+    requestApproval: jest.fn().mockResolvedValue({ id: 'approval-1', status: 'pending' }),
+    decide: jest.fn().mockResolvedValue({ id: 'approval-1', status: 'approved' }),
+  } as unknown as WorkflowService;
 
   return {
     service: new EmployeeRecordsService(
@@ -157,6 +171,7 @@ const buildService = (links: EmployeeDocumentLink[] = []) => {
       documentLinks,
       hrRecords,
       onboardingTasks,
+      bankChangeRequests,
       dataSource,
       documents,
       employeeDirectory,
@@ -164,6 +179,7 @@ const buildService = (links: EmployeeDocumentLink[] = []) => {
       publisher,
       tenantContext,
       audit,
+      workflow,
     ),
     publisher,
     employeeService,

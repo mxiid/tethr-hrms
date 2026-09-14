@@ -1,4 +1,4 @@
-import type { PortalKind, SystemRoleKey } from '@hrms/shared';
+﻿import type { PortalKind, SystemRoleKey } from '@hrms/shared';
 import { Navigate, Outlet } from 'react-router-dom';
 
 import { portalHome } from './portal';
@@ -17,7 +17,7 @@ export const RequirePortal = ({ portals, roleKeys }: RequirePortalProps) => {
   if (!portals.includes(user.portal)) {
     return <Navigate to={portalHome(user.portal)} replace />;
   }
-  if (roleKeys && !roleKeys.some((roleKey) => user.roleKeys.includes(roleKey))) {
+  if (roleKeys && !roleKeys.some((roleKey) => user.roleKeys?.includes(roleKey))) {
     return <Navigate to={portalHome(user.portal)} replace />;
   }
   return <Outlet />;

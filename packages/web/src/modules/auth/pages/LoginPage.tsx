@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { useAuth, type WorkspaceOption } from '../hooks/useAuth';
+import { resolveWorkspaceChoice } from '../lastWorkspace';
 import { portalHome } from '../../../app/portal';
 
 export const LoginPage = () => {
@@ -21,6 +22,20 @@ export const LoginPage = () => {
     try {
       const outcome = await login(email, password);
       if (outcome.kind === 'selectWorkspace') {
+        // Don't stop on a picker: open the workspace this email last used, or
+        // the first one otherwise. Switching workspaces is already a one-click
+        // action from the header once you are in.
+        const target = resolveWorkspaceChoice(email, outcome.workspaces);
+        if (target) {
+          try {
+            const session = await selectWorkspace(outcome.selectionToken, target);
+            navigate(portalHome(session.user.portal), { replace: true });
+            return;
+          } catch {
+            // The remembered workspace may no longer be reachable — fall through
+            // to the picker rather than dead-ending on an error.
+          }
+        }
         setPendingSelection({
           selectionToken: outcome.selectionToken,
           workspaces: outcome.workspaces,

@@ -13,7 +13,7 @@ import { EmployeeDirectoryService } from './employee-directory.service';
 import { EMPLOYEE_EDUCATION_REPOSITORY } from './employee.tokens';
 import { EmployeeEducation } from './entities/employee-education.entity';
 
-export type CreateEmployeeEducationData = {
+type CreateEmployeeEducationData = {
   readonly employeeId: EmployeeId;
   readonly schoolOrUniversity: string;
   readonly qualification: string;
@@ -24,7 +24,7 @@ export type CreateEmployeeEducationData = {
   readonly createdByUserId?: UserId | null;
 };
 
-export type UpdateEmployeeEducationData = {
+type UpdateEmployeeEducationData = {
   readonly schoolOrUniversity?: string | null;
   readonly qualification?: string | null;
   readonly level?: EducationLevel | null;

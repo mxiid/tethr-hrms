@@ -1,6 +1,7 @@
 import {
   toId,
   type EmployeeId,
+  type PositionId,
   type EmployeeSeparationId,
   type HolidayCalendarId,
   type IsoDate,
@@ -36,7 +37,10 @@ import { EmployeeType } from './dto/employee.output';
 import { EmployeeWorkHistoryView } from './dto/employee-work-history.output';
 import { CreateEmployeeWorkHistoryInput, UpdateEmployeeWorkHistoryInput } from './dto/employee-work-history.input';
 import { SeparateEmployeeInput } from './dto/separate-employee.input';
+import { SetEmployeeManagerInput } from './dto/set-employee-manager.input';
 import { TerminateEmployeeInput } from './dto/terminate-employee.input';
+import { UpdateEmployeePhotoInput } from './dto/update-employee-photo.input';
+import { UpdateMyPhotoInput } from './dto/update-my-photo.input';
 import { UpdateEmployeeInput } from './dto/update-employee.input';
 import { UpdateOffboardingTaskInput } from './dto/update-offboarding-task.input';
 import { UpdateMyProfileInput } from './dto/update-my-profile.input';
@@ -267,28 +271,84 @@ export class EmployeeResolver {
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async updateEmployee(@Args('input') input: UpdateEmployeeInput): Promise<EmployeeType> {
     const user = await this.authService.getCurrentUser().catch(() => null);
+    // Absent (`undefined`) means "leave alone"; explicit `null` means "clear".
+    // Collapsing both with `??` made every cleared field silently revert.
     const employee = await this.employeeService.update(
       input.employeeId,
       {
-        firstName: input.firstName ?? undefined,
-        middleName: input.middleName ?? undefined,
-        lastName: input.lastName ?? undefined,
-        salutation: (input.salutation as Salutation | undefined) ?? undefined,
-        workEmail: input.workEmail ?? undefined,
-        roleTitle: input.roleTitle ?? undefined,
-        dateOfBirth: (input.dateOfBirth as IsoDate | undefined) ?? undefined,
-        probationEndDate: (input.probationEndDate as IsoDate | undefined) ?? undefined,
-        hireDate: (input.hireDate as IsoDate | undefined) ?? undefined,
-        scheduledConfirmationDate: (input.scheduledConfirmationDate as IsoDate | undefined) ?? undefined,
-        finalConfirmationDate: (input.finalConfirmationDate as IsoDate | undefined) ?? undefined,
-        contractEndDate: (input.contractEndDate as IsoDate | undefined) ?? undefined,
-        noticePeriodDays: input.noticePeriodDays ?? undefined,
-        retirementDate: (input.retirementDate as IsoDate | undefined) ?? undefined,
-        holidayCalendarId: input.holidayCalendarId ? toId<HolidayCalendarId>(input.holidayCalendarId) : undefined,
-        workerType: (input.workerType as WorkerType | undefined) ?? undefined,
+        firstName: input.firstName,
+        middleName: input.middleName,
+        lastName: input.lastName,
+        salutation: input.salutation === undefined ? undefined : (input.salutation as Salutation | null),
+        workEmail: input.workEmail,
+        roleTitle: input.roleTitle,
+        dateOfBirth:
+          input.dateOfBirth === undefined ? undefined : (input.dateOfBirth as IsoDate | null),
+        probationEndDate:
+          input.probationEndDate === undefined
+            ? undefined
+            : (input.probationEndDate as IsoDate | null),
+        hireDate: input.hireDate === undefined ? undefined : (input.hireDate as IsoDate | null),
+        scheduledConfirmationDate:
+          input.scheduledConfirmationDate === undefined
+            ? undefined
+            : (input.scheduledConfirmationDate as IsoDate | null),
+        finalConfirmationDate:
+          input.finalConfirmationDate === undefined
+            ? undefined
+            : (input.finalConfirmationDate as IsoDate | null),
+        contractEndDate:
+          input.contractEndDate === undefined
+            ? undefined
+            : (input.contractEndDate as IsoDate | null),
+        noticePeriodDays: input.noticePeriodDays,
+        retirementDate:
+          input.retirementDate === undefined
+            ? undefined
+            : (input.retirementDate as IsoDate | null),
+        holidayCalendarId:
+          input.holidayCalendarId === undefined
+            ? undefined
+            : input.holidayCalendarId === null
+              ? null
+              : toId<HolidayCalendarId>(input.holidayCalendarId),
+        workerType:
+          input.workerType === undefined ? undefined : (input.workerType as WorkerType | null),
       },
       user ? toId<UserId>(user.id) : null,
     );
+    return toEmployeeType(employee);
+  }
+
+  /**
+   * Sets who an employee reports to. This is the only way to build a hierarchy:
+   * reporting lines live on the assignment, and nothing else exposes them.
+   * Passing a null manager makes the employee a root of the chart.
+   */
+  @Mutation(() => EmployeeType)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.assignmentWrite)
+  async setEmployeeManager(@Args('input') input: SetEmployeeManagerInput): Promise<EmployeeType> {
+    const employeeId = toId<EmployeeId>(input.employeeId);
+    const employee = await this.employeeService.getById(employeeId);
+    const effectiveDate = input.effectiveDate as IsoDate;
+
+    // An employee with no assignment yet has no position to carry over, so one
+    // is derived from their role title rather than failing the change.
+    const current = await this.assignmentService.currentPrimary(employeeId, effectiveDate);
+    const position = current
+      ? null
+      : await this.positionService.ensureByTitle(employee.roleTitle ?? 'Unassigned');
+
+    await this.assignmentService.setReportingLine({
+      employeeId,
+      reportsToEmployeeId: input.reportsToEmployeeId
+        ? toId<EmployeeId>(input.reportsToEmployeeId)
+        : null,
+      effectiveDate,
+      positionId: position ? toId<PositionId>(position.id) : null,
+    });
+
     return toEmployeeType(employee);
   }
 
@@ -464,6 +524,21 @@ export class EmployeeResolver {
 
   @Mutation(() => EmployeeProfileView)
   @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.employeeWrite)
+  async updateEmployeePhoto(
+    @Args('input') input: UpdateEmployeePhotoInput,
+  ): Promise<EmployeeProfileView> {
+    const user = await this.authService.getCurrentUser();
+    const profile = await this.profileService.updateForEmployee(
+      toId<EmployeeId>(input.employeeId),
+      toId<UserId>(user.id),
+      { photoUrl: input.photoUrl ?? null },
+    );
+    return toEmployeeProfileView(profile);
+  }
+
+  @Mutation(() => EmployeeProfileView)
+  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfWrite)
   async updateMyEmployeeProfile(
     @Args('input') input: UpdateMyProfileInput,
@@ -474,6 +549,25 @@ export class EmployeeResolver {
     }
     return toEmployeeProfileView(
       await this.profileService.updateForEmployee(user.employeeId, toId<UserId>(user.id), input as never),
+    );
+  }
+
+  // Employees set their own photo the same way admins do (a data URL from a
+  // picked file), separate from the text profile form.
+  @Mutation(() => EmployeeProfileView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.employeeSelfWrite)
+  async updateMyEmployeePhoto(
+    @Args('input') input: UpdateMyPhotoInput,
+  ): Promise<EmployeeProfileView> {
+    const user = await this.authService.getCurrentUser();
+    if (!user.employeeId) {
+      throw new NotFoundError('No employee record is linked to this account');
+    }
+    return toEmployeeProfileView(
+      await this.profileService.updateForEmployee(user.employeeId, toId<UserId>(user.id), {
+        photoUrl: input.photoUrl ?? null,
+      }),
     );
   }
 

@@ -1,14 +1,10 @@
 import { Field, InputType } from '@nestjs/graphql';
-import { IsEmail, IsIn, IsOptional, IsString, IsUrl, Length, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Length, MaxLength } from 'class-validator';
 
+// The photo is uploaded on its own via `updateMyEmployeePhoto` (a data URL) —
+// it is deliberately NOT part of the profile form payload.
 @InputType()
 export class UpdateMyProfileInput {
-  @Field(() => String, { nullable: true })
-  @IsOptional()
-  @IsUrl({ require_protocol: true })
-  @MaxLength(2048)
-  photoUrl?: string | null;
-
   @Field(() => String, { nullable: true })
   @IsOptional()
   @IsEmail()

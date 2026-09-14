@@ -1,5 +1,5 @@
 import { UseGuards } from '@nestjs/common';
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { AuthPayload } from '../../core/auth/dto/auth-payload.output';
 import { toCurrentUserView } from '../../core/auth/dto/current-user.output';
@@ -13,7 +13,7 @@ import { toWorkspaceSummaryView } from '../organization/dto/workspace-summary.ou
 
 import { AccountService } from './account.service';
 import { OnboardClientPayload } from './dto/client-workspace.output';
-import { LoginResult } from './dto/login-result.output';
+import { LoginResult, WorkspaceOption } from './dto/login-result.output';
 import { OnboardClientInput } from './dto/onboard-client.input';
 import { SignUpInput } from './dto/sign-up.input';
 
@@ -104,5 +104,31 @@ export class AccountResolver {
       initialAdmin: toCurrentUserView(initialAdmin, adminAccess),
       initialHrAdmin: toCurrentUserView(initialHrAdmin, hrAdminAccess),
     };
+  }
+
+  // The signed-in user's other workspaces, for the header switcher. Needs a
+  // session (getCurrentUser throws without one) but no extra permission — a
+  // user may always see and enter their own accounts.
+  @Query(() => [WorkspaceOption])
+  async switchableWorkspaces(): Promise<WorkspaceOption[]> {
+    const workspaces = await this.accountService.listSwitchableWorkspaces();
+    return workspaces.map((workspace) => ({
+      organizationId: workspace.organizationId,
+      organizationName: workspace.organizationName,
+    }));
+  }
+
+  // Enter another of the caller's workspaces without re-entering a password —
+  // the current valid session is the authority (see AccountService).
+  @Mutation(() => AuthPayload)
+  async switchWorkspace(
+    @Args('organizationId', { type: () => ID }) organizationId: string,
+  ): Promise<AuthPayload> {
+    const { user, token } = await this.accountService.switchWorkspace(organizationId);
+    const access = await this.authorization.getAccessForUserInOrganization(
+      user.id,
+      user.organizationId,
+    );
+    return { token, user: toCurrentUserView(user, access) };
   }
 }

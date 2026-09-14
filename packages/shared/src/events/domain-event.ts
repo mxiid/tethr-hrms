@@ -15,6 +15,8 @@ import type {
   EmployeePersonalDetailsId,
   EmployeeSeparationId,
   EmployeeWorkHistoryId,
+  FormId,
+  FormSubmissionId,
   HiringRequestId,
   InvoiceId,
   LeaveRequestId,
@@ -44,6 +46,7 @@ export const DOMAIN_EVENT_NAMES = [
   'employee.exitInterviewRecorded',
   'employee.offboardingTaskUpdated',
   'assignment.created',
+  'assignment.updated',
   'assignment.ended',
   'user.created',
   'user.linkedToEmployee',
@@ -57,6 +60,7 @@ export const DOMAIN_EVENT_NAMES = [
   'compensation.revised',
   'hiringRequest.submitted',
   'hiringRequest.updated',
+  'form.submitted',
   'announcement.published',
   'employeeFeedback.submitted',
   'employeeFeedback.updated',
@@ -117,6 +121,14 @@ export type DomainEventPayloads = {
     readonly positionId: PositionId;
     readonly effectiveDate: string;
   };
+  // A correction to an assignment that has not taken effect yet — same-day
+  // reassignment, typically fixing a mistake rather than dating a real change.
+  'assignment.updated': {
+    readonly assignmentId: AssignmentId;
+    readonly employeeId: EmployeeId;
+    readonly reportsToEmployeeId: EmployeeId | null;
+    readonly effectiveDate: string;
+  };
   'assignment.ended': {
     readonly assignmentId: AssignmentId;
     readonly employeeId: EmployeeId;
@@ -175,6 +187,13 @@ export type DomainEventPayloads = {
   'hiringRequest.updated': {
     readonly hiringRequestId: HiringRequestId;
     readonly status: string;
+  };
+  'form.submitted': {
+    readonly formId: FormId;
+    readonly submissionId: FormSubmissionId;
+    // What the form feeds (e.g. 'application'); the projection consumer keys
+    // its mapping on this.
+    readonly target: string;
   };
   'announcement.published': {
     readonly announcementId: AnnouncementId;

@@ -8,7 +8,7 @@ import { ApprovalRequest } from './approval-request.entity';
 import { APPROVAL_REQUEST_REPOSITORY } from './workflow.tokens';
 
 
-export type RequestApprovalInput = {
+type RequestApprovalInput = {
   readonly subjectType: string;
   readonly subjectId: string;
   readonly requestedByUserId: UserId;

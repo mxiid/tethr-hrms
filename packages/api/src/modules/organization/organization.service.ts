@@ -9,13 +9,13 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 
-import { ConflictError, ValidationFailedError } from '../../common/errors';
+import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 
 import { Organization } from './entities/organization.entity';
 
-export type CreateOrganizationInput = {
+type CreateOrganizationInput = {
   readonly legalName: string;
   readonly kind?: OrganizationKind;
   readonly displayName?: string;
@@ -102,6 +102,28 @@ export class OrganizationService {
     }
     organization.brandColor = brandColor as WorkspaceBrandColor;
     return this.organizations.save(organization);
+  }
+
+  // One-shot bootstrap: promotes an existing workspace (created by ordinary
+  // signup) to the platform's Tethr workspace. Idempotent; the partial unique
+  // index on kind='tethr' is the real invariant.
+  async markAsTethr(id: OrganizationId): Promise<Organization> {
+    const organization = await this.getById(id);
+    if (!organization) {
+      throw new NotFoundError('Organization not found', { id });
+    }
+    if (organization.kind === 'tethr') {
+      return organization;
+    }
+    organization.kind = 'tethr';
+    try {
+      return await this.organizations.save(organization);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new ConflictError('Another workspace is already the Tethr workspace');
+      }
+      throw error;
+    }
   }
 
   // Precheck for signup/onboarding: workspace names ARE unique (create()

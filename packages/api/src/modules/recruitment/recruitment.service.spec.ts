@@ -2,21 +2,55 @@ import { toId, type HiringRequestId, type OrganizationId, type UserId } from '@h
 import type { DataSource, EntityManager } from 'typeorm';
 
 import type { AuditService } from '../../core/audit/audit.service';
+import { PERMISSIONS } from '../../core/authz/permissions';
 import type { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
+import type { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
 import type { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+import type { OrganizationService } from '../organization/organization.service';
+import type { PositionService } from '../position/position.service';
 
 import type { HiringRequestUpdate } from './entities/hiring-request-update.entity';
 import { HiringRequest } from './entities/hiring-request.entity';
 import { RecruitmentService } from './recruitment.service';
 
 const ORGANIZATION = toId<OrganizationId>('org-1');
+const CLIENT_ORGANIZATION = toId<OrganizationId>('org-client');
 const USER = toId<UserId>('user-1');
 const REQUEST = toId<HiringRequestId>('request-1');
+
+const makeRequest = (overrides: Partial<HiringRequest> = {}): HiringRequest =>
+  ({
+    id: REQUEST,
+    organizationId: ORGANIZATION,
+    positionTitle: 'Senior developer',
+    jobDescription: 'Build things.',
+    headcount: 1,
+    employmentType: 'permanent',
+    location: null,
+    preferredStartDate: null,
+    targetFillDate: null,
+    salaryMin: null,
+    salaryMax: null,
+    salaryCurrency: null,
+    hiringManagerEmployeeId: null,
+    reportsToEmployeeId: null,
+    priority: 'normal',
+    positionId: null,
+    clientNote: 'Need a senior engineer.',
+    tethrNote: null,
+    status: 'submitted',
+    requestedByUserId: USER,
+    updatedByUserId: USER,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  }) as HiringRequest;
 
 const buildService = (existing: HiringRequest | null = null) => {
   const repository = {
     find: jest.fn().mockResolvedValue([]),
+    save: jest.fn((value: HiringRequest) => Promise.resolve(value)),
   } as unknown as TenantScopedRepository<HiringRequest>;
   const updates = {
     find: jest.fn().mockResolvedValue([]),
@@ -40,6 +74,24 @@ const buildService = (existing: HiringRequest | null = null) => {
     getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
   } as unknown as TenantContextService;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+  const platformScope = {
+    assertOperator: jest.fn().mockResolvedValue({
+      userId: USER,
+      organizationId: ORGANIZATION,
+      access: { roleKeys: ['tethrHr'], permissions: [], portal: 'tethr' },
+    }),
+    listClientOrganizationIds: jest.fn().mockResolvedValue([CLIENT_ORGANIZATION]),
+    switchTo: jest.fn((_input: unknown, work: () => Promise<unknown>) => work()),
+  } as unknown as PlatformScopeService;
+  const organizations = {
+    getById: jest.fn((id: string) =>
+      Promise.resolve({ id, displayName: id === ORGANIZATION ? 'Tethr HQ' : 'Acme Inc' }),
+    ),
+  } as unknown as OrganizationService;
+  const positions = {
+    ensureByTitle: jest.fn().mockResolvedValue({ id: 'position-1', status: 'open' }),
+    setStatus: jest.fn().mockResolvedValue(undefined),
+  } as unknown as PositionService;
 
   return {
     service: new RecruitmentService(
@@ -49,11 +101,17 @@ const buildService = (existing: HiringRequest | null = null) => {
       publisher,
       tenantContext,
       audit,
+      platformScope,
+      organizations,
+      positions,
     ),
     manager,
     publisher,
     repository,
     updates,
+    platformScope,
+    organizations,
+    positions,
   };
 };
 
@@ -64,6 +122,10 @@ describe('RecruitmentService', () => {
     const request = await service.createHiringRequest({
       positionTitle: 'Senior developer',
       requestedByUserId: USER,
+      actor: 'client',
+      priority: 'urgent',
+      salaryMin: 90000,
+      salaryCurrency: 'usd',
     });
 
     expect(request.status).toBe('submitted');
@@ -74,46 +136,56 @@ describe('RecruitmentService', () => {
         status: 'submitted',
       }),
     );
+    expect(manager.create).toHaveBeenCalledWith(
+      HiringRequest,
+      expect.objectContaining({ priority: 'urgent', salaryMin: '90000.00', salaryCurrency: 'USD' }),
+    );
     expect(publisher.publishWithin).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ name: 'hiringRequest.submitted' }),
     );
   });
 
-  it('records a Tethr status update and preserves the client brief', async () => {
-    const existing = {
-      id: REQUEST,
-      organizationId: ORGANIZATION,
-      positionTitle: 'Senior developer',
-      headcount: 1,
-      employmentType: 'permanent',
-      location: null,
-      preferredStartDate: null,
-      clientNote: 'Need a senior engineer.',
-      status: 'submitted',
-      tethrNote: null,
-      requestedByUserId: USER,
-      updatedByUserId: USER,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as HiringRequest;
-    const { service, manager, publisher } = buildService(existing);
+  it('records a Tethr-raised request with a Tethr first update', async () => {
+    const { service, manager } = buildService();
 
-    const request = await service.updateHiringRequest({
-      hiringRequestId: REQUEST,
-      status: 'sourcing',
-      tethrNote: 'Initial shortlist expected this week.',
-      updatedByUserId: USER,
+    await service.createHiringRequest({
+      positionTitle: 'Staff designer',
+      requestedByUserId: USER,
+      actor: 'tethr',
     });
 
-    expect(request.status).toBe('sourcing');
-    expect(request.tethrNote).toBe('Initial shortlist expected this week.');
     expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: 'tethr',
         hiringRequestId: REQUEST,
-        note: 'Initial shortlist expected this week.',
-        status: 'sourcing',
+        status: 'submitted',
+      }),
+    );
+  });
+
+  it('opens a submitted request, links a position, and records the trail', async () => {
+    const { service, manager, publisher, positions, repository } = buildService(makeRequest());
+
+    const request = await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      tethrNote: 'Kicking off sourcing.',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(request.status).toBe('open');
+    expect(request.tethrNote).toBe('Kicking off sourcing.');
+    expect(request.positionId).toBe('position-1');
+    expect(positions.ensureByTitle).toHaveBeenCalledWith('Senior developer');
+    expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ positionId: 'position-1' }));
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: 'tethr',
+        hiringRequestId: REQUEST,
+        note: 'Kicking off sourcing.',
+        status: 'open',
       }),
     );
     expect(publisher.publishWithin).toHaveBeenCalledWith(
@@ -122,42 +194,94 @@ describe('RecruitmentService', () => {
     );
   });
 
-  it('returns client-visible update history with hiring requests', async () => {
-    const request = {
-      id: REQUEST,
-      organizationId: ORGANIZATION,
-      positionTitle: 'Senior developer',
-      headcount: 1,
-      employmentType: 'permanent',
-      location: null,
-      preferredStartDate: null,
-      clientNote: 'Need a senior engineer.',
-      status: 'sourcing',
-      tethrNote: 'Initial shortlist expected this week.',
-      requestedByUserId: USER,
+  it('refuses an illegal transition and leaves the request untouched', async () => {
+    const { service, manager, positions } = buildService(makeRequest({ status: 'filled' }));
+
+    await expect(
+      service.updateHiringRequest({
+        hiringRequestId: REQUEST,
+        status: 'open',
+        updatedByUserId: USER,
+        actor: 'tethr',
+      }),
+    ).rejects.toThrow('A filled request cannot become open');
+
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(positions.ensureByTitle).not.toHaveBeenCalled();
+  });
+
+  it('closes the linked position when a request is cancelled', async () => {
+    const { service, positions } = buildService(
+      makeRequest({ status: 'open', positionId: 'position-1' }),
+    );
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'cancelled',
       updatedByUserId: USER,
-      createdAt: new Date('2026-08-01T10:00:00.000Z'),
-      updatedAt: new Date('2026-08-02T10:00:00.000Z'),
-    } as HiringRequest;
+      actor: 'tethr',
+    });
+
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+  });
+
+  it('reads the cross-client board under platform scope and labels workspaces', async () => {
+    const request = makeRequest({ status: 'open' });
+    const { service, repository, platformScope, organizations } = buildService();
+    (repository.find as jest.Mock).mockResolvedValue([request]);
+
+    const records = await service.listClientHiringRequests();
+
+    expect(platformScope.assertOperator).toHaveBeenCalled();
+    expect(organizations.getById).toHaveBeenCalledWith(ORGANIZATION);
+    expect(records).toHaveLength(2);
+    expect(records.map((record) => record.organizationName).sort()).toEqual([
+      'Acme Inc',
+      'Tethr HQ',
+    ]);
+    expect(platformScope.switchTo).toHaveBeenCalledTimes(2);
+  });
+
+  it('switches into the request workspace when the board updates a client request', async () => {
+    const { service, platformScope } = buildService(
+      makeRequest({ organizationId: CLIENT_ORGANIZATION }),
+    );
+
+    const request = await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      updatedByUserId: USER,
+      actor: 'tethr',
+      sourceOrganizationId: CLIENT_ORGANIZATION,
+    });
+
+    expect(platformScope.assertOperator).toHaveBeenCalledWith(PERMISSIONS.hiringRequestManage);
+    expect(platformScope.switchTo).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: CLIENT_ORGANIZATION }),
+      expect.any(Function),
+    );
+    expect(request.status).toBe('open');
+  });
+
+  it('returns client-visible update history with hiring requests', async () => {
+    const request = makeRequest({ status: 'open', tethrNote: 'Internal note.' });
     const update = {
       id: 'update-1',
       organizationId: ORGANIZATION,
       hiringRequestId: REQUEST,
-      status: 'sourcing',
+      status: 'open',
       actor: 'tethr',
-      note: 'Initial shortlist expected this week.',
+      note: 'Internal note.',
       createdByUserId: USER,
       createdAt: new Date('2026-08-02T10:00:00.000Z'),
       updatedAt: new Date('2026-08-02T10:00:00.000Z'),
     } as HiringRequestUpdate;
     const { service, repository, updates } = buildService();
-    const requestFind = repository.find as jest.MockedFunction<typeof repository.find>;
-    const updateFind = updates.find as jest.MockedFunction<typeof updates.find>;
-    requestFind.mockResolvedValue([request]);
-    updateFind.mockResolvedValue([update]);
+    (repository.find as jest.Mock).mockResolvedValue([request]);
+    (updates.find as jest.Mock).mockResolvedValue([update]);
 
     await expect(service.listHiringRequests()).resolves.toEqual([{ request, updates: [update] }]);
-    expect(updateFind).toHaveBeenCalledWith(
+    expect(updates.find).toHaveBeenCalledWith(
       expect.objectContaining({ order: { createdAt: 'ASC' } }),
     );
   });

@@ -17,7 +17,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type FindOptionsWhere } from 'typeorm';
 
-import { NotFoundError } from '../../common/errors';
+import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
 import {
   DocumentService,
@@ -28,14 +28,17 @@ import {
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+import { WorkflowService } from '../../core/workflow';
 import { EmployeeDirectoryService, EmployeeService } from '../employee';
 
 import {
+  BANK_DETAIL_CHANGE_REQUEST_REPOSITORY,
   EMPLOYEE_ASSESSMENT_REPOSITORY,
   EMPLOYEE_DOCUMENT_LINK_REPOSITORY,
   EMPLOYEE_HR_RECORD_REPOSITORY,
   EMPLOYEE_ONBOARDING_TASK_REPOSITORY,
 } from './employee-records.tokens';
+import { BankDetailChangeRequest } from './entities/bank-detail-change-request.entity';
 import { EmployeeAssessment } from './entities/employee-assessment.entity';
 import { EmployeeDocumentLink } from './entities/employee-document-link.entity';
 import { EmployeeHrRecord } from './entities/employee-hr-record.entity';
@@ -54,7 +57,7 @@ const ONBOARDING_TASK_DEFINITIONS: readonly {
   { taskKey: 'employeeRecordForm', title: 'Employee record form' },
 ];
 
-export type RecordEmployeeAssessmentData = {
+type RecordEmployeeAssessmentData = {
   readonly employeeId: EmployeeId;
   readonly title: string;
   readonly assessmentDate: string;
@@ -64,7 +67,7 @@ export type RecordEmployeeAssessmentData = {
   readonly createdByUserId: UserId;
 };
 
-export type AttachEmployeeDocumentData = {
+type AttachEmployeeDocumentData = {
   readonly employeeId: EmployeeId;
   readonly name: string;
   readonly contentType: string;
@@ -80,7 +83,7 @@ export type AttachEmployeeDocumentData = {
   readonly attachedByUserId: UserId;
 };
 
-export type AddEmployeeDocumentVersionData = {
+type AddEmployeeDocumentVersionData = {
   readonly employeeDocumentLinkId: EmployeeDocumentLinkId;
   readonly contentType: string;
   readonly storageKey: string;
@@ -92,13 +95,13 @@ export type AddEmployeeDocumentVersionData = {
   readonly createdByUserId: UserId;
 };
 
-export type PrepareEmployeeDocumentUploadData = {
+type PrepareEmployeeDocumentUploadData = {
   readonly employeeId: EmployeeId;
   readonly name: string;
   readonly contentType: string;
 };
 
-export type RequestEmployeeDocumentSignatureData = {
+type RequestEmployeeDocumentSignatureData = {
   readonly employeeDocumentLinkId: EmployeeDocumentLinkId;
   readonly signerEmail: string;
   readonly signerName?: string | null;
@@ -121,7 +124,7 @@ export type EmployeeOnboardingTaskRecord = {
   readonly notes: string | null;
 };
 
-export type UpdateEmployeeOnboardingTaskData = {
+type UpdateEmployeeOnboardingTaskData = {
   readonly employeeId: EmployeeId;
   readonly taskKey: EmployeeOnboardingTaskKey;
   readonly status: EmployeeOnboardingTaskStatus;
@@ -130,7 +133,7 @@ export type UpdateEmployeeOnboardingTaskData = {
   readonly updatedByUserId: UserId;
 };
 
-export type UpdateEmployeeHrRecordData = {
+type UpdateEmployeeHrRecordData = {
   readonly employeeId: EmployeeId;
   readonly roleTitle?: string | null;
   readonly salaryBreakdown?: string | null;
@@ -142,6 +145,29 @@ export type UpdateEmployeeHrRecordData = {
   readonly hardwareInfo?: string | null;
   readonly employeeRecordForm?: string | null;
   readonly updatedByUserId: UserId;
+};
+
+type BankDetails = {
+  readonly bankName: string | null;
+  readonly bankAccountTitle: string | null;
+  readonly bankAccountNumber: string | null;
+  readonly bankIban: string | null;
+};
+
+type RequestBankDetailChangeData = {
+  readonly employeeId: EmployeeId;
+  readonly bankName?: string | null;
+  readonly bankAccountTitle?: string | null;
+  readonly bankAccountNumber?: string | null;
+  readonly bankIban?: string | null;
+  readonly requestedByUserId?: UserId | null;
+};
+
+type DecideBankDetailChangeData = {
+  readonly requestId: string;
+  readonly approve: boolean;
+  readonly decidedByUserId: UserId;
+  readonly note?: string | null;
 };
 
 export type EmployeeDocumentRecord = {
@@ -159,6 +185,8 @@ export class EmployeeRecordsService {
     private readonly hrRecords: TenantScopedRepository<EmployeeHrRecord>,
     @Inject(EMPLOYEE_ONBOARDING_TASK_REPOSITORY)
     private readonly onboardingTasks: TenantScopedRepository<EmployeeOnboardingTask>,
+    @Inject(BANK_DETAIL_CHANGE_REQUEST_REPOSITORY)
+    private readonly bankChangeRequests: TenantScopedRepository<BankDetailChangeRequest>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly documents: DocumentService,
     private readonly employeeDirectory: EmployeeDirectoryService,
@@ -166,6 +194,7 @@ export class EmployeeRecordsService {
     private readonly publisher: DomainEventPublisher,
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
+    private readonly workflow: WorkflowService,
   ) {}
 
   async recordAssessment(input: RecordEmployeeAssessmentData): Promise<EmployeeAssessment> {
@@ -209,6 +238,123 @@ export class EmployeeRecordsService {
     return this.hrRecords.findOne({
       where: { employeeId } as FindOptionsWhere<EmployeeHrRecord>,
     });
+  }
+
+  // --- Bank details (payment instruction) ---
+
+  async getBankDetails(employeeId: EmployeeId): Promise<BankDetails | null> {
+    const record = await this.getHrRecord(employeeId);
+    if (!record) {
+      return null;
+    }
+    return {
+      bankName: record.bankName,
+      bankAccountTitle: record.bankAccountTitle,
+      bankAccountNumber: record.bankAccountNumber,
+      bankIban: record.bankIban,
+    };
+  }
+
+  async requestBankDetailChange(
+    input: RequestBankDetailChangeData,
+  ): Promise<BankDetailChangeRequest> {
+    if (!(await this.employeeDirectory.exists(input.employeeId))) {
+      throw new NotFoundError('Employee not found', { id: input.employeeId });
+    }
+    const proposed = [
+      input.bankName,
+      input.bankAccountTitle,
+      input.bankAccountNumber,
+      input.bankIban,
+    ];
+    if (proposed.every((value) => value == null || value.trim() === '')) {
+      throw new ValidationFailedError('At least one bank field is required');
+    }
+    const request = await this.bankChangeRequests.save(
+      this.bankChangeRequests.create({
+        employeeId: input.employeeId,
+        bankName: input.bankName?.trim() || null,
+        bankAccountTitle: input.bankAccountTitle?.trim() || null,
+        bankAccountNumber: input.bankAccountNumber?.trim() || null,
+        bankIban: input.bankIban?.trim() || null,
+        status: 'pending',
+        approvalRequestId: null,
+        requestedByUserId: input.requestedByUserId ?? null,
+        decidedByUserId: null,
+        decidedAt: null,
+        decisionNote: null,
+      }),
+    );
+    // Ride the shared approval engine so bank changes aren't a second bespoke
+    // approval mechanism (finding 7).
+    if (input.requestedByUserId) {
+      const approval = await this.workflow.requestApproval({
+        subjectType: 'bankDetailChange',
+        subjectId: request.id,
+        requestedByUserId: input.requestedByUserId,
+      });
+      request.approvalRequestId = approval.id;
+      await this.bankChangeRequests.save(request);
+    }
+    await this.audit.record({
+      action: 'request',
+      resourceType: 'bank_detail_change_request',
+      resourceId: request.id,
+      after: { employeeId: request.employeeId },
+    });
+    return request;
+  }
+
+  listBankDetailChangeRequests(employeeId?: EmployeeId): Promise<BankDetailChangeRequest[]> {
+    const where = employeeId ? { employeeId } : {};
+    return this.bankChangeRequests.find({
+      where: where as FindOptionsWhere<BankDetailChangeRequest>,
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async decideBankDetailChange(
+    input: DecideBankDetailChangeData,
+  ): Promise<BankDetailChangeRequest> {
+    const request = await this.bankChangeRequests.findById(input.requestId);
+    if (!request) {
+      throw new NotFoundError('Bank detail change request not found', { id: input.requestId });
+    }
+    if (request.status !== 'pending') {
+      throw new ConflictError('This change request has already been decided');
+    }
+    if (request.approvalRequestId) {
+      await this.workflow.decide(
+        request.approvalRequestId,
+        input.decidedByUserId,
+        input.approve ? 'approved' : 'rejected',
+        input.note ?? undefined,
+      );
+    }
+    request.status = input.approve ? 'approved' : 'rejected';
+    request.decidedByUserId = input.decidedByUserId;
+    request.decidedAt = new Date();
+    request.decisionNote = input.note ?? null;
+    const saved = await this.bankChangeRequests.save(request);
+
+    if (input.approve) {
+      const existing = await this.getHrRecord(request.employeeId);
+      const record = existing ?? this.hrRecords.create({ employeeId: request.employeeId });
+      if (request.bankName !== null) record.bankName = request.bankName;
+      if (request.bankAccountTitle !== null) record.bankAccountTitle = request.bankAccountTitle;
+      if (request.bankAccountNumber !== null) record.bankAccountNumber = request.bankAccountNumber;
+      if (request.bankIban !== null) record.bankIban = request.bankIban;
+      record.updatedByUserId = input.decidedByUserId;
+      await this.hrRecords.save(record);
+    }
+
+    await this.audit.record({
+      action: input.approve ? 'approve' : 'reject',
+      resourceType: 'bank_detail_change_request',
+      resourceId: saved.id,
+      after: { employeeId: saved.employeeId, status: saved.status },
+    });
+    return saved;
   }
 
   async updateHrRecord(input: UpdateEmployeeHrRecordData): Promise<EmployeeHrRecord> {
@@ -273,14 +419,25 @@ export class EmployeeRecordsService {
       order: { createdAt: 'ASC' },
     });
     const byTaskKey = new Map(existing.map((task) => [task.taskKey, task]));
+    // Derive the one task whose truth lives in our own data: bank details are
+    // done exactly when the payment fields are populated, so "completed" can
+    // never be true while the bank columns are empty (plan Phase 1 #11).
+    const hrRecord = await this.getHrRecord(employeeId);
+    const bankDetailsComplete = Boolean(
+      hrRecord && (hrRecord.bankAccountNumber || hrRecord.bankIban),
+    );
     return ONBOARDING_TASK_DEFINITIONS.map((definition) => {
       const task = byTaskKey.get(definition.taskKey);
+      let status = task?.status ?? 'notStarted';
+      if (definition.taskKey === 'bankDetails' && bankDetailsComplete) {
+        status = 'completed';
+      }
       return {
         id: task?.id ?? null,
         employeeId,
         taskKey: definition.taskKey,
         title: task?.title ?? definition.title,
-        status: task?.status ?? 'notStarted',
+        status,
         dueDate: task?.dueDate ?? null,
         completedAt: task?.completedAt ?? null,
         notes: task?.notes ?? null,

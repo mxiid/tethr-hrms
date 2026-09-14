@@ -1,8 +1,19 @@
 import { useMutation, useQuery } from '@apollo/client';
 import type { SystemRoleKey } from '@hrms/shared';
-import { IconKey, IconPlus, IconRefresh, IconUsersGroup } from '@tabler/icons-react';
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import type { MainColorName } from '@hrms/ui';
+import { IconAlertTriangle, IconFilterOff, IconKey, IconPlus, IconRefresh, IconUsers } from '@tabler/icons-react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
+import { StatusChip } from '../../../components/chip/StatusChip';
+import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { Modal } from '../../../components/modal/Modal';
+import {
+  DataTable,
+  toViewColumns,
+  type ColumnDefinition,
+} from '../../../components/table/DataTable';
+import { useListView } from '../../../components/view-bar/useListView';
+import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
 import {
   ASSIGNABLE_WORKSPACE_ROLES_QUERY,
@@ -46,6 +57,18 @@ const isSystemRoleKey = (value: string): value is SystemRoleKey =>
 const primarySystemRole = (roleKeys: readonly string[]): SystemRoleKey | null =>
   roleKeys.find(isSystemRoleKey) ?? null;
 
+const userStatusColors: Record<string, MainColorName> = {
+  active: 'green',
+  invited: 'amber',
+  disabled: 'gray',
+};
+
+const userStatusLabels: Record<string, string> = {
+  active: 'Active',
+  invited: 'Invited',
+  disabled: 'Disabled',
+};
+
 export const WorkspaceUsersPage = () => {
   const { theme } = useTheme();
   const { data, loading, error, refetch } = useQuery<WorkspaceUsersData>(WORKSPACE_USERS_QUERY);
@@ -76,6 +99,164 @@ export const WorkspaceUsersPage = () => {
     () => new Map((employeeData?.employees ?? []).map((employee) => [employee.id, employee])),
     [employeeData?.employees],
   );
+  const workspaceUsers = data?.workspaceUsers ?? [];
+  const view = useListView({ routeKey: '/settings/members' });
+  const visibleUsers = useMemo(() => {
+    const statuses = view.filters.status ?? [];
+    const roles = view.filters.role ?? [];
+    return workspaceUsers.filter((workspaceUser) => {
+      if (statuses.length > 0 && !statuses.includes(workspaceUser.status)) return false;
+      if (roles.length > 0) {
+        const primary = primarySystemRole(workspaceUser.roleKeys);
+        if (primary === null || !roles.includes(primary)) return false;
+      }
+      return true;
+    });
+  }, [workspaceUsers, view.filters.role, view.filters.status]);
+
+  const employeeLabel = (workspaceUser: WorkspaceUser): string => {
+    if (!workspaceUser.employeeId) return '—';
+    const employee = employeesById.get(workspaceUser.employeeId);
+    return employee
+      ? `${employee.firstName} ${employee.lastName} (${employee.employeeNumber})`
+      : workspaceUser.employeeId;
+  };
+
+  const renderRoleCell = (workspaceUser: WorkspaceUser) => {
+    const currentRole = primarySystemRole(workspaceUser.roleKeys);
+    const assignableForUser = assignableRoles;
+    const canEditRole =
+      assignableForUser.length > 0 &&
+      (currentRole === null || assignableForUser.includes(currentRole));
+    const selectedRole =
+      roleDrafts[workspaceUser.id] ?? currentRole ?? assignableForUser[0] ?? 'clientMember';
+    const selectedEmployeeId =
+      employeeLinkDrafts[workspaceUser.id] ?? workspaceUser.employeeId ?? '';
+    const hasRoleChange =
+      currentRole === null ||
+      selectedRole !== currentRole ||
+      (selectedRole === 'employee' &&
+        selectedEmployeeId !== (workspaceUser.employeeId ?? ''));
+
+    return canEditRole ? (
+      <div className="access-role-control">
+        <select
+          aria-label={`Access role for ${workspaceUser.email}`}
+          value={selectedRole}
+          onChange={(event) =>
+            setRoleDrafts((current) => ({
+              ...current,
+              [workspaceUser.id]: event.target.value as SystemRoleKey,
+            }))
+          }
+        >
+          {assignableForUser.map((role) => (
+            <option key={role} value={role}>
+              {roleLabels[role]}
+            </option>
+          ))}
+        </select>
+        {selectedRole === 'employee' ? (
+          <select
+            aria-label={`Employee record for ${workspaceUser.email}`}
+            value={selectedEmployeeId}
+            onChange={(event) =>
+              setEmployeeLinkDrafts((current) => ({
+                ...current,
+                [workspaceUser.id]: event.target.value,
+              }))
+            }
+          >
+            <option value="">Select employee</option>
+            {(employeeData?.employees ?? []).map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.firstName} {employee.lastName} ({employee.employeeNumber})
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <button
+          className="button button-secondary"
+          disabled={
+            !hasRoleChange ||
+            updatingRole ||
+            (selectedRole === 'employee' && !selectedEmployeeId)
+          }
+          onClick={() => void onUpdateRole(workspaceUser)}
+          type="button"
+        >
+          <IconKey size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          Save
+        </button>
+      </div>
+    ) : (
+      <span className="access-role-static">
+        {currentRole ? roleLabels[currentRole] : 'No assignable role'}
+      </span>
+    );
+  };
+
+  const columns: readonly ColumnDefinition<WorkspaceUser>[] = [
+    {
+      key: 'user',
+      header: 'User',
+      width: '30%',
+      hideable: false,
+      sortValue: (workspaceUser) => workspaceUser.email,
+      render: (workspaceUser) => workspaceUser.email,
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      width: '28%',
+      sortValue: (workspaceUser) => primarySystemRole(workspaceUser.roleKeys) ?? '',
+      render: renderRoleCell,
+    },
+    {
+      key: 'employee',
+      header: 'Employee record',
+      width: '26%',
+      sortValue: employeeLabel,
+      render: employeeLabel,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: '16%',
+      hideable: false,
+      sortValue: (workspaceUser) => workspaceUser.status,
+      render: (workspaceUser) => (
+        <StatusChip
+          color={userStatusColors[workspaceUser.status] ?? 'gray'}
+          label={userStatusLabels[workspaceUser.status] ?? workspaceUser.status}
+        />
+      ),
+    },
+  ];
+  const filters = [
+    {
+      key: 'role',
+      label: 'Role',
+      options: [
+        ...new Set(
+          workspaceUsers
+            .map((workspaceUser) => primarySystemRole(workspaceUser.roleKeys))
+            .filter((role): role is SystemRoleKey => role !== null),
+        ),
+      ].map((role) => ({
+        value: role,
+        label: roleLabels[role],
+      })),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      options: Object.entries(userStatusLabels).map(([value, label]) => ({
+        value,
+        label,
+      })),
+    },
+  ];
 
   useEffect(() => {
     if (!firstAssignableRole) return;
@@ -153,15 +334,16 @@ export const WorkspaceUsersPage = () => {
         <header className="page-header">
           <div>
             <h1 className="page-title" id="workspace-users-title">
-              Workspace users
+              Members
             </h1>
-            <p className="page-subtitle">
-              People with access to this organization and their active roles.
-            </p>
+            <p className="page-subtitle">Who can sign in, and what they can do.</p>
           </div>
           <button
             className="button button-primary"
-            onClick={() => setShowForm((visible) => !visible)}
+            onClick={() => {
+              setFormError(null);
+              setShowForm(true);
+            }}
             type="button"
           >
             <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -169,13 +351,18 @@ export const WorkspaceUsersPage = () => {
           </button>
         </header>
 
-        {showForm ? (
-          <form className="table-shell workspace-user-form" onSubmit={onCreate}>
-            {formError ? (
-              <p className="auth-error" role="alert">
-                {formError}
-              </p>
-            ) : null}
+        <Modal
+          isOpen={showForm}
+          onClose={() => setShowForm(false)}
+          title="Add workspace user"
+          width="md"
+        >
+          {formError ? (
+            <p className="auth-error" role="alert">
+              {formError}
+            </p>
+          ) : null}
+          <form className="config-form" onSubmit={onCreate}>
             <div className="field-group">
               <div className="field">
                 <label htmlFor="workspace-user-email">Email</label>
@@ -252,23 +439,16 @@ export const WorkspaceUsersPage = () => {
             </div>
             <div className="page-actions">
               <button
-                className="button button-primary"
+                className="button button-primary button-full"
                 disabled={creating || assignableRoles.length === 0}
                 type="submit"
               >
                 <IconKey size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 {creating ? 'Adding...' : 'Add user'}
               </button>
-              <button
-                className="button button-secondary"
-                onClick={() => setShowForm(false)}
-                type="button"
-              >
-                Cancel
-              </button>
             </div>
           </form>
-        ) : null}
+        </Modal>
 
         {roleError ? (
           <p className="auth-error" role="alert">
@@ -276,153 +456,61 @@ export const WorkspaceUsersPage = () => {
           </p>
         ) : null}
 
-        <section className="table-shell">
-          <div className="table-title-row">
-            <div className="table-title">
-              <IconUsersGroup size={theme.icon.size.md} />
-              Users
-            </div>
-            <button
-              className="icon-button"
-              onClick={() => void refetch()}
-              title="Refresh users"
-              type="button"
-            >
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
-          </div>
-          {error ? (
-            <p className="table-empty">Could not load workspace users.</p>
-          ) : (
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>User</th>
-                    <th>Role</th>
-                    <th>Employee record</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data?.workspaceUsers ?? []).map((workspaceUser) => (
-                    <tr key={workspaceUser.id}>
-                      <td>{workspaceUser.email}</td>
-                      <td>
-                        {(() => {
-                          const currentRole = primarySystemRole(workspaceUser.roleKeys);
-                          const assignableForUser = assignableRoles;
-                          const canEditRole =
-                            assignableForUser.length > 0 &&
-                            (currentRole === null || assignableForUser.includes(currentRole));
-                          const selectedRole =
-                            roleDrafts[workspaceUser.id] ??
-                            currentRole ??
-                            assignableForUser[0] ??
-                            'clientMember';
-                          const selectedEmployeeId =
-                            employeeLinkDrafts[workspaceUser.id] ?? workspaceUser.employeeId ?? '';
-                          const hasRoleChange =
-                            currentRole === null ||
-                            selectedRole !== currentRole ||
-                            (selectedRole === 'employee' &&
-                              selectedEmployeeId !== (workspaceUser.employeeId ?? ''));
-
-                          return canEditRole ? (
-                            <div
-                              className={`access-role-control${
-                                selectedRole === 'employee' ? '' : ' is-role-only'
-                              }`}
-                            >
-                              <select
-                                aria-label={`Access role for ${workspaceUser.email}`}
-                                value={selectedRole}
-                                onChange={(event) =>
-                                  setRoleDrafts((current) => ({
-                                    ...current,
-                                    [workspaceUser.id]: event.target.value as SystemRoleKey,
-                                  }))
-                                }
-                              >
-                                {assignableForUser.map((role) => (
-                                  <option key={role} value={role}>
-                                    {roleLabels[role]}
-                                  </option>
-                                ))}
-                              </select>
-                              {selectedRole === 'employee' ? (
-                                <select
-                                  aria-label={`Employee record for ${workspaceUser.email}`}
-                                  value={selectedEmployeeId}
-                                  onChange={(event) =>
-                                    setEmployeeLinkDrafts((current) => ({
-                                      ...current,
-                                      [workspaceUser.id]: event.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="">Select employee</option>
-                                  {(employeeData?.employees ?? []).map((employee) => (
-                                    <option key={employee.id} value={employee.id}>
-                                      {employee.firstName} {employee.lastName} (
-                                      {employee.employeeNumber})
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : null}
-                              <button
-                                className="button button-secondary"
-                                disabled={
-                                  !hasRoleChange ||
-                                  updatingRole ||
-                                  (selectedRole === 'employee' && !selectedEmployeeId)
-                                }
-                                onClick={() => void onUpdateRole(workspaceUser)}
-                                type="button"
-                              >
-                                <IconKey size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                                Save
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="access-role-static">
-                              {currentRole ? roleLabels[currentRole] : 'No assignable role'}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td>
-                        {workspaceUser.employeeId
-                          ? (() => {
-                              const employee = employeesById.get(workspaceUser.employeeId);
-                              return employee
-                                ? `${employee.firstName} ${employee.lastName} (${employee.employeeNumber})`
-                                : workspaceUser.employeeId;
-                            })()
-                          : '—'}
-                      </td>
-                      <td>
-                        <span
-                          className="chip"
-                          style={{ '--chip-color': 'var(--hrms-color-tag-green)' } as CSSProperties}
-                        >
-                          <span className="chip-dot" />
-                          {workspaceUser.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {!loading && (data?.workspaceUsers.length ?? 0) === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="table-empty">
-                        No workspace users found.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <section className="table-shell" aria-label="Workspace users">
+          <ViewBar
+            actions={
+              <button
+                className="icon-button"
+                onClick={() => void refetch()}
+                title="Refresh users"
+                type="button"
+              >
+                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            }
+            columns={toViewColumns(columns)}
+            count={visibleUsers.length}
+            filters={filters}
+            view={view}
+            viewLabel="All users"
+          />
+          <DataTable
+            columns={columns}
+            emptyState={
+              error ? (
+                <EmptyState
+                  icon={IconAlertTriangle}
+                  title="Could not load workspace users"
+                  description="Is the API running, and are you still signed in?"
+                />
+              ) : workspaceUsers.length === 0 ? (
+                <EmptyState
+                  icon={IconUsers}
+                  title="No workspace users found"
+                  description="Invite a teammate so they can sign in to this workspace."
+                />
+              ) : (
+                <EmptyState
+                  icon={IconFilterOff}
+                  title="No users match these filters"
+                  description="Clear a filter to see more."
+                  action={
+                    <button className="button button-secondary" onClick={view.clearFilters} type="button">
+                      Clear filters
+                    </button>
+                  }
+                />
+              )
+            }
+            getRowKey={(workspaceUser) => workspaceUser.id}
+            hiddenColumns={view.hiddenColumns}
+            loading={loading && !error}
+            onHideColumn={view.hideColumn}
+            onSort={view.setSort}
+            rows={error ? [] : visibleUsers}
+            skeletonRows={4}
+            sorts={view.sorts}
+          />
         </section>
       </section>
     </main>

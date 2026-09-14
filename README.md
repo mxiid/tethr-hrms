@@ -6,18 +6,21 @@ New here? Read [CLAUDE.md](CLAUDE.md) and the four docs it links ([context](cont
 
 ## Prerequisites
 
-- Node.js ≥ 20
-- Docker (for local Postgres + Redis) — or native Postgres 16 / Redis 7
+- Node.js ≥ 22.20
+- A hosted Postgres (Supabase) — connection settings go in `packages/api/.env`
+- Docker or native Redis 7 — only if you run `packages/worker`
 
 ## Quick start
 
 ```bash
 git clone <repo> && cd hrms
-bash scripts/setup-dev.sh            # installs deps, starts Postgres+Redis, seeds .env, runs migrations
+cp packages/api/.env.example packages/api/.env   # then fill in the Supabase connection settings
+bash scripts/setup-dev.sh            # installs deps, seeds any missing .env, runs migrations
 npm run start:dev -w @hrms/api       # GraphQL API at http://localhost:3000/graphql
 ```
 
-Without Docker, start Postgres/Redis yourself, copy each `packages/*/.env.example` to `.env`, then `npm install`.
+The API and web app need only Postgres. To run the worker, start Redis too
+(`bash scripts/setup-dev.sh --redis`) and set `REDIS_HOST`/`REDIS_PORT`.
 
 ## Monorepo layout
 

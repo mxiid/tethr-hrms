@@ -1,23 +1,7 @@
-# Local infrastructure for development. Started by scripts/setup-dev.sh.
+# Local Redis for worker development only. Started by `scripts/setup-dev.sh --redis`.
+# The database is a hosted Postgres (Supabase) — it is not run here.
 # Not used in CI (CI provides its own service containers).
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: hrms-postgres
-    environment:
-      POSTGRES_USER: hrms
-      POSTGRES_PASSWORD: hrms
-      POSTGRES_DB: hrms
-    ports:
-      - '5432:5432'
-    volumes:
-      - hrms_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U hrms -d hrms']
-      interval: 5s
-      timeout: 5s
-      retries: 12
-
   redis:
     image: redis:7-alpine
     container_name: hrms-redis
@@ -32,5 +16,4 @@ services:
       retries: 12
 
 volumes:
-  hrms_pgdata:
   hrms_redisdata:

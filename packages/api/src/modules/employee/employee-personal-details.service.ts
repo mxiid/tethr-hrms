@@ -13,7 +13,7 @@ import { EMPLOYEE_PERSONAL_DETAILS_REPOSITORY } from './employee.tokens';
 import { EmployeePersonalDetails } from './entities/employee-personal-details.entity';
 import { NotFoundError } from '../../common/errors';
 
-export type UpdateEmployeePersonalDetailsData = {
+type UpdateEmployeePersonalDetailsData = {
   readonly passportNumber?: string | null;
   readonly passportIssueDate?: string | null;
   readonly passportIssuePlace?: string | null;

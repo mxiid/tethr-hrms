@@ -61,8 +61,67 @@ export const WORKSPACE_BRAND_COLORS = [
 ] as const;
 export type WorkspaceBrandColor = (typeof WORKSPACE_BRAND_COLORS)[number];
 
-export type HiringRequestStatus =
-  'submitted' | 'inReview' | 'sourcing' | 'interviewing' | 'offer' | 'filled' | 'cancelled';
+// The request's own lifecycle. Pipeline stages (screening, interview, offer)
+// are derived from applications once they exist — they are not hand-set here.
+export const HIRING_REQUEST_STATUSES = [
+  'submitted',
+  'open',
+  'onHold',
+  'filled',
+  'cancelled',
+] as const;
+export type HiringRequestStatus = (typeof HIRING_REQUEST_STATUSES)[number];
+
+export const HIRING_REQUEST_PRIORITIES = ['urgent', 'high', 'normal', 'low'] as const;
+export type HiringRequestPriority = (typeof HIRING_REQUEST_PRIORITIES)[number];
+
+// The form builder's field vocabulary. Keep additions mirrored in the public
+// apply page's renderer.
+export const FORM_FIELD_TYPES = [
+  'text',
+  'email',
+  'phone',
+  'number',
+  'date',
+  'textarea',
+  'select',
+  'file',
+] as const;
+export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
+
+export const FORM_TARGETS = ['generic', 'application'] as const;
+export type FormTarget = (typeof FORM_TARGETS)[number];
+
+// Where an application sits in the pipeline, how it ended, and whether it is on
+// hold — three separate facts (a single flat enum conflates them).
+export const APPLICATION_STAGES = [
+  'screening',
+  'shortlisted',
+  'interviewing',
+  'offer',
+  'hired',
+] as const;
+export type ApplicationStage = (typeof APPLICATION_STAGES)[number];
+
+export const APPLICATION_OUTCOMES = ['active', 'rejected', 'withdrawn', 'hired'] as const;
+export type ApplicationOutcome = (typeof APPLICATION_OUTCOMES)[number];
+
+// The agency's batch flow: we rank candidates internally into a round, present
+// it to the client, collect per-candidate verdicts, then close the round.
+export const SHORTLIST_STATUSES = ['draft', 'presented', 'feedbackReceived', 'closed'] as const;
+export type ShortlistStatus = (typeof SHORTLIST_STATUSES)[number];
+
+export const SHORTLIST_DECISIONS = ['pending', 'interested', 'rejected'] as const;
+export type ShortlistDecision = (typeof SHORTLIST_DECISIONS)[number];
+
+export const INTERVIEW_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
+export type InterviewStatus = (typeof INTERVIEW_STATUSES)[number];
+
+export const INTERVIEW_OUTCOMES = ['passed', 'failed', 'noShow'] as const;
+export type InterviewOutcome = (typeof INTERVIEW_OUTCOMES)[number];
+
+export const OFFER_STATUSES = ['draft', 'sent', 'accepted', 'declined', 'withdrawn'] as const;
+export type OfferStatus = (typeof OFFER_STATUSES)[number];
 
 export type AnnouncementAudience = 'all' | 'tethr' | 'client' | 'employee';
 

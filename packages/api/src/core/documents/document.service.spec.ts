@@ -6,6 +6,7 @@ import type { TenantScopedRepository } from '../tenancy/tenant-scoped.repository
 import { DocumentVersion } from './document-version.entity';
 import { Document } from './document.entity';
 import { DocumentService } from './document.service';
+import type { StorageService } from './storage.service';
 
 const ORGANIZATION = toId<OrganizationId>('org-1');
 const DOCUMENT = toId<DocumentId>('document-1');
@@ -80,7 +81,31 @@ const buildService = () => {
     }),
   } as unknown as TenantScopedRepository<DocumentVersion>;
 
-  return { documents, savedVersions, service: new DocumentService(documents, versions) };
+  const storage = {
+    createSignedUpload: jest.fn((input: { storageKey: string; contentType: string }) =>
+      Promise.resolve({
+        storageKey: input.storageKey,
+        url: `https://storage.test/upload/${encodeURIComponent(input.storageKey)}`,
+        method: 'PUT' as const,
+        headers: [{ name: 'Content-Type', value: input.contentType }],
+        expiresAt: new Date('2026-01-01T00:15:00.000Z'),
+      }),
+    ),
+    createSignedDownload: jest.fn((input: { storageKey: string; contentType: string }) =>
+      Promise.resolve({
+        storageKey: input.storageKey,
+        url: `https://storage.test/download/${encodeURIComponent(input.storageKey)}`,
+        expiresAt: new Date('2026-01-01T00:15:00.000Z'),
+      }),
+    ),
+  } as unknown as StorageService;
+
+  return {
+    documents,
+    savedVersions,
+    storage,
+    service: new DocumentService(documents, versions, storage),
+  };
 };
 
 describe('DocumentService', () => {
@@ -128,11 +153,11 @@ describe('DocumentService', () => {
     );
   });
 
-  it('prepares upload and download access descriptors', async () => {
+  it('prepares upload and download access descriptors from signed URLs', async () => {
     const { savedVersions, service } = buildService();
     savedVersions.push(makeVersion(1, 'employees/employee-1/contract.pdf'));
 
-    const upload = service.prepareUpload({
+    const upload = await service.prepareUpload({
       name: 'Signed Contract.pdf',
       contentType: 'application/pdf',
       storagePrefix: 'employees/employee-1',
@@ -141,10 +166,12 @@ describe('DocumentService', () => {
 
     expect(upload.method).toBe('PUT');
     expect(upload.storageKey).toContain('employees/employee-1/');
+    expect(upload.url).toContain('https://storage.test/upload/');
     expect(upload.headers).toContainEqual({ name: 'Content-Type', value: 'application/pdf' });
     expect(download).toMatchObject({
       method: 'GET',
       storageKey: 'employees/employee-1/contract.pdf',
+      url: 'https://storage.test/download/employees%2Femployee-1%2Fcontract.pdf',
     });
   });
 

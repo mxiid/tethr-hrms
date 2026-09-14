@@ -17,7 +17,7 @@ import { User } from './user.entity';
 // lingering credential; long enough for a human to actually pick one.
 const WORKSPACE_SELECTION_TOKEN_TTL = '5m';
 
-export type CreateUserData = {
+type CreateUserData = {
   readonly email: string;
   readonly password: string;
   readonly employeeId?: EmployeeId | null;
@@ -88,6 +88,18 @@ export class AuthService {
       }
     }
     return verified;
+  }
+
+  // Every account for an email, across every workspace. Same cross-tenant
+  // trust boundary as findVerifiedUsers / hasOtherWorkspaces — this one backs
+  // the in-app workspace switcher, which trusts the caller's current valid
+  // session instead of re-checking a password (each account can hold its own
+  // password, but they're the same person, so a live session for one is taken
+  // as authority to enter another).
+  async findAccountsForEmail(email: string): Promise<User[]> {
+    return this.userRepository.find({
+      where: { email: email.toLowerCase() } as FindOptionsWhere<User>,
+    });
   }
 
   // Public-facing precheck for signup: does any workspace already have an

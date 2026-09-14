@@ -1,26 +1,24 @@
+import { JOBS, QUEUES, type JobName } from '@hrms/shared';
 import { Worker, type ConnectionOptions, type Job } from 'bullmq';
 
-import { processSendNotification } from './processors/send-notification.processor';
-import { JOBS, type JobName } from './queue/jobs';
-import { QUEUES } from './queue/queues';
+import { processParseCv } from './processors/parse-cv.processor';
 
-// Routes jobs on a queue to their processor by name. A real worker would
-// dead-letter unknown job names rather than ignore them.
-export const startWorker = (connection: ConnectionOptions): Worker => {
-  return new Worker(
-    QUEUES.notifications,
-    async (job: Job) => {
-      const jobName = job.name as JobName;
-      switch (jobName) {
-        case JOBS.sendNotification:
-          await processSendNotification(job);
-          return;
-        case JOBS.relayOutbox:
-          return;
-        default:
-          return;
-      }
-    },
-    { connection },
-  );
+// Routes jobs to their processor by name. A real worker would dead-letter
+// unknown job names rather than ignore them.
+const route = async (job: Job): Promise<void> => {
+  const jobName = job.name as JobName;
+  switch (jobName) {
+    case JOBS.parseCv:
+      await processParseCv(job);
+      return;
+    default:
+      console.warn(`[worker] ignoring unknown job "${job.name}"`);
+      return;
+  }
 };
+
+// The API enqueues via core/queue/MessageQueueService; `parse-cv` is its only
+// producer today (CV uploads, from the AI seam).
+export const startWorker = (connection: ConnectionOptions): Worker[] => [
+  new Worker(QUEUES.default, (job) => route(job), { connection }),
+];

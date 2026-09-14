@@ -618,15 +618,17 @@ bash scripts/setup-dev.sh
 ```
 
 What it does:
-- Starts Postgres + Redis (auto-detect: native services if running, otherwise Docker).
-- Creates databases.
+- Uses the hosted Postgres (Supabase) connection settings from each package's `.env` — no local database daemon to run.
 - Copies `.env.example` to `.env` for each package that needs it.
 - Runs migrations.
 - Is **idempotent** — safe to re-run.
 
-Flags: `--docker` (force Docker), `--down` (stop services), `--reset` (wipe data).
+The API and web app need only Postgres. The background-job package (`packages/worker`)
+uses a Redis-backed queue; stand up Redis only if and when you run the worker.
 
-CI does *not* run this script — CI uses its own service containers and runs setup steps individually.
+Flags: `--down` (stop anything the script started), `--reset` (drop and re-create the schema).
+
+CI does *not* run this script — CI provisions its own Postgres and runs setup steps individually.
 
 ---
 

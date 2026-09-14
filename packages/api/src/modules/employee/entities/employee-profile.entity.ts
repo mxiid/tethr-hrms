@@ -16,7 +16,9 @@ export class EmployeeProfile extends TenantScopedEntity {
   @Column({ type: 'uuid' })
   employeeId!: EmployeeId;
 
-  @Column({ type: 'varchar', length: 2048, nullable: true })
+  // text, not varchar: admin-set photos are stored as data URLs (see
+  // UpdateEmployeePhotoInput), which run well past a typical URL length.
+  @Column({ type: 'text', nullable: true })
   photoUrl!: string | null;
 
   @Column({ type: 'varchar', length: 320, nullable: true })

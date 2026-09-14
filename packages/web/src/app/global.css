@@ -2,6 +2,44 @@
   box-sizing: border-box;
 }
 
+/* Themed thin scrollbars app-wide (Windows otherwise paints a 17px opaque
+   gutter inside every card). `scrollbar-width: thin` is the valid standard
+   value; the webkit rules give Chromium a genuinely thin, rounded bar. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hrms-color-border-medium) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--hrms-color-border-medium);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--hrms-color-border-strong);
+}
+
+/* Touch devices manage their own scrollbar; the thin desktop bar just steals
+   width there. */
+@media (pointer: coarse) {
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 html,
 body,
 #root {
@@ -43,16 +81,6 @@ button {
   background: var(--hrms-color-background-primary);
 }
 
-.app-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--hrms-space-6);
-  min-width: 0;
-  padding: var(--hrms-space-4);
-  background: var(--hrms-color-background-secondary);
-  border-right: 1px solid var(--hrms-color-border-light);
-}
-
 .brand-lockup {
   display: flex;
   align-items: center;
@@ -79,127 +107,42 @@ button {
   line-height: var(--hrms-line-height-md);
 }
 
-.brand-context,
-.sidebar-section-label,
 .employee-meta,
 .metric-label,
-.field-label,
-.panel-kicker,
-.activity-time {
+.panel-kicker {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xxs);
   font-weight: var(--hrms-font-weight-medium);
   line-height: var(--hrms-line-height-md);
 }
 
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--hrms-between-siblings-gap);
-}
-
-.sidebar-section-label {
-  padding: var(--hrms-space-4) var(--hrms-space-2) var(--hrms-space-1);
-  text-transform: uppercase;
-}
-
-.sidebar-nav-item {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  width: 100%;
-  min-height: 32px;
-  gap: var(--hrms-space-2);
-  padding: var(--hrms-space-2);
-  color: var(--hrms-color-text-secondary);
-  background: transparent;
-  border-radius: var(--hrms-radius-sm);
-  cursor: pointer;
-  text-align: left;
-  text-decoration: none;
-  transition: var(--hrms-animation-clickable-background-transition);
-}
-
-.sidebar-nav-item:hover,
-.sidebar-nav-item.is-active {
-  color: var(--hrms-color-text-primary);
-  background: var(--hrms-color-background-tertiary);
-}
-
-.sidebar-nav-item:focus-visible,
 .icon-button:focus-visible,
-.account-button:focus-visible,
-.button:focus-visible,
-.segmented-button:focus-visible,
-.topbar-search:focus-within {
+.button:focus-visible {
   outline: 3px solid var(--hrms-color-border-blue);
   outline-offset: 1px;
 }
 
-.sidebar-nav-item.is-disabled {
-  cursor: default;
-  opacity: 0.58;
+/* The search bar is a personality surface, not a bare focus target — its
+   ring picks up the workspace's own chosen brand color (--chip-color, set at
+   .app-shell) instead of the fixed a11y blue every other control uses. */
+.topbar-search:focus-within {
+  outline: 1.5px solid var(--chip-color, var(--hrms-color-border-blue));
+  outline-offset: 1px;
 }
 
-.sidebar-nav-item.is-disabled:hover {
-  color: var(--hrms-color-text-secondary);
-  background: transparent;
-}
-
-.sidebar-nav-count {
-  color: var(--hrms-color-text-tertiary);
-  font-size: var(--hrms-font-size-xxs);
-}
-
-.app-main {
-  display: grid;
-  grid-template-rows: var(--hrms-layout-top-bar-height) minmax(0, 1fr);
-  min-width: 0;
-  min-height: 100vh;
-}
-
-.app-topbar {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(220px, 420px) auto;
-  align-items: center;
-  gap: var(--hrms-space-4);
-  padding: 0 var(--hrms-space-4);
-  background: var(--hrms-color-background-primary);
-  border-bottom: 1px solid var(--hrms-color-border-light);
-}
-
-.breadcrumb,
-.topbar-actions,
-.account-button,
 .panel-title-row,
 .employee-name-cell,
 .row-actions,
 .button,
-.segmented-control,
-.field-row,
-.activity-item {
+.field-row {
   display: flex;
   align-items: center;
-}
-
-.breadcrumb {
-  min-width: 0;
-  gap: var(--hrms-space-1);
-  color: var(--hrms-color-text-tertiary);
-  font-size: var(--hrms-font-size-xs);
-  white-space: nowrap;
-}
-
-.breadcrumb strong {
-  overflow: hidden;
-  color: var(--hrms-color-text-primary);
-  font-weight: var(--hrms-font-weight-medium);
-  text-overflow: ellipsis;
 }
 
 .topbar-search {
   display: flex;
   align-items: center;
+  width: 240px;
   min-width: 0;
   height: 32px;
   gap: var(--hrms-space-2);
@@ -223,20 +166,79 @@ button {
   color: var(--hrms-color-text-extra-light);
 }
 
-.topbar-actions {
-  justify-content: end;
-  gap: var(--hrms-space-2);
+.topbar-search-kbd {
+  flex-shrink: 0;
+  padding: 1px var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  background: var(--hrms-color-background-tertiary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  opacity: 1;
+  font-family: inherit;
+  font-size: var(--hrms-font-size-xxs);
+  line-height: 1.4;
+  transition: opacity 0.12s ease;
+}
+
+/* Only fades once there's actual text — not on a bare click/focus, so
+   nothing shifts just from landing in the field. */
+.topbar-search input:not(:placeholder-shown) ~ .topbar-search-kbd {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.topbar-search-anchor {
+  position: relative;
+}
+
+.topbar-search-results {
+  position: absolute;
+  top: calc(100% + var(--hrms-space-1));
+  left: 0;
+  z-index: 60;
+  width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--hrms-space-1);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  box-shadow: var(--hrms-box-shadow-strong);
+}
+
+.topbar-search-result {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-3);
+  padding: var(--hrms-space-2) var(--hrms-space-3);
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.topbar-search-result:hover {
+  background: var(--hrms-color-background-secondary);
+}
+
+.topbar-search-empty {
+  padding: var(--hrms-space-2) var(--hrms-space-3);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-sm);
 }
 
 .icon-button,
-.account-button,
-.button,
-.segmented-button {
+.button {
   /* Same rounded-pill language as the top nav's pills, carried down to
      every other clickable surface in the app. */
   min-height: 32px;
   border-radius: var(--hrms-radius-pill);
   cursor: pointer;
+  text-decoration: none;
   transition: var(--hrms-animation-clickable-background-transition);
 }
 
@@ -249,19 +251,10 @@ button {
   background: transparent;
 }
 
-.icon-button:hover,
-.account-button:hover,
-.segmented-button:hover {
+.icon-button:hover {
   background: var(--hrms-color-background-tertiary);
 }
 
-.account-button {
-  gap: var(--hrms-space-2);
-  color: var(--hrms-color-text-secondary);
-  background: transparent;
-}
-
-.account-avatar,
 .employee-avatar {
   display: grid;
   place-items: center;
@@ -269,18 +262,6 @@ button {
   background: var(--chip-color, var(--hrms-color-background-inverted-primary));
   border-radius: var(--hrms-radius-rounded);
   font-weight: var(--hrms-font-weight-semi-bold);
-}
-
-.account-avatar {
-  width: 24px;
-  height: 24px;
-  font-size: var(--hrms-font-size-xxs);
-}
-
-.account-avatar-lg {
-  width: 36px;
-  height: 36px;
-  font-size: var(--hrms-font-size-sm);
 }
 
 /* Top navigation (replaces the sidebar — a horizontal bar: brand + workspace
@@ -356,6 +337,13 @@ button {
 .dropdown-panel-workspace {
   left: 0;
   min-width: 260px;
+}
+
+/* The workspace menu opens with the workspace's identity, then its actions. */
+.workspace-menu-header {
+  padding: var(--hrms-space-2) var(--hrms-space-2) var(--hrms-space-1);
+  margin-bottom: var(--hrms-space-1);
+  border-bottom: 1px solid var(--hrms-color-border-light);
 }
 
 .dropdown-panel-workspace .field {
@@ -436,17 +424,21 @@ button {
   box-shadow: var(--hrms-box-shadow-light);
 }
 
-/* While its panel is open, the pill's bottom corners square off and its
-   bottom border drops out so the button and the panel below read as one
-   expanded shape instead of a floating card with a gap underneath. */
 .nav-pill-group.is-open {
   color: var(--hrms-color-text-primary);
   background: var(--hrms-color-background-primary);
   border: 1px solid var(--hrms-color-border-strong);
-  border-bottom-color: transparent;
-  border-radius: var(--hrms-radius-pill) var(--hrms-radius-pill) var(--hrms-radius-sm)
-    var(--hrms-radius-sm);
   box-shadow: var(--hrms-box-shadow-light);
+}
+
+/* Browsing a section you're not inside yet: the pill reads as open (tinted,
+   caret down) while the section you're actually on keeps the white "you are
+   here" pill — so the two never look identical. */
+.nav-pill-group.is-open:not(.is-active) {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+  border: 1px solid var(--hrms-color-border-medium);
+  box-shadow: none;
 }
 
 /* Persistent second-row tab strip for the group whose page is currently
@@ -454,14 +446,186 @@ button {
    Employees / Hiring requests / ...) without reopening its pill dropdown.
    Same pill language as the top nav (white + strong border when active) but
    a smaller, muted-bar tier so it reads as a sub-level, not a duplicate. */
-.app-subnav {
-  display: flex;
-  justify-content: center;
+/* Hamburger + drawer: hidden entirely above the phone breakpoint, which is the
+   only place they are used. */
+.mobile-nav-toggle {
+  display: none;
   align-items: center;
-  height: 44px;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+}
+
+.mobile-nav-toggle:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.mobile-nav-scrim {
+  position: fixed;
+  z-index: 40;
+  inset: var(--hrms-layout-top-bar-height) 0 0;
+  width: 100%;
+  padding: 0;
+  background: var(--hrms-color-background-overlay-primary);
+  border: 0;
+  cursor: default;
+}
+
+.mobile-nav {
+  position: fixed;
+  z-index: 41;
+  top: var(--hrms-layout-top-bar-height);
+  left: 0;
+  right: 0;
+  max-height: calc(100vh - var(--hrms-layout-top-bar-height));
+  overflow-y: auto;
+  padding: var(--hrms-space-3) var(--hrms-space-3) var(--hrms-space-6);
+  background: var(--hrms-color-background-primary);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+  box-shadow: var(--hrms-box-shadow-strong);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Not an adjacent-sibling rule: standalone links (Clients, Pay) sit between
+   groups, so `group + group` skipped the divider on exactly the groups that
+   follow one. */
+.mobile-nav-group:not(:first-child) {
+  margin-top: var(--hrms-space-2);
+  padding-top: var(--hrms-space-2);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.mobile-nav-group-label {
+  padding: var(--hrms-space-2) var(--hrms-space-3) var(--hrms-space-1);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Rows are 44px tall so they clear the minimum comfortable tap target. */
+.mobile-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--hrms-space-3);
   min-height: 44px;
-  gap: var(--hrms-space-1);
-  padding: var(--hrms-space-1) var(--hrms-space-10);
+  padding: 0 var(--hrms-space-3);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  text-align: left;
+  text-decoration: none;
+}
+
+.mobile-nav-item:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.mobile-nav-item.is-active {
+  color: var(--hrms-color-accent-accent9);
+  background: var(--hrms-color-background-tertiary);
+}
+
+/* Employee bottom bar. Hidden by default — above the phone breakpoint the pill
+   row in the header already carries these five destinations. The bar takes the
+   same brand wash as the header, and the open destination gets a pill in the
+   workspace's own color rather than a bare tinted icon. */
+.bottom-nav {
+  position: fixed;
+  z-index: 30;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+  padding: var(--hrms-space-2) var(--hrms-space-2)
+    calc(var(--hrms-space-2) + env(safe-area-inset-bottom, 0px));
+  background: color-mix(
+    in srgb,
+    var(--chip-color, var(--hrms-color-tag-gray)) 6%,
+    var(--hrms-color-background-primary)
+  );
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--hrms-space-1) 0;
+  color: var(--hrms-color-text-tertiary);
+  text-decoration: none;
+}
+
+.bottom-nav-pill {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 28px;
+  border-radius: var(--hrms-radius-pill);
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.bottom-nav-label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bottom-nav-item.is-active {
+  color: color-mix(
+    in srgb,
+    var(--chip-color, var(--hrms-color-tag-gray)) 75%,
+    var(--hrms-color-text-primary)
+  );
+}
+
+.bottom-nav-item.is-active .bottom-nav-pill {
+  background: color-mix(
+    in srgb,
+    var(--chip-color, var(--hrms-color-tag-gray)) 22%,
+    transparent
+  );
+}
+
+@media (max-width: 760px) {
+  .bottom-nav {
+    display: grid;
+  }
+
+  /* The bar is fixed, so the page needs its height back as padding or the last
+     row of every employee screen sits underneath it. */
+  .app-shell-employee .app-content {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* The strip expands and folds with the group pills: the grid row animates
+   0fr → 1fr so a section's tabs grow out of the nav instead of popping in. */
+.app-subnav {
+  display: grid;
+  grid-template-rows: 0fr;
   /* Rather than a flat neutral bar, fade the header's own brand wash down
      into the page — the two rows read as one continuous surface instead of
      a plain gray shelf bolted underneath. */
@@ -470,8 +634,60 @@ button {
     color-mix(in srgb, var(--chip-color, var(--hrms-color-tag-gray)) 10%, var(--hrms-color-background-primary)) 0%,
     var(--hrms-color-background-primary) 100%
   );
+  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.app-subnav.is-open {
+  grid-template-rows: 1fr;
+}
+
+.app-subnav-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-subnav-tabs {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 44px;
+  min-height: 44px;
+  gap: var(--hrms-space-1);
+  padding: var(--hrms-space-1) var(--hrms-space-10);
   border-bottom: 1px solid var(--hrms-color-border-light);
   overflow-x: auto;
+  animation: subnav-tabs-in 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Switching groups swaps the tab row (keyed remount); this is the crossfade. */
+@keyframes subnav-tabs-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.nav-pill-caret {
+  transition: transform 0.15s ease;
+}
+
+.nav-pill-group.is-open .nav-pill-caret {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-subnav,
+  .nav-pill-caret {
+    transition: none;
+  }
+
+  .app-subnav-tabs {
+    animation: none;
+  }
 }
 
 .subnav-tab {
@@ -524,28 +740,24 @@ button {
   box-shadow: var(--hrms-box-shadow-strong);
 }
 
-.dropdown-panel-more {
-  /* Sits flush under the (now square-bottomed) trigger pill and squares its
-     own top corners to match, so the two pieces visually fuse into one
-     expanded control; the bottom stays fully rounded. */
-  top: 100%;
-  left: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-radius: var(--hrms-radius-sm) var(--hrms-radius-sm) var(--hrms-radius-md) var(--hrms-radius-md);
-}
-
 .dropdown-nav-item {
   display: flex;
   align-items: center;
   gap: var(--hrms-space-2);
-  padding: var(--hrms-space-2);
+  padding: var(--hrms-space-2) var(--hrms-space-3);
   color: var(--hrms-color-text-secondary);
   background: transparent;
   border-radius: var(--hrms-radius-sm);
   cursor: pointer;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
   text-decoration: none;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.dropdown-nav-item svg {
+  flex-shrink: 0;
+  color: var(--hrms-color-text-tertiary);
   transition: var(--hrms-animation-clickable-background-transition);
 }
 
@@ -555,20 +767,15 @@ button {
   background: var(--hrms-color-background-tertiary);
 }
 
-.dropdown-panel-account {
-  right: 0;
-  width: 260px;
+.dropdown-nav-item:hover svg,
+.dropdown-nav-item.is-active svg {
+  color: var(--hrms-color-text-primary);
 }
 
-.account-dropdown-header {
-  display: flex;
-  align-items: center;
-  gap: var(--hrms-space-3);
-  padding: var(--hrms-space-2);
-}
-
-.account-dropdown-identity {
-  min-width: 0;
+.dropdown-nav-item-danger,
+.dropdown-nav-item-danger:hover,
+.dropdown-nav-item-danger:hover svg {
+  color: var(--hrms-color-text-danger);
 }
 
 .account-dropdown-email {
@@ -581,11 +788,6 @@ button {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xxs);
   text-transform: capitalize;
-}
-
-.account-dropdown-section {
-  padding: var(--hrms-space-2);
-  border-top: 1px solid var(--hrms-color-border-light);
 }
 
 .account-dropdown-label {
@@ -629,24 +831,178 @@ button {
   font-size: var(--hrms-font-size-xxs);
 }
 
-.account-dropdown-signout {
+/* ---------------------------------------------------------------------------
+   Settings — a full-screen surface with its own grouped sidebar, the shape
+   Twenty uses. It replaces the app shell, so the sidebar owns the close action,
+   the theme switch, and log out; the right column carries the breadcrumb and
+   the routed section.
+   --------------------------------------------------------------------------- */
+.settings-surface {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--hrms-color-background-primary);
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hrms-space-4);
+  padding: var(--hrms-space-4);
+  background: var(--hrms-color-background-secondary);
+  border-right: 1px solid var(--hrms-color-border-light);
+}
+
+.settings-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-2);
+  /* Lines the title up with the nav items below it. */
+  padding-left: var(--hrms-space-2);
+}
+
+.settings-sidebar-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.settings-sidebar-nav {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 2px;
+}
+
+.settings-sidebar-group-label {
+  padding: var(--hrms-space-2) var(--hrms-space-2) var(--hrms-space-1);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.settings-nav-item {
   display: flex;
   align-items: center;
   width: 100%;
   gap: var(--hrms-space-2);
-  padding: var(--hrms-space-2);
-  color: var(--hrms-color-text-danger);
+  padding: 6px var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
   background: transparent;
   border: 0;
-  border-top: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-sm);
   cursor: pointer;
-  font-size: var(--hrms-font-size-xs);
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
   text-align: left;
-  transition: var(--hrms-animation-clickable-background-transition);
+  text-decoration: none;
 }
 
-.account-dropdown-signout:hover {
+.settings-nav-item:hover {
+  color: var(--hrms-color-text-primary);
   background: var(--hrms-color-background-tertiary);
+}
+
+.settings-nav-item.is-active {
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
+}
+
+.settings-sidebar-footer {
+  display: grid;
+  gap: 2px;
+  padding-top: var(--hrms-space-2);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.settings-nav-item-signout {
+  color: var(--hrms-color-text-danger);
+}
+
+.settings-nav-item-signout:hover {
+  color: var(--hrms-color-text-danger);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: var(--hrms-space-6) var(--hrms-space-10);
+}
+
+.settings-content-header {
+  margin-bottom: var(--hrms-space-2);
+}
+
+.settings-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-1);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+}
+
+.settings-breadcrumb-current {
+  color: var(--hrms-color-text-primary);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+@media (max-width: 900px) {
+  .settings-surface {
+    grid-template-columns: minmax(0, 1fr);
+    /* Auto rows would otherwise stretch to fill the viewport, floating the
+       horizontal sidebar in empty space. */
+    align-content: start;
+  }
+
+  .settings-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--hrms-space-2);
+    border-right: 0;
+    border-bottom: 1px solid var(--hrms-color-border-light);
+  }
+
+  .settings-sidebar-nav {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+  }
+
+  .settings-sidebar-group-label {
+    display: none;
+  }
+
+  .settings-sidebar-footer {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .settings-content {
+    max-height: none;
+    padding: var(--hrms-space-4);
+  }
+}
+
+.settings-section-body {
+  padding: var(--hrms-space-4) var(--hrms-space-5) var(--hrms-space-5);
+}
+
+.settings-section-body .config-form {
+  margin-bottom: 0;
+}
+
+.settings-section-body .field:last-of-type {
+  margin-bottom: 0;
 }
 
 .app-content {
@@ -654,46 +1010,112 @@ button {
   flex-direction: column;
   min-height: 0;
   flex: 1;
-  /* Shared side inset for every page mounted here, on top of whatever
-     padding a given page already applies to its own inner blocks — one
-     consistent margin from the viewport edge instead of each page setting
-     its own, so raising it once pulls the whole app in toward the middle. */
-  padding: 0 var(--hrms-space-10);
+  /* Shared inset for every page mounted here. The shell owns the top gap so
+     side panels, rails, and content columns all start on the same line instead
+     of a card touching the nav; pages keep only their side/bottom padding. */
+  padding: var(--hrms-space-6) var(--hrms-space-10);
 }
 
-.app-content-breadcrumb {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: var(--hrms-space-1);
-  padding: var(--hrms-space-3) 0 0;
-  color: var(--hrms-color-text-tertiary);
-  font-size: var(--hrms-font-size-xs);
-}
-
-.app-content-breadcrumb strong {
-  color: var(--hrms-color-text-primary);
-  font-weight: var(--hrms-font-weight-medium);
-}
 
 .page-frame {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--hrms-layout-side-panel-width);
-  min-height: 0;
+  align-items: start;
+  gap: var(--hrms-space-6);
 }
 
 .employees-content {
   min-width: 0;
-  padding: var(--hrms-space-6);
-  overflow: auto;
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
 }
 
 .employee-detail-panel {
   min-width: 0;
   padding: var(--hrms-space-5);
-  overflow: auto;
   background: var(--hrms-color-background-secondary);
-  border-left: 1px solid var(--hrms-color-border-light);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+/* A finance page with no side rail: one column, no reserved panel track. */
+.page-frame-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--hrms-space-8) var(--hrms-space-4);
+  overflow: hidden;
+  background: var(--hrms-color-background-overlay-primary);
+}
+
+.modal-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100vh - var(--hrms-space-16));
+  margin: auto;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-strong);
+  outline: none;
+}
+
+.modal-dialog-sm {
+  max-width: var(--hrms-layout-modal-width-sm);
+}
+
+.modal-dialog-md {
+  max-width: var(--hrms-layout-modal-width-md);
+}
+
+.modal-dialog-lg {
+  max-width: var(--hrms-layout-modal-width-lg);
+}
+
+.modal-dialog-xl {
+  max-width: var(--hrms-layout-modal-width-xl);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-4);
+  padding: var(--hrms-space-4) var(--hrms-space-5);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.modal-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-lg);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--hrms-space-5);
+}
+
+.modal-body .config-form {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-4) var(--hrms-space-5);
+  border-top: 1px solid var(--hrms-color-border-light);
 }
 
 .page-header {
@@ -701,7 +1123,7 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--hrms-space-4);
-  margin-bottom: var(--hrms-space-5);
+  margin-bottom: var(--hrms-space-4);
 }
 
 .page-title {
@@ -718,7 +1140,6 @@ button {
 }
 
 .page-actions,
-.toolbar,
 .table-title-row,
 .metric-strip,
 .panel-actions {
@@ -732,6 +1153,14 @@ button {
   justify-content: center;
   padding: 0 var(--hrms-space-4);
   font-weight: var(--hrms-font-weight-medium);
+}
+
+/* Compact tier: 24px tall, for dense rows and panel footers. */
+.record-inline-actions .button,
+.attendance-row-actions .button {
+  min-height: 24px;
+  padding: 0 var(--hrms-space-2);
+  font-size: var(--hrms-font-size-xs);
 }
 
 .button:disabled {
@@ -768,10 +1197,19 @@ button {
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: var(--hrms-space-5);
+  margin-bottom: var(--hrms-space-4);
   border: 1px solid var(--hrms-color-border-light);
   border-radius: var(--hrms-radius-md);
   overflow: hidden;
+}
+
+/* For strips whose fourth card was decoration rather than data. */
+.metric-strip-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.metric-strip-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .metric-card {
@@ -793,30 +1231,464 @@ button {
   line-height: var(--hrms-line-height-md);
 }
 
-.toolbar {
-  justify-content: space-between;
-  margin-bottom: var(--hrms-space-3);
+.dashboard-widget-grid {
+  --dashboard-columns: 4;
+  display: grid;
+  grid-template-columns: repeat(var(--dashboard-columns), minmax(0, 1fr));
+  grid-auto-rows: 36px;
+  gap: var(--hrms-space-4);
 }
 
-.segmented-control {
-  gap: var(--hrms-between-siblings-gap);
-  padding: var(--hrms-between-siblings-gap);
-  background: var(--hrms-color-background-secondary);
+@media (max-width: 1100px) {
+  .dashboard-widget-grid {
+    --dashboard-columns: 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-widget-grid {
+    --dashboard-columns: 1;
+  }
+}
+
+.dashboard-widget {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--hrms-color-background-primary);
   border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+}
+
+.dashboard-widget.is-dragging {
+  opacity: 0.6;
+}
+
+.dashboard-widget.is-resizing {
+  z-index: 1;
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.dashboard-widget-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.dashboard-widget-resize-handle::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--hrms-color-border-strong);
+  border-bottom: 2px solid var(--hrms-color-border-strong);
+}
+
+.dashboard-widget-header {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-3) var(--hrms-space-3) var(--hrms-space-3) var(--hrms-space-2);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.dashboard-widget-accent {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--hrms-radius-pill);
+}
+
+.dashboard-widget-drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.dashboard-widget-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--hrms-font-size-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dashboard-widget-body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--hrms-space-4);
+  overflow: auto;
+}
+
+.widget-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hrms-space-4);
+}
+
+.widget-stat {
+  min-width: 0;
+  padding-left: var(--hrms-space-4);
+  border-left: 1px solid var(--hrms-color-border-light);
+}
+
+.widget-stat:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.dashboard-chart {
+  margin-bottom: var(--hrms-space-4);
+}
+
+.dashboard-chart-tooltip {
+  position: absolute;
+  bottom: calc(100% + var(--hrms-space-2));
+  left: 50%;
+  z-index: 5;
+  padding: var(--hrms-space-1) var(--hrms-space-3);
+  white-space: nowrap;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-strong);
+  border-radius: var(--hrms-radius-sm);
+  box-shadow: var(--hrms-box-shadow-strong);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.dashboard-chart-tooltip-value {
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.dashboard-chart-tooltip-label {
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-xxs);
+}
+
+.dashboard-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hrms-space-3);
+  margin-top: var(--hrms-space-2);
+}
+
+.dashboard-chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-1);
+  padding: 2px var(--hrms-space-1);
+  border-radius: var(--hrms-radius-sm);
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.dashboard-chart-legend-item.is-hovered {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.dashboard-chart-legend-swatch {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--hrms-radius-pill);
+}
+
+.dashboard-chart-legend-label {
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-xxs);
+}
+
+.dashboard-chart-legend-count {
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.dashboard-chart-empty-label {
+  margin: var(--hrms-space-2) 0 0;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+}
+
+.dashboard-share-bar-track {
+  display: flex;
+  height: 20px;
+  gap: 2px;
+}
+
+.dashboard-share-bar-track-empty {
+  background: var(--hrms-color-background-tertiary);
+  border-radius: var(--hrms-radius-pill);
+}
+
+.dashboard-share-bar-segment {
+  position: relative;
+  min-width: 4px;
+  height: 100%;
+  cursor: default;
+  opacity: 0.92;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.dashboard-share-bar-segment:first-child {
+  border-radius: var(--hrms-radius-pill) 0 0 var(--hrms-radius-pill);
+}
+
+.dashboard-share-bar-segment:last-child {
+  border-radius: 0 var(--hrms-radius-pill) var(--hrms-radius-pill) 0;
+}
+
+.dashboard-share-bar-segment.is-hovered {
+  opacity: 1;
+}
+
+.dashboard-bar-trend-plot {
+  position: relative;
+  display: flex;
+  height: 120px;
+}
+
+.dashboard-bar-trend-plot-empty {
+  background: var(--hrms-color-background-tertiary);
   border-radius: var(--hrms-radius-sm);
 }
 
-.segmented-button {
-  min-width: 52px;
-  padding: 0 var(--hrms-space-3);
-  color: var(--hrms-color-text-secondary);
-  background: transparent;
+.dashboard-bar-trend-gridlines {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
 }
 
-.segmented-button.is-active {
+.dashboard-bar-trend-gridline {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.dashboard-bar-trend-tick {
+  padding-right: var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  transform: translateY(-50%);
+}
+
+.dashboard-bar-trend-columns {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  gap: var(--hrms-space-2);
+  padding-top: var(--hrms-space-4);
+}
+
+.dashboard-bar-trend-column {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: center;
+  height: 100%;
+}
+
+.dashboard-bar-trend-bar {
+  position: relative;
+  width: 100%;
+  max-width: 24px;
+  min-height: 2px;
+  background: var(--hrms-color-accent-accent9);
+  border-radius: 4px 4px 0 0;
+}
+
+.dashboard-bar-trend-bar.is-hovered {
+  background: var(--hrms-color-accent-accent10);
+}
+
+.dashboard-bar-trend-value {
+  position: absolute;
+  bottom: calc(100% + var(--hrms-space-1));
+  left: 50%;
   color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.dashboard-bar-trend-axis {
+  display: flex;
+  gap: var(--hrms-space-2);
+  margin-top: var(--hrms-space-2);
+}
+
+.dashboard-bar-trend-axis-label {
+  flex: 1;
+  overflow: hidden;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-ordinal-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hrms-space-2);
+}
+
+.dashboard-ordinal-row {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+}
+
+.dashboard-ordinal-label {
+  flex-shrink: 0;
+  width: 84px;
+  overflow: hidden;
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-xxs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-ordinal-track {
+  flex: 1;
+  height: 10px;
+  background: var(--hrms-color-background-tertiary);
+  border-radius: var(--hrms-radius-pill);
+  overflow: hidden;
+}
+
+.dashboard-ordinal-bar {
+  display: block;
+  height: 100%;
+  border-radius: var(--hrms-radius-pill);
+}
+
+.dashboard-ordinal-value {
+  flex-shrink: 0;
+  min-width: 20px;
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  text-align: right;
+}
+
+.dashboard-widget-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-6);
+  color: var(--hrms-color-text-secondary);
+  text-align: center;
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+}
+
+.dropdown-panel-customize,
+.dropdown-panel-create-view,
+.dropdown-panel-widget-fields {
+  max-height: min(400px, calc(100vh - 120px));
+  overflow-y: auto;
+}
+
+.dropdown-panel-customize {
+  right: 0;
+  min-width: 220px;
+}
+
+.dropdown-panel-widget-fields {
+  right: 0;
+  min-width: 200px;
+}
+
+.dropdown-panel-customize .checkbox-field,
+.dropdown-panel-create-view .checkbox-field,
+.dropdown-panel-widget-fields .checkbox-field {
+  padding: 0 var(--hrms-space-2);
+  font-size: var(--hrms-font-size-xs);
+}
+
+.dashboard-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  margin-bottom: var(--hrms-space-4);
+}
+
+.dashboard-view-tab {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  gap: var(--hrms-space-1);
+  padding: 0 var(--hrms-space-1) 0 var(--hrms-space-3);
+  color: var(--hrms-color-text-secondary);
   background: var(--hrms-color-background-primary);
-  box-shadow: var(--hrms-color-box-shadow-light);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-pill);
+}
+
+.dashboard-view-tab.is-active {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+  border-color: var(--hrms-color-border-strong);
+}
+
+.dashboard-view-tab-label {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  cursor: pointer;
+}
+
+.dashboard-view-tab-input {
+  width: 100px;
+  height: 22px;
+  padding: 0 var(--hrms-space-1);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  font-size: var(--hrms-font-size-xs);
+}
+
+.dashboard-view-tab-actions {
+  display: flex;
+  align-items: center;
+}
+
+.dashboard-view-tab-actions .icon-button {
+  width: 22px;
+  height: 22px;
+}
+
+.dashboard-view-add {
+  width: 32px;
+  height: 32px;
+  border: 1px dashed var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-pill);
+}
+
+.dropdown-panel-create-view {
+  left: 0;
+  min-width: 240px;
 }
 
 .table-shell {
@@ -827,11 +1699,42 @@ button {
   overflow: hidden;
 }
 
+/* Stacked page cards keep one consistent 16px (4px-grid) gap. Scoped to direct
+   children of the page content columns so cards held in a grid (Compensation's
+   two-up) are unaffected. */
+.employees-content > .table-shell,
+.client-workspace-content > .table-shell,
+.workspace-users-content > .table-shell,
+.client-portfolio-content > .table-shell,
+.hiring-content > .table-shell,
+.announcements-content > .table-shell,
+.feedback-content > .table-shell,
+.leave-content > .table-shell {
+  margin-bottom: var(--hrms-space-4);
+}
+
+.employees-content > .table-shell:last-child,
+.client-workspace-content > .table-shell:last-child,
+.workspace-users-content > .table-shell:last-child,
+.client-portfolio-content > .table-shell:last-child,
+.hiring-content > .table-shell:last-child,
+.announcements-content > .table-shell:last-child,
+.feedback-content > .table-shell:last-child,
+.leave-content > .table-shell:last-child {
+  margin-bottom: 0;
+}
+
 .compensation-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--hrms-space-4);
   margin-bottom: var(--hrms-space-4);
+}
+
+/* The two 4-column summary cards are far narrower than the base 640px floor,
+   which forced a scrollbar on content that already fits. Size to the card. */
+.compensation-grid .data-table {
+  min-width: 0;
 }
 
 .table-title-row {
@@ -851,11 +1754,45 @@ button {
 }
 
 .employee-table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: min(72vh, 760px);
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.employee-name-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.employee-name-link:hover {
+  text-decoration: underline;
 }
 
 .data-table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: min(72vh, 760px);
+  scrollbar-gutter: stable;
+}
+
+/* Horizontal scroll shadow, no JS: the opaque covers use `background-
+   attachment: local` so they travel with the content and hide the shadows
+   at each end, then reveal them the moment the table scrolls. */
+.data-table-wrap,
+.employee-table-wrap {
+  background:
+    linear-gradient(to right, var(--hrms-color-background-primary) 60%, transparent) left center,
+    linear-gradient(to left, var(--hrms-color-background-primary) 60%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, var(--hrms-color-border-medium), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, var(--hrms-color-border-medium), transparent) right center;
+  background-repeat: no-repeat;
+  background-size:
+    32px 100%,
+    32px 100%,
+    12px 100%,
+    12px 100%;
+  background-attachment: scroll, scroll, local, local;
 }
 
 .employee-table {
@@ -867,33 +1804,105 @@ button {
 
 .data-table {
   width: 100%;
-  min-width: 640px;
   border-collapse: collapse;
   table-layout: fixed;
-}
-
-.salary-history-table {
-  min-width: 760px;
 }
 
 .employee-table th,
 .employee-table td,
 .data-table th,
 .data-table td {
-  height: 44px;
+  height: var(--hrms-layout-table-row-height);
   padding: 0 var(--hrms-layout-table-horizontal-cell-padding);
   border-bottom: 1px solid var(--hrms-color-border-light);
+  border-right: 1px solid var(--hrms-color-border-light);
   text-align: left;
   vertical-align: middle;
+  font-size: var(--hrms-layout-table-font-size);
+  line-height: var(--hrms-line-height-md);
 }
 
+/* Twenty's header: same size and height as a data row, tertiary gray, no
+   uppercase, and pinned while the body scrolls. */
 .employee-table th,
 .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   color: var(--hrms-color-text-tertiary);
-  background: var(--hrms-color-background-secondary);
-  font-size: var(--hrms-font-size-xxs);
+  background: var(--hrms-color-background-primary);
+  font-size: var(--hrms-layout-table-font-size);
   font-weight: var(--hrms-font-weight-medium);
-  text-transform: uppercase;
+  text-transform: none;
+  border-bottom: 1px solid var(--hrms-color-border-medium);
+}
+
+.employee-table th:last-child,
+.employee-table td:last-child,
+.data-table th:last-child,
+.data-table td:last-child {
+  border-right: 0;
+}
+
+/* Real hover on every table, distinct from selection. Hover is gated to
+   hover-capable pointers so a tap doesn't leave it stuck. */
+@media (hover: hover) {
+  .employee-table tbody tr:hover,
+  .data-table tbody tr:hover {
+    background: var(--hrms-color-background-tertiary);
+  }
+}
+
+.employee-table tbody tr.is-selected,
+.data-table tbody tr.is-selected {
+  background: var(--hrms-color-accent-accent3);
+}
+
+.employee-table tbody tr.is-selected:hover,
+.data-table tbody tr.is-selected:hover {
+  background: var(--hrms-color-accent-accent3);
+}
+
+/* Rows that open a record in the side panel. */
+.employee-table tbody tr.is-clickable,
+.data-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+/* The pinned draft row for inline creation: tinted and edge-marked so it never
+   reads as a saved record, and always above the hover/selection tints. */
+.employee-table tbody tr.data-table-draft-row,
+.data-table tbody tr.data-table-draft-row,
+.employee-table tbody tr.data-table-draft-row:hover,
+.data-table tbody tr.data-table-draft-row:hover {
+  background: var(--hrms-color-accent-accent2);
+  box-shadow: inset 2px 0 0 var(--hrms-color-accent-accent9);
+}
+
+/* Secondary row actions surface on hover (and on keyboard focus inside the
+   row) instead of competing with the row's primary content. Touch devices keep
+   them visible — there is no hover to reveal them. */
+@media (hover: hover) {
+  .data-table .row-hover-action,
+  .employee-table .row-hover-action {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  .data-table tbody tr:hover .row-hover-action,
+  .employee-table tbody tr:hover .row-hover-action,
+  .data-table tbody tr:focus-within .row-hover-action,
+  .employee-table tbody tr:focus-within .row-hover-action {
+    opacity: 1;
+  }
+}
+
+.data-table th.cell-numeric,
+.data-table td.cell-numeric,
+.employee-table th.cell-numeric,
+.employee-table td.cell-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .employee-table tr:last-child td,
@@ -903,15 +1912,6 @@ button {
 
 .employee-row {
   cursor: pointer;
-}
-
-.employee-row:hover,
-.employee-row.is-selected {
-  background: var(--hrms-color-background-secondary);
-}
-
-.checkbox-cell {
-  width: var(--hrms-layout-table-checkbox-column-width);
 }
 
 .employee-name-cell {
@@ -944,6 +1944,465 @@ button {
   margin-top: var(--hrms-between-siblings-gap);
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xs);
+}
+
+/* Org chart — a top-down reporting tree built from each employee's manager.
+   Nodes are the same compact identity card the directory uses; connectors are
+   pure CSS pseudo-elements so there's no layout library to carry. */
+.org-chart {
+  display: flex;
+  align-items: flex-start;
+  /* Centres a small tree; `safe` keeps the left edge reachable once a zoomed-in
+     canvas is wider than the viewport. */
+  justify-content: safe center;
+  max-height: min(80vh, 900px);
+  padding: var(--hrms-space-6);
+  overflow: auto;
+}
+
+/* The zoom implementation: the sizer reserves the scaled extent so the scroll
+   area grows and shrinks with the content, while the canvas keeps its natural
+   size and is scaled with a transform (origin top-left). */
+.org-chart-sizer {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.org-chart-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+}
+
+.org-chart-empty {
+  padding: var(--hrms-space-6);
+  color: var(--hrms-color-text-secondary);
+}
+
+/* Zoom / search controls floating over the chart card. */
+.org-chart-frame {
+  position: relative;
+}
+
+.org-chart-zoom {
+  position: absolute;
+  z-index: 2;
+  top: var(--hrms-space-3);
+  right: var(--hrms-space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.org-chart-zoom button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+}
+
+.org-chart-zoom button:hover:not(:disabled) {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.org-chart-zoom button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.org-chart-zoom button.org-chart-zoom-value {
+  width: auto;
+  min-width: 46px;
+  padding: 0 var(--hrms-space-1);
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.org-tree,
+.org-tree ul {
+  display: flex;
+  /* `safe` matters once a subtree is wider than the viewport: plain `center`
+     overflows equally in both directions and the left edge becomes
+     unreachable by scrolling. */
+  justify-content: safe center;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.org-tree ul {
+  position: relative;
+  padding-top: var(--hrms-space-6);
+}
+
+.org-tree ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: var(--hrms-space-6);
+  border-left: 1px solid var(--hrms-color-border-medium);
+}
+
+/* Expand/collapse: the grid row animates 0fr → 1fr (auto-height without a
+   measured value), and the item clips only while closed or mid-transition, so
+   a card's manager popover is never cut off once the animation settles. */
+.org-children {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.org-children:not(.is-open) {
+  grid-template-rows: 0fr;
+}
+
+.org-children-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+}
+
+.org-children:not(.is-open) > .org-children-inner,
+.org-children-inner.is-clipped {
+  overflow: hidden;
+}
+
+.org-tree li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--hrms-space-6) var(--hrms-space-4) 0;
+}
+
+.org-tree li::before,
+.org-tree li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: var(--hrms-space-6);
+  border-top: 1px solid var(--hrms-color-border-medium);
+}
+
+.org-tree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1px solid var(--hrms-color-border-medium);
+}
+
+.org-tree li:only-child {
+  padding-top: 0;
+}
+
+.org-tree li:only-child::before,
+.org-tree li:only-child::after {
+  display: none;
+}
+
+.org-tree li:first-child::before,
+.org-tree li:last-child::after {
+  border: 0 none;
+}
+
+.org-tree li:last-child::before {
+  border-right: 1px solid var(--hrms-color-border-medium);
+}
+
+/* The root row has nothing above it, so it carries no connectors. It shrink-
+   wraps its content (inline-flex) but stays at least as wide as the scroll
+   area, so a small tree centres while a large one stays fully scrollable.
+
+   It must never wrap: wrapping breaks the geometry the connectors assume, and
+   a root ends up rendered beside or below its own children. A tree wider than
+   the viewport scrolls instead. */
+.org-tree-root {
+  display: inline-flex;
+  min-width: 100%;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: var(--hrms-space-5);
+}
+
+.org-tree-root > li {
+  padding-top: 0;
+}
+
+.org-tree-root > li::before,
+.org-tree-root > li::after {
+  display: none;
+}
+
+/* Restructuring from the chart: drag a card onto its new manager, or open the
+   picker on a card. The drop states have to read instantly — a drag with no
+   feedback feels broken. */
+.org-chart-hint {
+  margin: 0 0 var(--hrms-space-3);
+}
+
+.org-node[draggable='true'] {
+  cursor: grab;
+}
+
+.org-node.is-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.org-node.is-drop-target {
+  border-color: var(--hrms-color-accent-accent9);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--hrms-color-accent-accent9) 30%, transparent);
+}
+
+.org-node.is-drop-blocked {
+  opacity: 0.5;
+}
+
+.org-node-edit {
+  position: absolute;
+  z-index: 2;
+  top: -8px;
+  right: -8px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--hrms-color-text-tertiary);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-rounded);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.org-node-wrap:hover .org-node-edit,
+.org-node-edit:focus-visible {
+  opacity: 1;
+}
+
+.org-node-edit:hover {
+  color: var(--hrms-color-accent-accent9);
+  border-color: var(--hrms-color-accent-accent9);
+}
+
+.org-node-picker {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--hrms-space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  padding: var(--hrms-space-3);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-strong);
+  text-align: left;
+}
+
+.org-node-picker-title {
+  margin-bottom: var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.org-node-picker-search {
+  width: 100%;
+  height: 32px;
+  margin-bottom: var(--hrms-space-2);
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+}
+
+.org-node-picker-list {
+  display: grid;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.org-node-picker-option {
+  display: grid;
+  gap: 1px;
+  padding: var(--hrms-space-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  text-align: left;
+}
+
+.org-node-picker-option:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.org-node-picker-name {
+  color: var(--hrms-color-text-primary);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.org-node-picker-role {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+}
+
+.org-node-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.org-node {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-3);
+  width: 216px;
+  padding: var(--hrms-space-3);
+  text-align: left;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  cursor: pointer;
+  transition:
+    var(--hrms-animation-clickable-background-transition),
+    opacity 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.org-node:hover {
+  background: var(--hrms-color-background-secondary);
+  border-color: var(--hrms-color-border-medium);
+}
+
+.org-node.is-selected {
+  border-color: var(--hrms-color-border-strong);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+/* Directory search on the chart: matches glow, everything else dims a little
+   but stays on screen — the hierarchy never disappears under a query. */
+.org-node.is-match {
+  border-color: var(--hrms-color-accent-accent9);
+  box-shadow:
+    0 0 0 3px var(--hrms-color-accent-accent4),
+    var(--hrms-box-shadow-strong);
+}
+
+.org-node.is-match .org-node-name {
+  color: var(--hrms-color-accent-accent11);
+}
+
+.org-node.is-dimmed {
+  opacity: 0.45;
+}
+
+.org-node.is-dimmed:hover,
+.org-node.is-dimmed:focus-visible {
+  opacity: 1;
+}
+
+.org-node:focus-visible {
+  outline: 3px solid var(--hrms-color-border-blue);
+  outline-offset: 1px;
+}
+
+.org-node-avatar {
+  width: 32px;
+  height: 32px;
+}
+
+.org-node-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.org-node-name {
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.org-node-role {
+  margin-top: var(--hrms-between-siblings-gap);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+}
+
+.org-node-status {
+  position: absolute;
+  top: var(--hrms-space-2);
+  right: var(--hrms-space-2);
+  width: 6px;
+  height: 6px;
+  border-radius: var(--hrms-radius-rounded);
+  background: var(--chip-color);
+}
+
+.org-node-toggle {
+  position: absolute;
+  bottom: calc(-1 * var(--hrms-space-3));
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 20px;
+  padding: 0 var(--hrms-space-2);
+  transform: translateX(-50%);
+  color: var(--hrms-color-text-secondary);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-pill);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+  cursor: pointer;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.org-node-toggle:hover {
+  color: var(--hrms-color-text-primary);
+  border-color: var(--hrms-color-border-strong);
+  background: var(--hrms-color-background-secondary);
+}
+
+.org-node-toggle:focus-visible {
+  outline: 3px solid var(--hrms-color-border-blue);
+  outline-offset: 1px;
 }
 
 .chip {
@@ -992,12 +2451,44 @@ button {
 }
 
 .detail-section {
-  padding: var(--hrms-space-5) 0;
+  padding: var(--hrms-space-3) 0;
   border-top: 1px solid var(--hrms-color-border-light);
 }
 
+.detail-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-3);
+  width: 100%;
+  padding: var(--hrms-space-2) 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.detail-section-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+}
+
+.detail-section-chevron {
+  color: var(--hrms-color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.detail-section-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.detail-section-body {
+  padding-top: var(--hrms-space-3);
+}
+
 .section-title {
-  margin: 0 0 var(--hrms-space-3);
+  margin: 0;
   font-size: var(--hrms-font-size-sm);
   font-weight: var(--hrms-font-weight-semi-bold);
   line-height: var(--hrms-line-height-md);
@@ -1026,6 +2517,13 @@ button {
   gap: var(--hrms-space-4);
 }
 
+.field-label {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  line-height: var(--hrms-line-height-lg);
+}
+
 .field-value {
   min-width: 0;
   overflow: hidden;
@@ -1033,11 +2531,6 @@ button {
   font-weight: var(--hrms-font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.activity-list {
-  display: grid;
-  gap: var(--hrms-space-3);
 }
 
 .record-list {
@@ -1064,12 +2557,6 @@ button {
   align-items: center;
   gap: var(--hrms-space-2);
   margin-top: var(--hrms-space-2);
-}
-
-.record-inline-actions .button {
-  min-height: 28px;
-  padding: 0 var(--hrms-space-2);
-  font-size: var(--hrms-font-size-xs);
 }
 
 .leave-trail-note {
@@ -1131,44 +2618,1675 @@ button {
   min-height: 64px;
 }
 
-.activity-item {
-  align-items: flex-start;
-  gap: var(--hrms-space-3);
-}
-
-.activity-marker {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  margin-top: 6px;
-  background: var(--hrms-color-accent-accent9);
-  border-radius: var(--hrms-radius-rounded);
-}
-
-.activity-title {
-  color: var(--hrms-color-text-primary);
-  font-weight: var(--hrms-font-weight-medium);
-}
-
-.activity-time {
-  margin-top: var(--hrms-between-siblings-gap);
-}
-
 .config-form {
   display: grid;
   gap: var(--hrms-space-2);
-  padding: var(--hrms-space-5) 0;
-  border-top: 1px solid var(--hrms-color-border-light);
+  margin-bottom: var(--hrms-space-4);
+  padding: var(--hrms-space-4);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-sm);
 }
 
-.compact-form {
+.config-form:last-child {
+  margin-bottom: 0;
+}
+
+/* Nested inside a .detail-section, which already provides its own card
+   framing — a compact form stays a bare divider, not a box within a box. */
+.config-form.compact-form {
+  margin-bottom: 0;
   padding: var(--hrms-space-3) 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--hrms-color-border-light);
+  border-radius: 0;
 }
 
 .field-group {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--hrms-space-3);
+}
+
+/* ---------------------------------------------------------------------------
+   Time & attendance. A single-column page (no side panel), since the employee
+   picker in the toolbar already scopes what is shown.
+   --------------------------------------------------------------------------- */
+.page-frame-wide {
+  display: block;
+}
+
+.attendance-picker {
+  flex: 1 1 260px;
+  max-width: 320px;
+  margin-bottom: 0;
+}
+
+.attendance-range {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.directory-toolbar .field label {
+  font-size: var(--hrms-font-size-xxs);
+}
+
+.attendance-form {
+  margin-top: var(--hrms-space-4);
+  padding: var(--hrms-space-5);
+}
+
+.attendance-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hrms-space-2);
+}
+
+.attendance-actions-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--hrms-space-3);
+}
+
+/* ---------------------------------------------------------------------------
+   Employee app. /me is deliberately the smallest surface in the product: a
+   check-in card, a short list of quick links, and the state of your own
+   requests. An employee never sees the shape of the rest of the app — no
+   groups, no search, no drawer — and on a phone the nav moves to a fixed
+   bottom bar so the whole thing reads as a mobile app.
+   --------------------------------------------------------------------------- */
+.employee-app {
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
+}
+
+/* The greeting and the check-in are one card: the thing an employee opens the
+   app to do is the first thing under their name. */
+.me-hero {
+  padding: var(--hrms-space-5);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+}
+
+.me-hero-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-lg);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
+.me-hero-status {
+  margin: var(--hrms-space-2) 0 0;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+}
+
+/* A grid, not a flex row: with flex the two buttons size from their own labels,
+   so "Check in" and "Check out" came out a few pixels apart on a narrow phone. */
+.me-hero-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--hrms-space-2);
+  margin-top: var(--hrms-space-4);
+}
+
+/* One tap target per action, both the same weight: without a query for open
+   clock events the app cannot know which one you need next, so it does not
+   pretend to. */
+.me-hero-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hrms-space-2);
+  min-height: 44px;
+  padding: 0 var(--hrms-space-4);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  cursor: pointer;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  /* Two words is enough to wrap "Check out" onto a second line at 360px, which
+     leaves the pair ragged and unequal. The label holds one line and the button
+     takes whatever width that needs. */
+  white-space: nowrap;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.me-hero-button svg {
+  flex-shrink: 0;
+}
+
+.me-hero-button:hover:not(:disabled) {
+  background: var(--hrms-color-background-quaternary);
+}
+
+.me-hero-button:disabled {
+  color: var(--hrms-color-text-tertiary);
+  cursor: not-allowed;
+}
+
+.me-section {
+  margin-top: var(--hrms-space-6);
+}
+
+.me-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--hrms-space-3);
+}
+
+.me-section-title {
+  margin: 0;
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.me-section-link {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  text-decoration: none;
+}
+
+.me-section-link:hover {
+  color: var(--hrms-color-text-primary);
+}
+
+/* Quick links are one card of hairline-divided rows rather than six separate
+   boxes — six bordered cards is more chrome than six labels deserve. */
+.app-tiles {
+  display: grid;
+  margin-top: var(--hrms-space-2);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  overflow: hidden;
+}
+
+.app-tile {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: var(--hrms-space-3);
+  min-height: 56px;
+  padding: var(--hrms-space-3) var(--hrms-space-4);
+  color: var(--hrms-color-text-tertiary);
+  background: transparent;
+  border-bottom: 1px solid var(--hrms-color-border-light);
+  text-decoration: none;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.app-tile:last-child {
+  border-bottom: 0;
+}
+
+.app-tile:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.app-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--hrms-color-text-secondary);
+}
+
+.app-tile-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-tile-label {
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.app-tile-meta {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+}
+
+/* A list of records that is genuinely two fields wide — recorded days, recent
+   requests — as rows rather than a table that would only be collapsed back into
+   rows at the phone breakpoint anyway. */
+.stack-list {
+  display: grid;
+}
+
+.stack-card {
+  margin-top: var(--hrms-space-2);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  overflow: hidden;
+}
+
+.stack-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-3);
+  min-height: 56px;
+  padding: var(--hrms-space-3) var(--hrms-space-4);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.stack-row:last-child {
+  border-bottom: 0;
+}
+
+.stack-row-copy {
+  min-width: 0;
+}
+
+.stack-row-figure {
+  flex-shrink: 0;
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.employee-form-card {
+  padding: var(--hrms-space-5);
+  margin-bottom: var(--hrms-space-4);
+}
+
+/* Clock in / out is the first thing on the employee landing page, so it sits in
+   the main column as a card rather than a panel section. */
+.clock-card {
+  padding: var(--hrms-space-5);
+  margin-bottom: var(--hrms-space-4);
+}
+
+.manager-picker {
+  margin-top: var(--hrms-space-4);
+  padding-top: var(--hrms-space-4);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.clock-actions {
+  margin-top: var(--hrms-space-4);
+}
+
+.clock-actions .button {
+  flex: 1 1 0;
+  justify-content: center;
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+/* Self-service rail: one form at a time behind tabs, so the panel stops being a
+   single long scroll of leave + profile + feedback stacked together. */
+
+/* The profile page is one long form rather than a stepped flow, so its footer
+   carries a plain save rather than step navigation. */
+.profile-page .onboarding-flow-footer {
+  max-width: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Employee profile page.
+
+   The record used to be thirteen accordions stacked in the 500px preview rail.
+   It now gets its own route: a sticky identity column that never scrolls away,
+   and tabs that split those thirteen sections so no tab is more than a
+   screenful.
+   --------------------------------------------------------------------------- */
+/* Capped and centred: an uncapped grid let the content column take the whole
+   viewport, which stretched every input to the window width regardless of what
+   it holds. */
+.profile-page {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
+}
+
+/* Form-shaped profile pages get the same narrow measure as the onboarding flow —
+   a field is only as wide as it needs to be readable, not as wide as the screen. */
+.profile-page-narrow {
+  max-width: 1000px;
+}
+
+.profile-page-narrow .profile-content {
+  max-width: 640px;
+}
+
+.profile-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hrms-space-1);
+  margin-bottom: var(--hrms-space-4);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  text-decoration: none;
+}
+
+.profile-back:hover {
+  color: var(--hrms-color-text-primary);
+}
+
+.profile-frame {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--hrms-space-6);
+}
+
+.profile-identity {
+  position: sticky;
+  top: var(--hrms-space-6);
+  min-width: 0;
+  padding: var(--hrms-space-5);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.profile-identity .employee-photo-slot {
+  margin-bottom: var(--hrms-space-3);
+}
+
+.profile-name {
+  margin: 0;
+  font-size: var(--hrms-font-size-lg);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
+.profile-identity-status {
+  margin-top: var(--hrms-space-3);
+}
+
+.profile-identity-facts {
+  margin-top: var(--hrms-space-4);
+  padding-top: var(--hrms-space-4);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+/* A grid, not a block: the cards carry no margin of their own — the onboarding
+   flow spaces them with its column gap, and without one here they sat edge to
+   edge with only their borders between them. */
+.profile-content {
+  display: grid;
+  gap: var(--hrms-space-5);
+  align-content: start;
+  min-width: 0;
+}
+
+.profile-tabs {
+  display: flex;
+  gap: var(--hrms-space-1);
+  margin-bottom: var(--hrms-space-4);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+/* Inside the profile grid the column gap already separates the tabs from the
+   first card, so the tab strip drops its own margin. */
+.profile-content > .profile-tabs {
+  margin-bottom: 0;
+}
+
+.profile-tab {
+  padding: var(--hrms-space-3) var(--hrms-space-4);
+  color: var(--hrms-color-text-tertiary);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.profile-tab:hover {
+  color: var(--hrms-color-text-primary);
+}
+
+.profile-tab.is-active {
+  color: var(--hrms-color-text-primary);
+  border-bottom-color: var(--hrms-color-accent-accent9);
+}
+
+/* Sections inside a tab sit on cards rather than running together, since a tab
+   holds only two to six of them. */
+.profile-content .detail-section {
+  padding: var(--hrms-space-2) var(--hrms-space-5);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-top: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.profile-content .detail-section-body {
+  padding-bottom: var(--hrms-space-3);
+}
+
+/* Preview rail on the directory — headline facts and a way through, nothing
+   more. */
+.preview-identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--hrms-space-3);
+}
+
+.preview-status {
+  margin-top: var(--hrms-space-4);
+}
+
+.preview-facts {
+  margin: var(--hrms-space-4) 0;
+  padding-top: var(--hrms-space-4);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+@media (max-width: 1100px) {
+  .profile-frame {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .profile-identity {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .profile-page {
+    padding: var(--hrms-space-4);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Action menu — a primary button that opens a grouped menu of related actions
+   rather than committing to one ("Add people ⌄").
+   --------------------------------------------------------------------------- */
+.action-menu {
+  position: relative;
+}
+
+.action-menu-caret {
+  transition: transform 0.15s ease;
+}
+
+.action-menu-caret.is-open {
+  transform: rotate(180deg);
+}
+
+.action-menu-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--hrms-space-2));
+  right: 0;
+  display: grid;
+  min-width: 260px;
+  padding: var(--hrms-space-2);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-strong);
+}
+
+.action-menu-section + .action-menu-section {
+  margin-top: var(--hrms-space-2);
+  padding-top: var(--hrms-space-2);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.action-menu-section-label {
+  padding: var(--hrms-space-1) var(--hrms-space-2) var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.action-menu-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  gap: var(--hrms-space-3);
+  padding: var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.action-menu-item:hover {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.action-menu-item-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.action-menu-item-label {
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.action-menu-item-description {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+}
+
+/* ---------------------------------------------------------------------------
+   Column header menu — the whole <th> is the trigger. The panel is portaled
+   (fixed) because the table's scroll container would clip an absolute one.
+   --------------------------------------------------------------------------- */
+.column-header-trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: var(--hrms-layout-table-row-height);
+  gap: var(--hrms-space-1);
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: inherit;
+}
+
+.column-header.cell-numeric .column-header-trigger {
+  justify-content: flex-end;
+}
+
+.column-header-trigger:hover {
+  color: var(--hrms-color-text-primary);
+}
+
+.column-header-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-header-caret {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.column-header-trigger:hover .column-header-caret,
+.column-header-trigger[aria-expanded='true'] .column-header-caret {
+  opacity: 1;
+}
+
+.column-header-trigger.is-sorted {
+  color: var(--hrms-color-text-primary);
+}
+
+.column-header-trigger.is-sorted .column-header-caret {
+  color: var(--hrms-color-accent-accent9);
+  opacity: 1;
+}
+
+.column-header-panel {
+  position: fixed;
+  right: auto;
+  z-index: 70;
+  min-width: 200px;
+}
+
+/* ---------------------------------------------------------------------------
+   Directory toolbar — search, multi-select filter chips, and a live row count,
+   sitting between the page header and the table (Deel's People table pattern).
+   --------------------------------------------------------------------------- */
+.directory-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--hrms-space-2);
+  margin-bottom: var(--hrms-space-4);
+}
+
+.directory-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 260px;
+  max-width: 360px;
+  gap: var(--hrms-space-2);
+  height: 32px;
+  padding: 0 var(--hrms-space-3);
+  color: var(--hrms-color-text-tertiary);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+}
+
+.directory-search:focus-within {
+  outline: 3px solid var(--hrms-color-border-blue);
+  outline-offset: 1px;
+}
+
+.directory-search input {
+  min-width: 0;
+  width: 100%;
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+}
+
+.directory-search input:focus-visible {
+  outline: none;
+}
+
+.filter-menu {
+  position: relative;
+}
+
+.filter-chip-count {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--hrms-space-1);
+  color: var(--hrms-color-text-inverted);
+  background: var(--hrms-color-accent-accent9);
+  border-radius: var(--hrms-radius-pill);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.filter-menu-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--hrms-space-1));
+  left: 0;
+  display: grid;
+  min-width: 200px;
+  padding: var(--hrms-space-2);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  box-shadow: var(--hrms-box-shadow-strong);
+}
+
+/* The portaled copy: fixed so `.table-shell`'s overflow can't clip it, and
+   capped so a long option list can't run off the viewport. */
+.filter-menu-panel-floating {
+  position: fixed;
+  right: auto;
+  z-index: 70;
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - var(--hrms-space-4)));
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}
+
+.filter-menu-option {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-2);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font-size: var(--hrms-font-size-xs);
+  white-space: nowrap;
+}
+
+.filter-menu-option:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.filter-menu-clear {
+  margin-top: var(--hrms-space-1);
+  padding: var(--hrms-space-2);
+  color: var(--hrms-color-accent-accent9);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--hrms-color-border-light);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  text-align: left;
+}
+
+/* ---------------------------------------------------------------------------
+   Filter bar — nothing permanent while resting; applied filters materialize as
+   removable accent chips that double as their own dropdown triggers.
+   --------------------------------------------------------------------------- */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--hrms-space-2);
+}
+
+.filter-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hrms-space-1);
+  height: 24px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 1px dashed var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.filter-add-button:hover,
+.filter-add-button[aria-expanded='true'] {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border-color: var(--hrms-color-border-strong);
+}
+
+.filter-chip-applied {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
+  border: 1px solid var(--hrms-color-accent-accent6);
+  border-radius: var(--hrms-radius-sm);
+}
+
+.filter-chip-applied-main {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  gap: var(--hrms-space-1);
+  padding: 0 var(--hrms-space-1) 0 var(--hrms-space-2);
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  white-space: nowrap;
+}
+
+.filter-chip-applied-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-chip-applied .filter-chip-count {
+  min-width: 16px;
+  height: 16px;
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent5);
+  font-size: 10px;
+}
+
+.filter-chip-remove {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 100%;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--hrms-color-accent-accent6);
+  border-radius: 0 var(--hrms-radius-sm) var(--hrms-radius-sm) 0;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.filter-chip-remove:hover {
+  opacity: 1;
+  background: var(--hrms-color-accent-accent4);
+}
+
+.filter-menu-label {
+  padding: var(--hrms-space-1) var(--hrms-space-2) var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.filter-menu-option-button {
+  width: 100%;
+  justify-content: space-between;
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  font: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+   View bar — the row above every list: the view chip (name + live count) with
+   its saved-preset menu, Filter, Sort, and Options. Panels portal to <body>
+   because the table shell's overflow would clip an absolute one.
+   --------------------------------------------------------------------------- */
+.view-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  min-height: 44px;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-1) var(--hrms-space-4);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.view-bar-group {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--hrms-space-2);
+}
+
+.view-bar-group-end {
+  justify-content: flex-end;
+}
+
+.view-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+}
+
+.view-menu {
+  position: relative;
+}
+
+.view-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: 28px;
+  gap: var(--hrms-space-2);
+  padding: 0 var(--hrms-space-1) 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.view-chip:hover,
+.view-chip[aria-expanded='true'] {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.view-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-chip-count {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-save-button {
+  height: 24px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
+  border: 1px solid var(--hrms-color-accent-accent6);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-save-button:hover {
+  background: var(--hrms-color-accent-accent4);
+}
+
+.view-bar-button {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  gap: var(--hrms-space-1);
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 1px dashed var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-bar-button:hover,
+.view-bar-button[aria-expanded='true'] {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border-color: var(--hrms-color-border-strong);
+}
+
+.view-menu-panel-floating {
+  position: fixed;
+  z-index: 70;
+  display: grid;
+  align-content: start;
+  min-width: 260px;
+  max-width: 320px;
+  max-height: min(60vh, 420px);
+  gap: 1px;
+  padding: var(--hrms-space-2);
+  overflow-y: auto;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-strong);
+}
+
+.view-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  text-align: left;
+}
+
+.view-menu-item:hover {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.view-menu-item.is-active {
+  color: var(--hrms-color-text-primary);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-menu-spacer {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.view-menu-meta {
+  margin-left: auto;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  white-space: nowrap;
+}
+
+.view-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.view-menu-row .view-menu-item {
+  flex: 1;
+}
+
+.view-menu-row-heading {
+  margin-bottom: var(--hrms-space-1);
+  padding-bottom: var(--hrms-space-1);
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.view-menu-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 2px;
+}
+
+.view-menu-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.view-menu-divider {
+  height: 1px;
+  margin: var(--hrms-space-1) 0;
+  background: var(--hrms-color-border-light);
+}
+
+.view-menu-label {
+  padding: var(--hrms-space-1) var(--hrms-space-2) var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.view-menu-hint {
+  margin: var(--hrms-space-1) var(--hrms-space-2) 0;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  line-height: var(--hrms-line-height-lg);
+}
+
+.view-menu-form {
+  display: flex;
+  gap: var(--hrms-space-1);
+  padding: var(--hrms-space-1);
+}
+
+.view-menu-form input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+}
+
+.view-menu-scroll {
+  display: grid;
+  gap: 1px;
+}
+
+.view-field-option {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  padding: 6px var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font-size: var(--hrms-font-size-xs);
+}
+
+.view-field-option:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.view-field-option.is-pinned,
+.view-field-option.is-pinned:hover {
+  color: var(--hrms-color-text-tertiary);
+  background: transparent;
+  cursor: default;
+}
+
+.view-field-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--hrms-color-accent-accent9);
+}
+
+.view-sort-index {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
+  border-radius: var(--hrms-radius-pill);
+  font-size: 10px;
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+/* ---------------------------------------------------------------------------
+   Record panel — inline create/edit fields inside the side panel. Read mode
+   shows a click-to-edit value; create mode shows the typed control throughout.
+   --------------------------------------------------------------------------- */
+.record-field-group {
+  margin-bottom: var(--hrms-space-5);
+}
+
+.record-field-group-title {
+  margin: 0 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.record-field {
+  display: grid;
+  grid-template-columns: minmax(110px, 38%) minmax(0, 1fr);
+  align-items: center;
+  min-height: 30px;
+  gap: var(--hrms-space-3);
+  padding: var(--hrms-space-1) 0;
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.record-field-list > .record-field:last-child {
+  border-bottom: 0;
+}
+
+.record-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-sm);
+}
+
+.record-field-required {
+  color: var(--hrms-color-text-danger);
+}
+
+.record-field-value {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.record-field-display {
+  max-width: 100%;
+  padding: 4px var(--hrms-space-2);
+  overflow: hidden;
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-field-display:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.record-field-display.is-empty {
+  color: var(--hrms-color-text-tertiary);
+  font-weight: var(--hrms-font-weight-regular);
+}
+
+.record-field-static {
+  padding: 4px var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-sm);
+  text-align: right;
+}
+
+.record-field-control {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+}
+
+.record-field-control:focus {
+  outline: 2px solid var(--hrms-color-border-blue);
+  outline-offset: 1px;
+}
+
+.record-field-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--hrms-color-accent-accent9);
+}
+
+/* The name fields that live in the panel header while creating a record. */
+.record-panel-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.record-panel-name-input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--hrms-radius-sm);
+  font: inherit;
+  font-size: var(--hrms-font-size-md);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.record-panel-name-input::placeholder {
+  color: var(--hrms-color-text-extra-light);
+  font-weight: var(--hrms-font-weight-regular);
+}
+
+.record-panel-name-input:hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.record-panel-name-input:focus {
+  background: var(--hrms-color-background-primary);
+  border-color: var(--hrms-color-border-medium);
+  outline: none;
+}
+
+.record-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  margin-top: var(--hrms-space-5);
+}
+
+.record-panel-error {
+  margin-top: var(--hrms-space-3);
+}
+
+.directory-clear {
+  font-size: var(--hrms-font-size-xs);
+}
+
+.directory-count {
+  margin-left: auto;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Employee onboarding flow.
+
+   A dedicated, full-page intake: a narrow single-column stack of titled cards
+   on the left, a vertical step rail on the right, and a sticky action footer.
+   The form column is deliberately capped well short of the viewport — grouped,
+   near-single-column fields read far faster than one wide auto-fit grid.
+   --------------------------------------------------------------------------- */
+.onboarding-page {
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
+}
+
+.onboarding-flow {
+  display: block;
+  max-width: 1060px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.onboarding-flow-header {
+  margin-bottom: var(--hrms-space-5);
+}
+
+.onboarding-flow-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hrms-space-1);
+  margin-bottom: var(--hrms-space-3);
+  padding: 0;
+  color: var(--hrms-color-text-tertiary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.onboarding-flow-back:hover {
+  color: var(--hrms-color-text-primary);
+}
+
+.onboarding-flow-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-xl);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
+.onboarding-flow-subtitle {
+  max-width: 60ch;
+  margin: var(--hrms-space-2) 0 0;
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-sm);
+}
+
+.onboarding-flow-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: var(--hrms-space-6);
+}
+
+.onboarding-flow-main {
+  display: grid;
+  gap: var(--hrms-space-5);
+  min-width: 0;
+  max-width: 640px;
+}
+
+.onboarding-card {
+  padding: var(--hrms-space-5);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.onboarding-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--hrms-space-3);
+  margin-bottom: var(--hrms-space-4);
+}
+
+.onboarding-card-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-md);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
+.onboarding-card-note {
+  max-width: 52ch;
+  margin: var(--hrms-space-1) 0 0;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+}
+
+.onboarding-card-edit {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--hrms-space-1);
+  padding: var(--hrms-space-1) var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.onboarding-card-edit:hover {
+  color: var(--hrms-color-text-primary);
+  border-color: var(--hrms-color-border-strong);
+}
+
+/* Fields stack one per row. The last one loses its bottom margin so the card
+   padding is what sets the gap to the card edge. */
+.onboarding-card-body > .field:last-child,
+.onboarding-card-body > .onboarding-field-pair:last-child .field {
+  margin-bottom: 0;
+}
+
+.onboarding-card-body > .field-hint:first-child {
+  margin-top: 0;
+}
+
+.onboarding-field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--hrms-space-3);
+}
+
+/* For a pair whose first field holds a short code — a 2-letter country, a
+   currency — an equal split just leaves a wide empty box. */
+.onboarding-field-pair.is-code-first {
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+
+.onboarding-card .field input,
+.onboarding-card .field select {
+  background: var(--hrms-color-background-primary);
+}
+
+.required-mark {
+  color: var(--hrms-color-text-danger);
+}
+
+/* Vertical step rail, Deel-style: the active step is a filled row rather than a
+   dot on a horizontal line, so it survives long step names. */
+.onboarding-flow-rail {
+  position: sticky;
+  top: var(--hrms-space-6);
+  display: grid;
+  gap: var(--hrms-space-4);
+  min-width: 0;
+}
+
+.step-rail {
+  display: grid;
+  gap: var(--hrms-space-1);
+  margin: 0;
+  padding: var(--hrms-space-2);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
+  list-style: none;
+}
+
+.step-rail-button {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  gap: var(--hrms-space-3);
+  padding: var(--hrms-space-3);
+  color: var(--hrms-color-text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.step-rail-button:disabled {
+  cursor: default;
+}
+
+.step-rail-item:not(.is-active) .step-rail-button:not(:disabled):hover {
+  background: var(--hrms-color-background-tertiary);
+}
+
+.step-rail-index {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--hrms-color-text-tertiary);
+  background: var(--hrms-color-background-tertiary);
+  border-radius: var(--hrms-radius-rounded);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.step-rail-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.step-rail-label {
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.step-rail-hint {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+}
+
+.step-rail-item.is-active .step-rail-button {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.step-rail-item.is-complete .step-rail-button {
+  color: var(--hrms-color-text-primary);
+}
+
+.step-rail-item.is-active .step-rail-index {
+  color: var(--hrms-color-text-inverted);
+  background: var(--hrms-color-accent-accent9);
+}
+
+.step-rail-item.is-complete .step-rail-index {
+  color: var(--hrms-color-text-inverted);
+  background: var(--hrms-color-tag-green);
+}
+
+.onboarding-help {
+  padding: var(--hrms-space-3) var(--hrms-space-4);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.onboarding-help-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  cursor: pointer;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  list-style: none;
+}
+
+.onboarding-help-summary::-webkit-details-marker {
+  display: none;
+}
+
+.onboarding-help[open] .onboarding-help-summary svg {
+  transform: rotate(180deg);
+}
+
+.onboarding-help-summary svg {
+  flex: 0 0 auto;
+  color: var(--hrms-color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.onboarding-help-body {
+  padding-top: var(--hrms-space-3);
+}
+
+.onboarding-help-body p {
+  margin: 0 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-xs);
+  line-height: var(--hrms-line-height-lg);
+}
+
+.onboarding-help-body p:last-child {
+  margin-bottom: 0;
+}
+
+.onboarding-flow-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-4);
+  margin-top: var(--hrms-space-5);
+  padding: var(--hrms-space-4) 0;
+  background: var(--hrms-color-background-primary);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.onboarding-flow-progress {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+@media (max-width: 1100px) {
+  .onboarding-flow-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .onboarding-flow-rail {
+    position: static;
+    order: -1;
+  }
+
+  .onboarding-flow-main {
+    max-width: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .onboarding-page {
+    padding: 0 var(--hrms-space-3) var(--hrms-space-3);
+  }
+
+  .onboarding-field-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .onboarding-flow-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.onboarding-review .field-row {
+  padding: var(--hrms-space-2) 0;
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.onboarding-review .field-row:last-child {
+  border-bottom: 0;
 }
 
 .checkbox-field {
@@ -1216,11 +4334,40 @@ button {
   color: var(--hrms-color-accent-accent9);
 }
 
-.field-skeleton {
+.payroll-readiness {
+  margin: 0 0 var(--hrms-space-4);
+}
+
+.payroll-readiness__head {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.payroll-readiness__list {
   margin: var(--hrms-space-2) 0 0;
-  height: 14px;
-  width: 65%;
+  padding-left: var(--hrms-space-5);
+  font-size: var(--hrms-font-size-xs);
+  color: var(--hrms-color-text-secondary);
+}
+
+.payroll-readiness__list li {
+  margin: var(--hrms-space-1) 0;
+}
+
+.payroll-readiness--clear {
+  color: var(--hrms-color-text-secondary);
+}
+
+.skeleton {
+  display: inline-block;
   border-radius: var(--hrms-radius-sm);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.skeleton:not(.skeleton-static) {
   background: linear-gradient(
     90deg,
     var(--hrms-color-background-tertiary) 25%,
@@ -1228,10 +4375,15 @@ button {
     var(--hrms-color-background-tertiary) 63%
   );
   background-size: 400% 100%;
-  animation: field-skeleton-shimmer 1.4s ease infinite;
+  animation: skeleton-shimmer 1.4s ease infinite;
 }
 
-@keyframes field-skeleton-shimmer {
+.skeleton-text {
+  display: grid;
+  gap: var(--hrms-space-2);
+}
+
+@keyframes skeleton-shimmer {
   0% {
     background-position: 100% 50%;
   }
@@ -1241,24 +4393,9 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .field-skeleton {
+  .skeleton:not(.skeleton-static) {
     animation: none;
   }
-}
-
-.field-checkbox-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--hrms-space-2);
-  margin: var(--hrms-space-1) 0 var(--hrms-space-2);
-  font-size: var(--hrms-font-size-xs);
-  color: var(--hrms-color-text-secondary);
-  cursor: pointer;
-}
-
-.field-checkbox-row input[type='checkbox'] {
-  margin-top: 2px;
-  accent-color: var(--hrms-color-accent-accent9);
 }
 
 @media (max-width: 1100px) {
@@ -1286,30 +4423,24 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .app-sidebar {
-    display: none;
-  }
-
-  .app-topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
   .topbar-search {
     display: none;
   }
 
-  .employees-content {
-    padding: var(--hrms-space-4);
+  .app-content {
+    padding: 0;
   }
 
-  .page-header,
-  .toolbar {
+  .employees-content {
+    padding: var(--hrms-space-3);
+  }
+
+  .page-header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .page-actions,
-  .segmented-control {
+  .page-actions {
     overflow-x: auto;
   }
 
@@ -1324,6 +4455,234 @@ button {
   .metric-card:nth-child(-n + 2) {
     border-bottom: 1px solid var(--hrms-color-border-light);
   }
+
+  /* Phone navigation is a drawer, not a row. The pills are inline dropdown
+     anchors that overlapped the page once the header ran out of width, so they
+     and the sub-nav come out of the layout entirely and the hamburger takes
+     over. */
+  .topnav-pills,
+  .app-subnav {
+    display: none;
+  }
+
+  .mobile-nav-toggle {
+    display: inline-flex;
+  }
+
+  .app-topnav {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--hrms-space-2);
+    padding: 0 var(--hrms-space-3);
+  }
+
+  /* Paired form fields stack. Without this every two-column group — onboarding,
+     the HR record, the attendance forms — stays two-up at 360px. */
+  .field-group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Popovers are anchored to a trigger that can sit near either edge, so cap
+     them to the viewport rather than letting a fixed min-width push the page
+     sideways. */
+  .action-menu-panel,
+  .filter-menu-panel {
+    min-width: 0;
+    width: max-content;
+    max-width: calc(100vw - var(--hrms-space-8));
+  }
+
+  .directory-search {
+    max-width: none;
+  }
+
+  .attendance-picker {
+    max-width: none;
+  }
+
+  .onboarding-card,
+  .profile-identity {
+    padding: var(--hrms-space-4);
+  }
+
+  .profile-page,
+  .employee-app {
+    padding: var(--hrms-space-3);
+  }
+
+  .onboarding-flow-title {
+    font-size: var(--hrms-font-size-lg);
+  }
+
+  /* Desktop type on a 390px screen reads as a zoomed-in page rather than a
+     phone one. Headings and figures step down; body text does not, because it
+     is already at its floor. */
+  .page-title {
+    font-size: var(--hrms-font-size-lg);
+  }
+
+  .page-subtitle {
+    font-size: var(--hrms-font-size-xs);
+  }
+
+  .metric-value {
+    margin-top: var(--hrms-space-1);
+    font-size: var(--hrms-font-size-md);
+  }
+
+  .metric-card {
+    padding: var(--hrms-space-3);
+  }
+
+  .page-actions .button,
+  .page-header .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Tables become stacked cards. A table that scrolls sideways with its columns
+     cut off is the clearest tell that a desktop layout was shipped as-is; each
+     row is a card and each cell carries its own column name from data-label. */
+  .data-table-wrap,
+  .employee-table-wrap {
+    overflow-x: visible;
+    background: none;
+  }
+
+  /* min-width is what forces the horizontal scroll on desktop (.data-table sets
+     640px, .salary-history-table 760px). It has to go, or the card rows inherit
+     the desktop table width and hang off the screen. */
+  .data-table,
+  .employee-table,
+  .salary-history-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    table-layout: auto;
+  }
+
+  /* Removed outright rather than visually hidden: every cell states its own
+     column via data-label, so the header row carries nothing extra, and clipping
+     it still left a full-width row in the layout. */
+  .data-table thead,
+  .employee-table thead {
+    display: none;
+  }
+
+  /* Rows are separated by a rule rather than boxed as cards — at two lines each,
+     a border, radius and gap per row is more chrome than content. */
+  .data-table tbody,
+  .employee-table tbody {
+    display: block;
+    padding: 0;
+  }
+
+  .data-table tbody tr,
+  .employee-table tbody tr {
+    display: block;
+    padding: var(--hrms-space-3) var(--hrms-space-4);
+    border-bottom: 1px solid var(--hrms-color-border-light);
+  }
+
+  .data-table tbody tr:last-child,
+  .employee-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  /* Two lines per record, not one block per column. Stacking every cell turned a
+     four-column table into twelve blocks and produced a scroll far longer than
+     the data justified. The identity is the first line; everything else flows
+     inline as a labelled meta line that wraps. */
+  .data-table tbody td,
+  .employee-table tbody td {
+    display: inline;
+    min-width: 0;
+    width: auto;
+    max-width: none;
+    /* The desktop rule pins every cell to a 44px row height; left in, it padded
+       each title out by ~28px of empty space. */
+    height: auto;
+    padding: 0;
+    border: 0;
+    color: var(--hrms-color-text-secondary);
+    font-size: var(--hrms-font-size-xs);
+    line-height: var(--hrms-line-height-lg);
+  }
+
+  .data-table tbody td::before,
+  .employee-table tbody td::before {
+    content: attr(data-label) " ";
+    color: var(--hrms-color-text-tertiary);
+    font-size: var(--hrms-font-size-xxs);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Separator between meta items, never a trailing one. */
+  .data-table tbody td:not(:last-child)::after,
+  .employee-table tbody td:not(:last-child)::after {
+    content: " · ";
+    color: var(--hrms-color-text-light);
+  }
+
+  /* The first cell is the record's identity: its own line, no label, no
+     separator, and the only thing set at full text size. */
+  .data-table tbody td:first-child,
+  .employee-table tbody td:first-child {
+    display: block;
+    margin-bottom: var(--hrms-space-1);
+    color: var(--hrms-color-text-primary);
+    font-size: var(--hrms-font-size-sm);
+    font-weight: var(--hrms-font-weight-semi-bold);
+    line-height: var(--hrms-line-height-md);
+  }
+
+  .data-table tbody td:first-child::before,
+  .data-table tbody td:first-child::after,
+  .employee-table tbody td:first-child::before,
+  .employee-table tbody td:first-child::after {
+    content: none;
+  }
+
+  /* Row actions stay a block: buttons do not belong in a run of text. */
+  .data-table tbody td:has(.attendance-row-actions),
+  .employee-table tbody td:has(.attendance-row-actions) {
+    display: block;
+    margin-top: var(--hrms-space-2);
+  }
+
+  .data-table tbody td:has(.attendance-row-actions)::before,
+  .data-table tbody td:has(.attendance-row-actions)::after {
+    content: none;
+  }
+
+  /* Cells truncate on desktop to keep columns aligned; in a card they wrap. */
+  .data-table tbody td.truncate,
+  .employee-table tbody td.truncate,
+  .employee-table tbody .truncate {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .table-empty {
+    display: block;
+  }
+
+  /* Truncation exists to keep desktop columns aligned; on a phone there are no
+     columns to align, so let the name wrap instead of becoming "Acme …". */
+  .portfolio-attention-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portfolio-attention-name {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .portfolio-attention-note {
+    text-align: left;
+  }
 }
 
 /* Auth screens (login / signup) */
@@ -1333,6 +4692,25 @@ button {
   min-height: 100vh;
   padding: var(--hrms-space-4);
   background: var(--hrms-color-background-secondary);
+}
+
+/* Anonymous application form (public, no shell) */
+.public-apply {
+  display: grid;
+  place-items: start center;
+  min-height: 100vh;
+  padding: var(--hrms-space-8) var(--hrms-space-4);
+  background: var(--hrms-color-background-secondary);
+}
+
+.public-apply-card {
+  width: 100%;
+  max-width: 620px;
+  padding: var(--hrms-space-6);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-color-box-shadow-light);
 }
 
 .auth-card {
@@ -1378,8 +4756,9 @@ button {
   font-weight: var(--hrms-font-weight-medium);
 }
 
-.field input {
-  height: 36px;
+.field input,
+.access-role-control select {
+  height: 32px;
   padding: 0 var(--hrms-space-3);
   color: var(--hrms-color-text-primary);
   background: var(--hrms-color-background-secondary);
@@ -1388,7 +4767,7 @@ button {
 }
 
 .field select {
-  height: 36px;
+  height: 32px;
   padding: 0 var(--hrms-space-3);
   color: var(--hrms-color-text-primary);
   background: var(--hrms-color-background-secondary);
@@ -1411,6 +4790,57 @@ button {
 .field textarea:focus-visible {
   outline: 3px solid var(--hrms-color-border-blue);
   outline-offset: 1px;
+}
+
+.file-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-3);
+  height: 32px;
+  padding: 0 var(--hrms-space-2);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+}
+
+.field label.file-input-trigger {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-xs);
+  cursor: pointer;
+  font-size: var(--hrms-font-size-xs);
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.field label.file-input-trigger:hover {
+  background: var(--hrms-color-background-quaternary);
+}
+
+.file-input-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field input.file-input-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .button-full {
@@ -1447,21 +4877,75 @@ button {
   margin: var(--hrms-space-4) 0;
 }
 
-/* Client and employee portals */
-.employee-workspace,
+/* Client and employee portals. The page scrolls as one unit (the document
+   scrolls) — neither column is its own scroll container, and `align-items:
+   start` keeps a short column from being stretched to the taller one, which
+   is what produced a stray scrollbar on the side panel. */
 .client-workspace,
-.workspace-users-page,
-.client-portfolio-page,
-.hiring-page,
-.announcements-page,
-.feedback-page,
-.leave-page {
+.client-portfolio-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--hrms-layout-side-panel-width);
-  min-height: 0;
+  align-items: start;
+  gap: var(--hrms-space-6);
 }
 
-.employee-workspace-content,
+/* The users page has no second column to put there, so it is a plain
+   single-column frame instead of reserving an always-empty gutter. */
+.workspace-users-page {
+  display: block;
+}
+
+/* List + sliding record panel (Twenty-style): the panel is a flex sibling, so
+   the list reflows narrower instead of being covered. No backdrop, no overlay. */
+.list-with-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--hrms-space-6);
+}
+
+.list-with-panel > :not(.side-panel) {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.side-panel {
+  flex: 0 0 auto;
+  width: 0;
+  overflow: hidden;
+  outline: none;
+  transition: width var(--hrms-animation-duration-normal) ease;
+}
+
+.side-panel.is-open {
+  width: var(--hrms-layout-side-panel-width);
+}
+
+/* Fixed-width inside the clipping outer aside, so the content doesn't reflow
+   while the width animates. Chrome lifted from the old static preview panel. */
+.side-panel-body {
+  width: var(--hrms-layout-side-panel-width);
+  padding: var(--hrms-space-5);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-4);
+  margin-bottom: var(--hrms-space-4);
+}
+
+.side-panel-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-lg);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
 .client-workspace-content,
 .workspace-users-content,
 .client-portfolio-content,
@@ -1470,32 +4954,19 @@ button {
 .feedback-content,
 .leave-content {
   min-width: 0;
-  padding: var(--hrms-space-6);
-  overflow: auto;
+  padding: 0 var(--hrms-space-6) var(--hrms-space-6);
 }
 
-.self-service-panel,
 .client-workspace-panel,
-.hiring-panel,
-.client-portfolio-panel,
-.announcements-panel,
-.feedback-panel,
-.leave-panel {
+.client-portfolio-panel {
   min-width: 0;
   padding: var(--hrms-space-5);
-  overflow: auto;
   background: var(--hrms-color-background-secondary);
-  border-left: 1px solid var(--hrms-color-border-light);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-box-shadow-light);
 }
 
-.employee-identity {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: var(--hrms-space-3);
-}
-
-.employee-identity-avatar,
 .employee-identity-photo {
   width: 40px;
   height: 40px;
@@ -1507,21 +4978,85 @@ button {
   border-radius: var(--hrms-radius-rounded);
 }
 
-.employee-metrics,
-.client-metrics {
-  margin-bottom: var(--hrms-space-4);
+.employee-photo-slot {
+  position: relative;
+  flex: 0 0 auto;
 }
 
-.self-service-grid {
+.employee-photo-slot .employee-avatar {
+  width: 40px;
+  height: 40px;
+  font-size: var(--hrms-font-size-sm);
+}
+
+.employee-photo-edit {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
-  gap: var(--hrms-space-4);
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--hrms-color-text-inverted);
+  background: var(--hrms-color-accent-accent9);
+  border: 2px solid var(--hrms-color-background-primary);
+  border-radius: var(--hrms-radius-rounded);
+  cursor: pointer;
+}
+
+.employee-photo-edit:hover {
+  background: var(--hrms-color-accent-accent10);
+}
+
+.employee-photo-edit.is-saving {
+  cursor: default;
+  background: var(--hrms-color-text-tertiary);
+}
+
+.icon-spin {
+  animation: hrms-spin 0.8s linear infinite;
+}
+
+@keyframes hrms-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.employee-photo-edit input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Editable profile photo on the employee "My workspace" page — a larger
+   preview than the 40px header/detail avatar, with the same camera control. */
+
+.employee-metrics {
   margin-bottom: var(--hrms-space-4);
 }
 
-.self-service-grid .table-shell {
-  min-width: 0;
+/* Consistent vertical rhythm between the stacked cards in the employee and
+   client workspace main columns. */
+.client-workspace-content > .table-shell {
+  margin-bottom: var(--hrms-space-4);
 }
+
+.client-workspace-content > .table-shell:last-child {
+  margin-bottom: 0;
+}
+
+/* "Employment facts" fills a wide card, so its key/value list is a two-column
+   spec grid with the value stacked directly under its label — no more label
+   marooned on the left, value on the far right. */
 
 .table-title {
   display: flex;
@@ -1529,14 +5064,68 @@ button {
   gap: var(--hrms-space-2);
 }
 
-.table-title-row .button {
-  text-decoration: none;
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--hrms-space-4);
+  padding: var(--hrms-space-10) var(--hrms-space-6);
+  color: var(--hrms-color-text-tertiary);
+  text-align: center;
+}
+
+.empty-state-title {
+  margin: 0;
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-md);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
+.empty-state-copy {
+  max-width: 52ch;
+  margin: 0;
+  font-size: var(--hrms-font-size-sm);
+  line-height: var(--hrms-line-height-lg);
+}
+
+.empty-state-action {
+  margin-top: var(--hrms-space-2);
+}
+
+/* A table cell holding an empty state must not be forced to the 32px row
+   height (the previous `.table-empty` padding lost specificity to
+   `.data-table td`, so 24 usages rendered as a gray line of text). */
+.data-table td.table-empty,
+.employee-table td.table-empty {
+  height: auto;
+  padding: 0;
+}
+
+.data-table td .empty-state,
+.employee-table td .empty-state {
+  padding: var(--hrms-space-10) var(--hrms-space-6);
 }
 
 .table-empty {
   margin: 0;
   padding: var(--hrms-space-5);
   color: var(--hrms-color-text-tertiary);
+}
+
+.detail-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--hrms-space-3);
+  padding: var(--hrms-space-10) var(--hrms-space-4);
+  color: var(--hrms-color-text-tertiary);
+  text-align: center;
+}
+
+.detail-panel-empty p {
+  margin: 0;
+  font-size: var(--hrms-font-size-sm);
 }
 
 .holiday-calendar {
@@ -1602,36 +5191,202 @@ button {
   min-width: 0;
 }
 
-.self-service-section,
-.client-action-block {
-  padding: var(--hrms-space-5) 0;
-  border-bottom: 1px solid var(--hrms-color-border-light);
+/* Panel sections separate with a symmetric 16px (4px-grid) divider: 16px of
+   space above the rule and 16px below it, so stacked sections read evenly. The
+   panel's own padding owns the outer edges. */
+.self-service-section + .self-service-section {
+  margin-top: var(--hrms-space-4);
+  padding-top: var(--hrms-space-4);
+  border-top: 1px solid var(--hrms-color-border-light);
 }
 
-.self-service-section:first-child,
-.client-action-block:first-child {
-  padding-top: 0;
+/* Client portfolio — "Needs attention" list in the side panel. Each row names a
+   client that was created without a workspace (an incomplete onboarding) and
+   offers a one-click jump into the New workspace form, pre-scoped to it. */
+.chip-amber {
+  --chip-color: var(--hrms-color-tag-amber);
 }
 
-.self-service-section:last-child,
-.client-action-block:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
+.portfolio-attention-list {
+  display: grid;
+  gap: var(--hrms-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.client-action-block p {
-  margin: var(--hrms-space-3) 0 var(--hrms-space-4);
-  color: var(--hrms-color-text-secondary);
+.portfolio-attention-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--hrms-space-1) var(--hrms-space-3);
+  padding: var(--hrms-space-3);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-sm);
 }
 
-.client-action-block .button {
-  width: 100%;
-  justify-content: center;
+.portfolio-attention-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-attention-note {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  text-align: right;
+}
+
+.portfolio-attention-item .link-button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  font-size: var(--hrms-font-size-xs);
+}
+
+/* Client "People overview" — compact quick-actions panel (replaces the old
+   stacked kicker/heading/paragraph/button blocks). */
+.client-actions-head {
+  margin-bottom: var(--hrms-space-4);
+}
+
+.client-actions-head .panel-title {
+  margin-top: var(--hrms-space-1);
+}
+
+.quick-action-list {
+  display: grid;
+  gap: var(--hrms-space-2);
+}
+
+.quick-action {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: var(--hrms-space-3);
+  padding: var(--hrms-space-3);
+  color: inherit;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
   text-decoration: none;
+  transition: var(--hrms-animation-clickable-background-transition);
+}
+
+.quick-action:hover {
+  background: var(--hrms-color-background-secondary);
+  border-color: var(--hrms-color-border-medium);
+}
+
+.quick-action.is-primary {
+  border-color: var(--hrms-color-accent-accent6);
+}
+
+.quick-action-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  color: var(--hrms-color-text-secondary);
+  background: var(--hrms-color-background-secondary);
+  border-radius: var(--hrms-radius-sm);
+}
+
+.quick-action.is-primary .quick-action-icon {
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
+}
+
+.quick-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.quick-action-title {
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  line-height: var(--hrms-line-height-md);
+}
+
+.quick-action-desc {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  line-height: var(--hrms-line-height-md);
+}
+
+.quick-action-arrow {
+  color: var(--hrms-color-text-light);
+}
+
+.quick-action:hover .quick-action-arrow {
+  color: var(--hrms-color-text-tertiary);
+}
+
+/* The customizable widget board, shared by the Tethr Dashboard and the
+   client "People overview" section. */
+.dashboard-board {
+  margin-bottom: var(--hrms-space-5);
+}
+
+.dashboard-board-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--hrms-space-3);
+}
+
+.dashboard-board-toolbar .dashboard-view-tabs {
+  margin-bottom: var(--hrms-space-4);
+}
+
+.dashboard-board-toolbar.is-compact {
+  justify-content: flex-end;
+  margin-bottom: var(--hrms-space-4);
+}
+
+/* On the client "People overview" the board lives in the narrower main
+   column (beside the actions panel), so it fits fewer widgets per row than
+   the full-width Tethr dashboard. The widget-grid media queries key off the
+   viewport, so this container-scoped override is what actually applies. */
+.client-workspace-content .dashboard-widget-grid {
+  --dashboard-columns: 2;
+}
+
+@media (max-width: 960px) {
+  .client-workspace-content .dashboard-widget-grid {
+    --dashboard-columns: 1;
+  }
 }
 
 .client-onboarding {
   margin-bottom: var(--hrms-space-4);
+}
+
+/* A table-title row that is also a collapse toggle for the card below it. */
+.collapse-toggle {
+  width: 100%;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.collapse-chevron {
+  color: var(--hrms-color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.collapse-chevron.is-open {
+  transform: rotate(180deg);
 }
 
 .onboarding-step-list {
@@ -1672,11 +5427,82 @@ button {
 }
 
 .onboarding-step-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
 }
 
-.employment-summary {
-  border-bottom: 0;
+/* Pinned "Getting started" panel above the dashboard grid. */
+.dashboard-getting-started {
+  margin-bottom: var(--hrms-space-4);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  overflow: hidden;
+}
+
+.dashboard-getting-started-header {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  padding: var(--hrms-space-2) var(--hrms-space-3) var(--hrms-space-2) var(--hrms-space-4);
+}
+
+.dashboard-getting-started.is-open .dashboard-getting-started-header {
+  border-bottom: 1px solid var(--hrms-color-border-light);
+}
+
+.dashboard-getting-started-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-3);
+  flex: 1;
+  min-width: 0;
+  padding: var(--hrms-space-2) 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dashboard-getting-started-title {
+  font-weight: var(--hrms-font-weight-semi-bold);
+  color: var(--hrms-color-text-primary);
+  white-space: nowrap;
+}
+
+.dashboard-getting-started-count {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+  white-space: nowrap;
+}
+
+.dashboard-getting-started-bar {
+  flex: 1;
+  max-width: 220px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hrms-color-background-secondary);
+  overflow: hidden;
+}
+
+.dashboard-getting-started-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--chip-color, var(--hrms-color-tag-blue));
+  transition: width 0.3s ease;
+}
+
+.dashboard-getting-started-chevron {
+  display: inline-flex;
+  color: var(--hrms-color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.dashboard-getting-started.is-open .dashboard-getting-started-chevron {
+  transform: rotate(180deg);
 }
 
 .hiring-table tbody tr {
@@ -1697,10 +5523,6 @@ button {
 
 .leave-triage-table tbody tr.is-selected {
   background: var(--hrms-color-background-secondary);
-}
-
-.bulletin-shell {
-  margin-bottom: var(--hrms-space-4);
 }
 
 .announcement-list {
@@ -1745,10 +5567,6 @@ button {
   font-size: var(--hrms-font-size-xs);
 }
 
-.compact-announcement-list .announcement-item {
-  padding: var(--hrms-space-3) var(--hrms-space-4);
-}
-
 .request-note {
   padding: var(--hrms-space-3);
   background: var(--hrms-color-background-secondary);
@@ -1771,29 +5589,22 @@ button {
   margin-top: var(--hrms-space-1);
 }
 
+/* The role editor can hold two selects plus Save; flex-wrap keeps it inside its
+   cell instead of bleeding over the neighbouring column on narrow screens. */
 .access-role-control {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--hrms-space-2);
 }
 
-.access-role-control.is-role-only {
-  grid-template-columns: minmax(150px, 1fr) auto;
-}
-
 .access-role-control select {
+  flex: 1 1 150px;
   min-width: 0;
-  height: 32px;
-  padding: 0 var(--hrms-space-3);
-  color: var(--hrms-color-text-primary);
-  background: var(--hrms-color-background-secondary);
-  border: 1px solid var(--hrms-color-border-medium);
-  border-radius: var(--hrms-radius-sm);
 }
 
 .access-role-control .button {
-  min-height: 32px;
+  flex: 0 0 auto;
 }
 
 .access-role-static {
@@ -1822,35 +5633,46 @@ button {
 }
 
 @media (max-width: 1100px) {
-  .employee-workspace,
   .client-workspace,
   .workspace-users-page,
-  .client-portfolio-page,
-  .hiring-page,
-  .announcements-page,
-  .feedback-page,
-  .leave-page {
+  .client-portfolio-page {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .self-service-panel,
   .client-workspace-panel,
-  .hiring-panel,
-  .client-portfolio-panel,
-  .announcements-panel,
-  .feedback-panel,
-  .leave-panel {
+  .client-portfolio-panel {
     border-top: 1px solid var(--hrms-color-border-light);
     border-left: 0;
   }
 
-  .self-service-grid {
-    grid-template-columns: minmax(0, 1fr);
+  /* The sliding rail doesn't fit beside the list, so it stacks underneath
+     instead of disappearing: on Leave, Feedback, and Hiring it holds the
+     page's only action form, and hiding it would strand those screens. */
+  .list-with-panel {
+    flex-direction: column;
+    gap: var(--hrms-space-4);
+  }
+
+  .list-with-panel > :not(.side-panel) {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .side-panel {
+    width: 100%;
+    transition: none;
+  }
+
+  .side-panel:not(.is-open) {
+    display: none;
+  }
+
+  .side-panel-body {
+    width: 100%;
   }
 }
 
 @media (max-width: 760px) {
-  .employee-workspace-content,
   .client-workspace-content,
   .workspace-users-content,
   .client-portfolio-content,
@@ -1858,18 +5680,9 @@ button {
   .announcements-content,
   .feedback-content,
   .leave-content,
-  .self-service-panel,
   .client-workspace-panel,
-  .client-portfolio-panel,
-  .hiring-panel,
-  .announcements-panel,
-  .feedback-panel,
-  .leave-panel {
-    padding: var(--hrms-space-4);
-  }
-
-  .employee-identity {
-    margin-top: var(--hrms-space-2);
+  .client-portfolio-panel {
+    padding: var(--hrms-space-3);
   }
 }
 

@@ -47,7 +47,7 @@ packages/
 ## Commands
 
 ```bash
-bash scripts/setup-dev.sh     # one-shot dev bootstrap (Docker Postgres+Redis, .env, install, migrate)
+bash scripts/setup-dev.sh     # one-shot dev bootstrap (.env seed, install, migrate; DB is hosted Supabase)
 npm run typecheck             # type-check every package (build order respected)
 npm run build                 # build all packages
 npm run lint                  # eslint (incl. module-boundary rules)
@@ -56,10 +56,10 @@ npm test                      # unit tests across packages
 
 ## Stack (working default — see context.md "Current state & decisions")
 
-TypeScript end-to-end · NestJS + TypeORM + PostgreSQL + Redis · code-first GraphQL · React + Vite + Jotai-style atoms · **npm workspaces** monorepo (chosen over Nx for zero-install verifiability — a documented deviation per architecture.md §15).
+TypeScript end-to-end · NestJS + TypeORM + PostgreSQL (hosted on Supabase) · code-first GraphQL · React + Vite + Jotai-style atoms · **npm workspaces** monorepo (chosen over Nx for zero-install verifiability — a documented deviation per architecture.md §15). Redis is used only by `packages/worker` for its job queue.
 
 ## Roadmap (dependency-ordered — build in this order)
 
 Phase 0 Platform → 1 Core HR spine → 2 Time off & attendance → 3 Pay → 4 Lifecycle & talent → 5 Services & insight.
 
-**Current state:** Phases 0–2 **plus authentication & the app shell**, verified running against Docker Postgres/Redis. In place: platform guardrails, the Phase 1 spine (organization, position, employee, assignment), Phase 2 (leave & absence, attendance & time tracking), JWT auth (signup creates org+admin; login/me; tenant derived from the token), and a live web app (**login → dashboard → live Employees with a working create form**; protected routes). Build/typecheck/lint and 57 tests green; backend flows covered by smoke tests, the web verified end to end in the browser. Auth lives in `core/auth` (login/me) + `modules/account` (signup composes Organization + Auth). See [docs/STATUS.md](docs/STATUS.md).
+**Current state:** Phases 0–2 **plus authentication & the app shell**, verified running against a hosted Supabase Postgres. In place: platform guardrails, the Phase 1 spine (organization, position, employee, assignment), Phase 2 (leave & absence, attendance & time tracking), JWT auth (signup creates org+admin; login/me; tenant derived from the token), and a live web app (**login → dashboard → live Employees with a working create form**; protected routes). Build/typecheck/lint and 57 tests green; backend flows covered by smoke tests, the web verified end to end in the browser. Auth lives in `core/auth` (login/me) + `modules/account` (signup composes Organization + Auth). See [docs/STATUS.md](docs/STATUS.md).

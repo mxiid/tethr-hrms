@@ -1,11 +1,12 @@
+import { toId, type OrganizationId, type UserId } from '@hrms/shared';
 import { Injectable, type NestMiddleware } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
-import { toId, type OrganizationId, type UserId } from '@hrms/shared';
+
+import type { JwtClaims } from '../auth/jwt-claims';
 
 import { TenantContextService } from './tenant-context.service';
 
-import type { JwtClaims } from '../auth/jwt-claims';
 
 // Minimal request shape — avoids depending on express types here.
 type RequestLike = {
@@ -14,9 +15,11 @@ type RequestLike = {
 };
 
 // Establishes tenant + principal for the request from the `Authorization: Bearer`
-// JWT. Falls back to an `x-organization-id` header as an unauthenticated dev shim
-// (for tooling). Requests with neither proceed; any downstream tenant-scoped read
-// then fails loudly rather than leaking across tenants.
+// JWT. Requests without a token proceed unscoped; any downstream tenant-scoped
+// read then fails loudly rather than leaking across tenants. There is no header
+// fallback: an unauthenticated way to choose a tenant would defeat the whole
+// scoping guarantee (and anonymous public flows carry their own signed tokens,
+// verified by the service that owns them — never here).
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   constructor(
@@ -26,24 +29,14 @@ export class TenantContextMiddleware implements NestMiddleware {
 
   use(request: RequestLike, _response: unknown, next: (error?: unknown) => void): void {
     const claims = this.readToken(request);
-    if (claims) {
-      const organizationId = toId<OrganizationId>(claims.org);
-      const userId = toId<UserId>(claims.sub);
-      request.user = { userId, organizationId, email: claims.email, permissions: [] };
-      this.tenantContext.run({ organizationId, userId }, () => next());
-      return;
-    }
-
-    const header = request.headers['x-organization-id'];
-    const organizationId = typeof header === 'string' && header.length > 0 ? header : null;
-    if (organizationId === null) {
+    if (!claims) {
       next();
       return;
     }
-    this.tenantContext.run(
-      { organizationId: toId<OrganizationId>(organizationId), userId: null },
-      () => next(),
-    );
+    const organizationId = toId<OrganizationId>(claims.org);
+    const userId = toId<UserId>(claims.sub);
+    request.user = { userId, organizationId, email: claims.email, permissions: [] };
+    this.tenantContext.run({ organizationId, userId }, () => next());
   }
 
   private readToken(request: RequestLike): JwtClaims | null {
@@ -54,9 +47,10 @@ export class TenantContextMiddleware implements NestMiddleware {
     }
     try {
       const claims = this.jwtService.verify<Partial<JwtClaims>>(value.slice('Bearer '.length));
-      // A workspace-selection token verifies fine (same secret) but carries no
-      // `sub`/`org` — reject anything not shaped like a real session token
-      // rather than letting it fall through as an unscoped/undefined tenant.
+      // Single-purpose tokens (workspace selection, form links) verify fine
+      // under the same secret but carry no `sub`/`org` — reject anything not
+      // shaped like a real session token rather than letting it fall through
+      // as an unscoped/undefined tenant.
       if (typeof claims.sub !== 'string' || typeof claims.org !== 'string') {
         return null;
       }

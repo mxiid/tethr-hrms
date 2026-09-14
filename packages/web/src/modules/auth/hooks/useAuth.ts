@@ -1,7 +1,13 @@
 import { useApolloClient, useMutation } from '@apollo/client';
 import { useAtom } from 'jotai';
 
-import { LOGIN_MUTATION, SELECT_WORKSPACE_MUTATION, SIGN_UP_MUTATION } from '../graphql/auth.operations';
+import {
+  LOGIN_MUTATION,
+  SELECT_WORKSPACE_MUTATION,
+  SIGN_UP_MUTATION,
+  SWITCH_WORKSPACE_MUTATION,
+} from '../graphql/auth.operations';
+import { rememberWorkspace } from '../lastWorkspace';
 import { authState, type AuthSession } from '../states/authState';
 
 export type WorkspaceOption = {
@@ -9,7 +15,7 @@ export type WorkspaceOption = {
   readonly organizationName: string;
 };
 
-export type LoginOutcome =
+type LoginOutcome =
   | { readonly kind: 'authenticated'; readonly session: AuthSession }
   | {
       readonly kind: 'selectWorkspace';
@@ -28,8 +34,17 @@ type LoginData = {
 };
 type SelectWorkspaceVars = { input: { selectionToken: string; organizationId: string } };
 type SelectWorkspaceData = { selectWorkspace: AuthSession };
+type SwitchWorkspaceVars = { organizationId: string };
+type SwitchWorkspaceData = { switchWorkspace: AuthSession };
 type SignUpVars = { input: { organizationName: string; email: string; password: string } };
 type SignUpData = { signUp: AuthSession };
+
+// Every path that establishes a session records the workspace it landed in, so
+// the next sign-in for this email can skip the picker.
+const applyRememberedWorkspace = (session: AuthSession): AuthSession => {
+  rememberWorkspace(session.user.email, session.user.organizationId);
+  return session;
+};
 
 export const useAuth = () => {
   const [session, setSession] = useAtom(authState);
@@ -39,6 +54,10 @@ export const useAuth = () => {
     SelectWorkspaceData,
     SelectWorkspaceVars
   >(SELECT_WORKSPACE_MUTATION);
+  const [switchWorkspaceMutation, { loading: switchingWorkspace }] = useMutation<
+    SwitchWorkspaceData,
+    SwitchWorkspaceVars
+  >(SWITCH_WORKSPACE_MUTATION);
   const [signUpMutation, { loading: signingUp }] = useMutation<SignUpData, SignUpVars>(
     SIGN_UP_MUTATION,
   );
@@ -57,7 +76,7 @@ export const useAuth = () => {
     }
     if (data.login.token && data.login.user) {
       const authenticatedSession: AuthSession = { token: data.login.token, user: data.login.user };
-      setSession(authenticatedSession);
+      setSession(applyRememberedWorkspace(authenticatedSession));
       return { kind: 'authenticated', session: authenticatedSession };
     }
     throw new Error('Sign in did not return a session');
@@ -71,10 +90,20 @@ export const useAuth = () => {
       variables: { input: { selectionToken, organizationId } },
     });
     if (data) {
-      setSession(data.selectWorkspace);
+      setSession(applyRememberedWorkspace(data.selectWorkspace));
       return data.selectWorkspace;
     }
     throw new Error('Workspace selection did not return a session');
+  };
+
+  // In-app workspace switch: no password, straight from the current session.
+  const switchWorkspace = async (organizationId: string): Promise<AuthSession> => {
+    const { data } = await switchWorkspaceMutation({ variables: { organizationId } });
+    if (data) {
+      setSession(applyRememberedWorkspace(data.switchWorkspace));
+      return data.switchWorkspace;
+    }
+    throw new Error('Workspace switch did not return a session');
   };
 
   const signUp = async (
@@ -100,9 +129,10 @@ export const useAuth = () => {
   return {
     user: session?.user ?? null,
     isAuthenticated: Boolean(session?.token),
-    isBusy: loggingIn || signingUp || selectingWorkspace,
+    isBusy: loggingIn || signingUp || selectingWorkspace || switchingWorkspace,
     login,
     selectWorkspace,
+    switchWorkspace,
     signUp,
     logout,
   };

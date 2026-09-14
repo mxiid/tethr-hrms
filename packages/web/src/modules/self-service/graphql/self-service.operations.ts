@@ -136,15 +136,6 @@ export const MY_WORKSPACE_QUERY = gql`
       validTo
       reason
     }
-    announcements {
-      id
-      title
-      body
-      audience
-      isPinned
-      publishedAt
-      expiresAt
-    }
   }
 `;
 
@@ -194,38 +185,129 @@ export const UPDATE_MY_EMPLOYEE_PROFILE_MUTATION = gql`
   }
 `;
 
-export const UPDATE_MY_PERSONAL_DETAILS_MUTATION = gql`
-  mutation UpdateMyPersonalDetails($input: UpdateMyPersonalDetailsInput!) {
-    updateMyPersonalDetails(input: $input) {
-      id
+export const UPDATE_MY_EMPLOYEE_PHOTO_MUTATION = gql`
+  mutation UpdateMyEmployeePhoto($input: UpdateMyPhotoInput!) {
+    updateMyEmployeePhoto(input: $input) {
       employeeId
-      passportNumber
-      maritalStatus
-      bloodGroup
-      bio
+      photoUrl
     }
   }
 `;
 
-export const CREATE_MY_EDUCATION_MUTATION = gql`
-  mutation CreateEmployeeEducation($input: CreateEmployeeEducationInput!) {
-    createEmployeeEducation(input: $input) {
+export const MY_SALARY_HISTORY_QUERY = gql`
+  query MySalaryHistory {
+    mySalaryRevisions {
       id
-      schoolOrUniversity
-      qualification
-      level
-      yearOfPassing
+      validFrom
+      validTo
+      currency
+      annualAmount
+      reason
+      note
     }
   }
 `;
 
-export const CREATE_MY_WORK_HISTORY_MUTATION = gql`
-  mutation CreateEmployeeWorkHistory($input: CreateEmployeeWorkHistoryInput!) {
-    createEmployeeWorkHistory(input: $input) {
+export const MY_BONUS_AWARDS_QUERY = gql`
+  query MyBonusAwards {
+    myBonusAwards {
       id
-      companyName
-      designation
-      totalExperience
+      awardDate
+      currency
+      amount
+      reason
+    }
+  }
+`;
+
+export const MY_PAY_ADJUSTMENTS_QUERY = gql`
+  query MyPayAdjustments {
+    myPayAdjustments {
+      id
+      amount
+      currency
+      periodYear
+      periodMonth
+      kind
+      sourceType
+    }
+  }
+`;
+
+export const MY_BANK_DETAILS_QUERY = gql`
+  query MyBankDetails {
+    myBankDetails {
+      bankName
+      bankAccountTitle
+      bankAccountNumber
+      bankIban
+    }
+    myBankDetailChangeRequests {
+      id
+      status
+      createdAt
+      decisionNote
+    }
+  }
+`;
+
+export const REQUEST_MY_BANK_CHANGE_MUTATION = gql`
+  mutation RequestMyBankChange($input: RequestBankDetailChangeInput!) {
+    requestMyBankDetailChange(input: $input) {
+      id
+      status
+    }
+  }
+`;
+
+// Just the employee identity plus the editable profile — the profile page has no
+// use for leave balances, payslips, or holidays, so it does not pull them.
+export const MY_PROFILE_QUERY = gql`
+  query MyProfile($asOf: String!) {
+    myEmployee {
+      id
+      employeeNumber
+      firstName
+      lastName
+      workEmail
+      employmentStatus
+      workerType
+      hireDate
+      probationEndDate
+      currentAssignment {
+        departmentName
+        positionTitle
+      }
+    }
+    myCurrentSalaryRevision(asOf: $asOf) {
+      id
+      currency
+      annualAmount
+      validFrom
+    }
+    myEmployeeProfile {
+      employeeId
+      photoUrl
+      personalEmail
+      phone
+      addressLine1
+      addressLine2
+      city
+      region
+      countryCode
+      postalCode
+      permanentAddressLine1
+      permanentAddressLine2
+      permanentCity
+      permanentRegion
+      permanentCountryCode
+      permanentPostalCode
+      currentAccommodationType
+      permanentAccommodationType
+      preferredContactChannel
+      emergencyContactName
+      emergencyContactPhone
+      emergencyContactRelation
     }
   }
 `;

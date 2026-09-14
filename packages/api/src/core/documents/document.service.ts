@@ -16,8 +16,9 @@ import { TenantScopedRepository } from '../tenancy/tenant-scoped.repository';
 import { DocumentVersion } from './document-version.entity';
 import { Document } from './document.entity';
 import { DOCUMENT_REPOSITORY, DOCUMENT_VERSION_REPOSITORY } from './document.tokens';
+import { StorageService } from './storage.service';
 
-export type RegisterDocumentInput = {
+type RegisterDocumentInput = {
   readonly name: string;
   readonly contentType: string;
   readonly storageKey: string;
@@ -30,7 +31,7 @@ export type RegisterDocumentInput = {
   readonly createdByUserId?: UserId | null;
 };
 
-export type AddDocumentVersionInput = {
+type AddDocumentVersionInput = {
   readonly documentId: DocumentId;
   readonly contentType: string;
   readonly storageKey: string;
@@ -42,7 +43,7 @@ export type AddDocumentVersionInput = {
   readonly createdByUserId?: UserId | null;
 };
 
-export type PrepareDocumentUploadInput = {
+type PrepareDocumentUploadInput = {
   readonly name: string;
   readonly contentType: string;
   readonly storagePrefix?: string | null;
@@ -61,7 +62,7 @@ export type DocumentAccessDescriptor = {
   readonly headers: readonly DocumentAccessHeader[];
 };
 
-export type RequestDocumentSignatureInput = {
+type RequestDocumentSignatureInput = {
   readonly documentId: DocumentId;
   readonly signerEmail: string;
   readonly signerName?: string | null;
@@ -96,6 +97,7 @@ export class DocumentService {
     @Inject(DOCUMENT_REPOSITORY) private readonly documents: TenantScopedRepository<Document>,
     @Inject(DOCUMENT_VERSION_REPOSITORY)
     private readonly versions: TenantScopedRepository<DocumentVersion>,
+    private readonly storage: StorageService,
   ) {}
 
   async register(input: RegisterDocumentInput): Promise<Document> {
@@ -143,25 +145,35 @@ export class DocumentService {
     return this.getRecordById(document.id);
   }
 
-  prepareUpload(input: PrepareDocumentUploadInput): DocumentAccessDescriptor {
+  async prepareUpload(input: PrepareDocumentUploadInput): Promise<DocumentAccessDescriptor> {
     const storageKey = this.buildStorageKey(input.storagePrefix ?? 'documents', input.name);
-    return this.buildAccessDescriptor({
-      action: 'upload',
-      method: 'PUT',
+    const signed = await this.storage.createSignedUpload({
       storageKey,
-      headers: [{ name: 'Content-Type', value: input.contentType }],
+      contentType: input.contentType,
     });
+    return {
+      storageKey: signed.storageKey,
+      url: signed.url,
+      method: 'PUT',
+      expiresAt: signed.expiresAt,
+      headers: signed.headers,
+    };
   }
 
   async prepareDownload(documentId: DocumentId): Promise<DocumentAccessDescriptor> {
     const document = await this.getById(documentId);
     const latestVersion = await this.ensureLatestVersion(document);
-    return this.buildAccessDescriptor({
-      action: 'download',
-      method: 'GET',
+    const signed = await this.storage.createSignedDownload({
       storageKey: latestVersion.storageKey,
-      headers: [],
+      contentType: latestVersion.contentType,
     });
+    return {
+      storageKey: signed.storageKey,
+      url: signed.url,
+      method: 'GET',
+      expiresAt: signed.expiresAt,
+      headers: [],
+    };
   }
 
   async requestSignature(input: RequestDocumentSignatureInput): Promise<DocumentSignatureRequest> {
@@ -254,24 +266,6 @@ export class DocumentService {
       .replace(/[^a-z0-9._-]+/g, '-')
       .replace(/^-+|-+$/g, '');
     return safe || 'file';
-  }
-
-  private buildAccessDescriptor(input: {
-    readonly action: 'upload' | 'download';
-    readonly method: 'GET' | 'PUT';
-    readonly storageKey: string;
-    readonly headers: readonly DocumentAccessHeader[];
-  }): DocumentAccessDescriptor {
-    const expiresAt = this.expiresAt();
-    return {
-      storageKey: input.storageKey,
-      url: `hrms-document://${input.action}/${encodeURIComponent(
-        input.storageKey,
-      )}?expiresAt=${encodeURIComponent(expiresAt.toISOString())}`,
-      method: input.method,
-      expiresAt,
-      headers: input.headers,
-    };
   }
 
   private expiresAt(): Date {

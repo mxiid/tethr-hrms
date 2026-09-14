@@ -9,11 +9,11 @@ import { HolidayCalendar } from './entities/holiday-calendar.entity';
 import { Holiday } from './entities/holiday.entity';
 import { HOLIDAY_CALENDAR_REPOSITORY, HOLIDAY_REPOSITORY } from './leave.tokens';
 
-export type CreateHolidayCalendarData = {
+type CreateHolidayCalendarData = {
   readonly name: string;
   readonly countryCode?: string | null;
 };
-export type AddHolidayData = {
+type AddHolidayData = {
   readonly calendarId: HolidayCalendarId;
   readonly date: IsoDate;
   readonly name: string;

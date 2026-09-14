@@ -107,6 +107,15 @@ export const CREATE_EMPLOYEE_MUTATION = gql`
   }
 `;
 
+export const UPDATE_EMPLOYEE_PHOTO_MUTATION = gql`
+  mutation UpdateEmployeePhoto($input: UpdateEmployeePhotoInput!) {
+    updateEmployeePhoto(input: $input) {
+      employeeId
+      photoUrl
+    }
+  }
+`;
+
 export const EMPLOYEE_DETAIL_QUERY = gql`
   query EmployeeDetail($employeeId: ID!, $asOf: String!) {
     employee(id: $employeeId) {
@@ -484,91 +493,6 @@ export const CREATE_WORKSPACE_USER_MUTATION = gql`
   }
 `;
 
-export const UPDATE_EMPLOYEE_PERSONAL_DETAILS_MUTATION = gql`
-  mutation UpdateEmployeePersonalDetails($input: UpdatePersonalDetailsInput!) {
-    updateEmployeePersonalDetails(input: $input) {
-      id
-      employeeId
-      passportNumber
-      maritalStatus
-      bloodGroup
-      bio
-    }
-  }
-`;
-
-export const CREATE_EMPLOYEE_EDUCATION_MUTATION = gql`
-  mutation CreateEmployeeEducation($input: CreateEmployeeEducationInput!) {
-    createEmployeeEducation(input: $input) {
-      id
-      employeeId
-      schoolOrUniversity
-      qualification
-      level
-      yearOfPassing
-      classOrPercentage
-      majorSubjects
-    }
-  }
-`;
-
-export const UPDATE_EMPLOYEE_EDUCATION_MUTATION = gql`
-  mutation UpdateEmployeeEducation($input: UpdateEmployeeEducationInput!) {
-    updateEmployeeEducation(input: $input) {
-      id
-      employeeId
-      schoolOrUniversity
-      qualification
-      level
-      yearOfPassing
-      classOrPercentage
-      majorSubjects
-    }
-  }
-`;
-
-export const DELETE_EMPLOYEE_EDUCATION_MUTATION = gql`
-  mutation DeleteEmployeeEducation($id: ID!) {
-    deleteEmployeeEducation(id: $id)
-  }
-`;
-
-export const CREATE_EMPLOYEE_WORK_HISTORY_MUTATION = gql`
-  mutation CreateEmployeeWorkHistory($input: CreateEmployeeWorkHistoryInput!) {
-    createEmployeeWorkHistory(input: $input) {
-      id
-      employeeId
-      companyName
-      designation
-      salary
-      address
-      contact
-      totalExperience
-    }
-  }
-`;
-
-export const UPDATE_EMPLOYEE_WORK_HISTORY_MUTATION = gql`
-  mutation UpdateEmployeeWorkHistory($input: UpdateEmployeeWorkHistoryInput!) {
-    updateEmployeeWorkHistory(input: $input) {
-      id
-      employeeId
-      companyName
-      designation
-      salary
-      address
-      contact
-      totalExperience
-    }
-  }
-`;
-
-export const DELETE_EMPLOYEE_WORK_HISTORY_MUTATION = gql`
-  mutation DeleteEmployeeWorkHistory($id: ID!) {
-    deleteEmployeeWorkHistory(id: $id)
-  }
-`;
-
 export const UPSERT_EXIT_INTERVIEW_MUTATION = gql`
   mutation UpsertExitInterview($input: UpsertExitInterviewInput!) {
     upsertExitInterview(input: $input) {
@@ -599,17 +523,36 @@ export const UPDATE_OFFBOARDING_TASK_MUTATION = gql`
   }
 `;
 
-export const EMPLOYEE_ASSIGNMENT_HISTORY_QUERY = gql`
-  query EmployeeAssignmentHistory($employeeId: ID!) {
-    employeeAssignmentHistory(employeeId: $employeeId) {
+export const SET_EMPLOYEE_MANAGER_MUTATION = gql`
+  mutation SetEmployeeManager($input: SetEmployeeManagerInput!) {
+    setEmployeeManager(input: $input) {
       id
-      positionTitle
-      departmentName
-      locationName
-      reportsToName
-      validFrom
-      validTo
-      assignmentType
+    }
+  }
+`;
+
+export const EMPLOYEE_BANK_CHANGE_REQUESTS_QUERY = gql`
+  query EmployeeBankChangeRequests($employeeId: ID) {
+    bankDetailChangeRequests(employeeId: $employeeId) {
+      id
+      employeeId
+      bankName
+      bankAccountTitle
+      bankAccountNumber
+      bankIban
+      status
+      createdAt
+      decidedAt
+      decisionNote
+    }
+  }
+`;
+
+export const DECIDE_BANK_CHANGE_MUTATION = gql`
+  mutation DecideBankChange($input: DecideBankDetailChangeInput!) {
+    decideBankDetailChange(input: $input) {
+      id
+      status
     }
   }
 `;

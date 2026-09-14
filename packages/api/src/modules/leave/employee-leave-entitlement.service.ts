@@ -13,7 +13,7 @@ import { EMPLOYEE_LEAVE_ENTITLEMENT_REPOSITORY, LEAVE_TYPE_REPOSITORY } from './
 import { EmployeeLeaveEntitlement } from './entities/employee-leave-entitlement.entity';
 import { LeaveType } from './entities/leave-type.entity';
 
-export type UpsertEntitlementData = {
+type UpsertEntitlementData = {
   readonly employeeId: EmployeeId;
   readonly leaveTypeId: LeaveTypeId;
   readonly annualEntitlement: number;

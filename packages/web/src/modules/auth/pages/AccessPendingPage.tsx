@@ -9,7 +9,10 @@ export const AccessPendingPage = () => {
     <main className="portal-loading access-pending">
       <div>
         <h1 className="page-title">Access setup required</h1>
-        <p className="page-subtitle">This account does not have a workspace role yet.</p>
+        <p className="page-subtitle">
+          This account hasn&apos;t been given access to a workspace yet. Ask an administrator to
+          set it up.
+        </p>
         <Link className="button button-secondary" onClick={() => void logout()} to="/login">
           Return to sign in
         </Link>

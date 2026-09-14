@@ -18,3 +18,18 @@ export type WorkspaceSelectionClaims = {
   readonly email: string;
   readonly organizationIds: readonly string[];
 };
+
+// Minted for a public form link (an anonymous candidate opening an application
+// form). Carries the form and the workspace its submission belongs to.
+// Deliberately no `sub`/`org` at the top level — TenantContextMiddleware's
+// readToken only promotes claims carrying both, so a form-link token can never
+// become a session; FormTokenService is the only thing allowed to read this.
+export type FormLinkClaims = {
+  readonly type: 'form-link';
+  readonly formId: string;
+  readonly organizationId: string;
+  // Optional context the submission belongs to (e.g. the job posting an
+  // application form was opened for). Opaque to the form engine; the projection
+  // consumer interprets it.
+  readonly refId?: string;
+};

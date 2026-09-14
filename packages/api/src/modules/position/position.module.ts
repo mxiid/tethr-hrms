@@ -13,7 +13,10 @@ import { POSITION_REPOSITORY } from './position.tokens';
 
 @Module({
   imports: [TypeOrmModule.forFeature([JobFamily, Job, Grade, PayBand, Position])],
-  providers: [PositionService, provideTenantScopedRepository(POSITION_REPOSITORY, Position)],
+  providers: [
+    PositionService,
+    provideTenantScopedRepository(POSITION_REPOSITORY, Position),
+  ],
   exports: [PositionService],
 })
 export class PositionModule {}

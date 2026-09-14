@@ -40,6 +40,23 @@ export const HAS_OTHER_WORKSPACES_QUERY = gql`
   }
 `;
 
+export const SWITCHABLE_WORKSPACES_QUERY = gql`
+  query SwitchableWorkspaces {
+    switchableWorkspaces {
+      organizationId
+      organizationName
+    }
+  }
+`;
+
+export const SWITCH_WORKSPACE_MUTATION = gql`
+  mutation SwitchWorkspace($organizationId: ID!) {
+    switchWorkspace(organizationId: $organizationId) {
+      ${AUTH_PAYLOAD}
+    }
+  }
+`;
+
 export const SIGN_UP_MUTATION = gql`
   mutation SignUp($input: SignUpInput!) {
     signUp(input: $input) {

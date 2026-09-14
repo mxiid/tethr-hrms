@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 
 import { Client } from './entities/client.entity';
 
-export type CreateClientInput = {
+type CreateClientInput = {
   readonly name: string;
 };
 

@@ -11,7 +11,7 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 
 import { NotFoundError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
@@ -24,7 +24,7 @@ import { EmployeeOffboardingTask } from './entities/employee-offboarding-task.en
 import { EmployeeSeparation } from './entities/employee-separation.entity';
 import { Employee } from './entities/employee.entity';
 
-export type CreateEmployeeData = {
+type CreateEmployeeData = {
   readonly employeeNumber: string;
   readonly firstName: string;
   readonly lastName: string;
@@ -44,7 +44,7 @@ export type CreateEmployeeData = {
   readonly workerType?: WorkerType;
 };
 
-export type UpdateEmployeeData = {
+type UpdateEmployeeData = {
   readonly firstName?: string | null;
   readonly middleName?: string | null;
   readonly lastName?: string | null;
@@ -63,7 +63,7 @@ export type UpdateEmployeeData = {
   readonly workerType?: WorkerType | null;
 };
 
-export type SeparateEmployeeData = {
+type SeparateEmployeeData = {
   readonly employeeId: EmployeeId;
   readonly type: SeparationType;
   readonly effectiveDate: IsoDate;
@@ -92,10 +92,12 @@ export class EmployeeService {
     private readonly audit: AuditService,
   ) {}
 
-  async create(input: CreateEmployeeData): Promise<Employee> {
+  // `manager` lets a caller that already owns a transaction (offer acceptance)
+  // include the employee write in it; otherwise this opens its own.
+  async create(input: CreateEmployeeData, manager?: EntityManager): Promise<Employee> {
     const organizationId = this.tenantContext.getOrganizationId();
-    const employee = await this.dataSource.transaction(async (manager) => {
-      const entity = manager.create(Employee, {
+    const run = async (transactionManager: EntityManager): Promise<Employee> => {
+      const entity = transactionManager.create(Employee, {
         organizationId,
         employeeNumber: input.employeeNumber,
         firstName: input.firstName,
@@ -117,23 +119,31 @@ export class EmployeeService {
         employmentStatus: 'active',
         workerType: input.workerType ?? 'permanent',
       });
-      const saved = await manager.save(entity);
-      await this.publisher.publishWithin(manager, {
+      const saved = await transactionManager.save(entity);
+      await this.publisher.publishWithin(transactionManager, {
         name: 'employee.created',
         payload: { employeeId: toId<EmployeeId>(saved.id) },
       });
       return saved;
-    });
+    };
+    const employee = manager
+      ? await run(manager)
+      : await this.dataSource.transaction((transactionManager) => run(transactionManager));
 
-    await this.audit.record({
-      action: 'create',
-      resourceType: 'employee',
-      resourceId: employee.id,
-      after: {
-        employeeNumber: employee.employeeNumber,
-        employmentStatus: employee.employmentStatus,
+    await this.audit.record(
+      {
+        action: 'create',
+        resourceType: 'employee',
+        resourceId: employee.id,
+        after: {
+          employeeNumber: employee.employeeNumber,
+          employmentStatus: employee.employmentStatus,
+        },
       },
-    });
+      // Join the caller's transaction when one is supplied, so a rolled-back
+      // hire does not leave an "employee created" audit behind.
+      manager,
+    );
     return employee;
   }
 

@@ -1,14 +1,18 @@
-import type { DepartmentId, GradeId, JobId, LocationId } from '@hrms/shared';
+import { toId, type DepartmentId, type GradeId, type JobId, type LocationId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { NotFoundError } from '../../common/errors';
+import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
-import { Position } from './entities/position.entity';
+import { Job } from './entities/job.entity';
+import { Position, type PositionStatus } from './entities/position.entity';
 import { POSITION_REPOSITORY } from './position.tokens';
 
 
-export type CreatePositionInput = {
+type CreatePositionInput = {
   readonly title: string;
   readonly jobId: JobId;
   readonly departmentId?: DepartmentId | null;
@@ -21,7 +25,55 @@ export type CreatePositionInput = {
 export class PositionService {
   constructor(
     @Inject(POSITION_REPOSITORY) private readonly positions: TenantScopedRepository<Position>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
   ) {}
+
+  /**
+   * A position matching this title, creating one (and the job behind it) if the
+   * workspace has none. Reporting lines hang off an assignment, an assignment
+   * needs a position, and there is no position-management screen yet — without
+   * this, nobody could set a manager on an employee who has never been assigned.
+   *
+   * An optional `manager` joins a caller-owned transaction (offer acceptance);
+   * the tenant still comes from the active context, so the caller switches
+   * workspaces before calling.
+   */
+  async ensureByTitle(title: string, manager?: EntityManager): Promise<Position> {
+    const run = async (transactionManager: EntityManager): Promise<Position> => {
+      const organizationId = this.tenantContext.getOrganizationId();
+      const positions = transactionManager.getRepository(Position);
+      const jobs = transactionManager.getRepository(Job);
+      const trimmed = title.trim() || 'Unassigned';
+      const existing = await positions.findOne({
+        where: { title: trimmed, organizationId } as FindOptionsWhere<Position>,
+      });
+      if (existing) return existing;
+
+      const jobTitle = 'General';
+      const job =
+        (await jobs.findOne({
+          where: { title: jobTitle, organizationId } as FindOptionsWhere<Job>,
+        })) ??
+        (await jobs.save(jobs.create({ organizationId, title: jobTitle, jobFamilyId: null })));
+
+      return positions.save(
+        positions.create({
+          organizationId,
+          title: trimmed,
+          jobId: toId<JobId>(job.id),
+          departmentId: null,
+          locationId: null,
+          gradeId: null,
+          status: 'open',
+          headcount: 1,
+        }),
+      );
+    };
+    return manager
+      ? run(manager)
+      : this.dataSource.transaction((transactionManager) => run(transactionManager));
+  }
 
   create(input: CreatePositionInput): Promise<Position> {
     const position = this.positions.create({
@@ -38,6 +90,24 @@ export class PositionService {
 
   list(): Promise<Position[]> {
     return this.positions.find();
+  }
+
+  async setStatus(id: string, status: PositionStatus, manager?: EntityManager): Promise<Position> {
+    const run = async (transactionManager: EntityManager): Promise<Position> => {
+      const organizationId = this.tenantContext.getOrganizationId();
+      const positions = transactionManager.getRepository(Position);
+      const position = await positions.findOne({
+        where: { id, organizationId } as FindOptionsWhere<Position>,
+      });
+      if (!position) {
+        throw new NotFoundError('Position not found', { id });
+      }
+      position.status = status;
+      return positions.save(position);
+    };
+    return manager
+      ? run(manager)
+      : this.dataSource.transaction((transactionManager) => run(transactionManager));
   }
 
   async getById(id: string): Promise<Position> {

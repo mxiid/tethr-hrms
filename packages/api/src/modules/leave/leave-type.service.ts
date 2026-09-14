@@ -6,7 +6,7 @@ import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.reposit
 import { LeaveType, type LeaveUnit } from './entities/leave-type.entity';
 import { LEAVE_TYPE_REPOSITORY } from './leave.tokens';
 
-export type CreateLeaveTypeData = {
+type CreateLeaveTypeData = {
   readonly name: string;
   readonly code: string;
   readonly unit?: LeaveUnit;

@@ -12,11 +12,11 @@ const connection: ConnectionOptions = {
   maxRetriesPerRequest: null,
 };
 
-const worker = startWorker(connection);
+const workers = startWorker(connection);
 console.log('[worker] started; listening for jobs');
 
 const shutdown = async (): Promise<void> => {
-  await worker.close();
+  await Promise.all(workers.map((worker) => worker.close()));
   process.exit(0);
 };
 

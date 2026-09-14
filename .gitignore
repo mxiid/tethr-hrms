@@ -18,6 +18,7 @@ coverage/
 .env
 .env.*
 !.env.example
+.jira-token
 
 # Logs
 *.log
@@ -33,3 +34,11 @@ Thumbs.db
 # Local AI/editor config
 .codex/
 .claude/
+
+# Local scratch files — never commit (logins.md holds plaintext test credentials)
+logins.md
+OpenCodeGUISession.json
+.diff_resolver.txt
+
+# Local object storage (dev driver — bytes never belong in git)
+**/.local-storage/

@@ -4,7 +4,7 @@ import { TenantScopedEntity } from '../../../core/database/entities/tenant-scope
 
 import type { EmployeeId } from '@hrms/shared';
 
-export type ClockType = 'in' | 'out';
+type ClockType = 'in' | 'out';
 export type ClockSource = 'web' | 'mobile' | 'kiosk' | 'system';
 
 // A raw punch. Pairs of in/out are reduced into TimeEntry rows; the events

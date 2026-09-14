@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.20.0"
   },
   "scripts": {
     "build:contracts": "npm run build -w @hrms/shared && npm run build -w @hrms/ui",

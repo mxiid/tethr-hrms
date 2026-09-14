@@ -14,7 +14,7 @@ import { toId, type EmployeeId, type IsoDate, type TimesheetId, type UserId } fr
 
 const toAmount = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
 
-export type OpenTimesheetData = {
+type OpenTimesheetData = {
   readonly employeeId: EmployeeId;
   readonly periodStart: IsoDate;
   readonly periodEnd: IsoDate;

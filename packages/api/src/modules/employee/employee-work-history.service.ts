@@ -13,7 +13,7 @@ import { EmployeeDirectoryService } from './employee-directory.service';
 import { EMPLOYEE_WORK_HISTORY_REPOSITORY } from './employee.tokens';
 import { EmployeeWorkHistory } from './entities/employee-work-history.entity';
 
-export type CreateEmployeeWorkHistoryData = {
+type CreateEmployeeWorkHistoryData = {
   readonly employeeId: EmployeeId;
   readonly companyName: string;
   readonly designation?: string | null;
@@ -24,7 +24,7 @@ export type CreateEmployeeWorkHistoryData = {
   readonly createdByUserId?: UserId | null;
 };
 
-export type UpdateEmployeeWorkHistoryData = {
+type UpdateEmployeeWorkHistoryData = {
   readonly companyName?: string | null;
   readonly designation?: string | null;
   readonly salary?: string | null;

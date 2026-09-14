@@ -13,6 +13,7 @@ import {
 import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
+import { NotFoundError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
 import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
@@ -22,6 +23,11 @@ import type { DocumentAccessDescriptor } from '../../core/documents';
 
 import { AddEmployeeDocumentVersionInput } from './dto/add-employee-document-version.input';
 import { AttachEmployeeDocumentInput } from './dto/attach-employee-document.input';
+import {
+  BankDetailChangeRequestView,
+  BankDetailsView,
+} from './dto/bank-detail-change.output';
+import { DecideBankDetailChangeInput } from './dto/decide-bank-detail-change.input';
 import { DocumentAccessView } from './dto/document-access.output';
 import { EmployeeAssessmentView } from './dto/employee-assessment.output';
 import { EmployeeDocumentSignatureRequestView } from './dto/employee-document-signature-request.output';
@@ -30,6 +36,7 @@ import { EmployeeHrRecordView } from './dto/employee-hr-record.output';
 import { EmployeeOnboardingTaskView } from './dto/employee-onboarding-task.output';
 import { PrepareEmployeeDocumentUploadInput } from './dto/prepare-employee-document-upload.input';
 import { RecordEmployeeAssessmentInput } from './dto/record-employee-assessment.input';
+import { RequestBankDetailChangeInput } from './dto/request-bank-detail-change.input';
 import { RequestEmployeeDocumentSignatureInput } from './dto/request-employee-document-signature.input';
 import { UpdateEmployeeHrRecordInput } from './dto/update-employee-hr-record.input';
 import { UpdateEmployeeOnboardingTaskInput } from './dto/update-employee-onboarding-task.input';
@@ -41,6 +48,7 @@ import type {
 import { EmployeeRecordsService } from './employee-records.service';
 import { EmployeeAssessment } from './entities/employee-assessment.entity';
 import { EmployeeHrRecord } from './entities/employee-hr-record.entity';
+import type { BankDetailChangeRequest } from './entities/bank-detail-change-request.entity';
 
 const toAssessmentView = (assessment: EmployeeAssessment): EmployeeAssessmentView => ({
   id: assessment.id,
@@ -50,6 +58,19 @@ const toAssessmentView = (assessment: EmployeeAssessment): EmployeeAssessmentVie
   score: assessment.score,
   assessorName: assessment.assessorName,
   notes: assessment.notes,
+});
+
+const toBankChangeView = (request: BankDetailChangeRequest): BankDetailChangeRequestView => ({
+  id: request.id,
+  employeeId: request.employeeId,
+  bankName: request.bankName,
+  bankAccountTitle: request.bankAccountTitle,
+  bankAccountNumber: request.bankAccountNumber,
+  bankIban: request.bankIban,
+  status: request.status,
+  createdAt: request.createdAt,
+  decidedAt: request.decidedAt,
+  decisionNote: request.decisionNote,
 });
 
 const toDocumentView = (record: EmployeeDocumentRecord): EmployeeDocumentView => ({
@@ -323,6 +344,85 @@ export class EmployeeRecordsResolver {
         signerName: input.signerName ?? null,
         provider: input.provider ?? null,
         requestedByUserId: toId<UserId>(user.id),
+      }),
+    );
+  }
+
+  // --- Bank details (payment instruction) ---
+
+  @Query(() => BankDetailsView, { nullable: true })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.employeeSelfRead)
+  async myBankDetails(): Promise<BankDetailsView | null> {
+    const user = await this.auth.getCurrentUser();
+    if (!user.employeeId) {
+      throw new NotFoundError('No employee record is linked to this account');
+    }
+    const details = await this.employeeRecords.getBankDetails(toId<EmployeeId>(user.employeeId));
+    return details ?? null;
+  }
+
+  @Query(() => [BankDetailChangeRequestView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.employeeSelfRead)
+  async myBankDetailChangeRequests(): Promise<BankDetailChangeRequestView[]> {
+    const user = await this.auth.getCurrentUser();
+    if (!user.employeeId) {
+      throw new NotFoundError('No employee record is linked to this account');
+    }
+    return (
+      await this.employeeRecords.listBankDetailChangeRequests(toId<EmployeeId>(user.employeeId))
+    ).map(toBankChangeView);
+  }
+
+  @Mutation(() => BankDetailChangeRequestView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.employeeSelfWrite)
+  async requestMyBankDetailChange(
+    @Args('input') input: RequestBankDetailChangeInput,
+  ): Promise<BankDetailChangeRequestView> {
+    const user = await this.auth.getCurrentUser();
+    if (!user.employeeId) {
+      throw new NotFoundError('No employee record is linked to this account');
+    }
+    return toBankChangeView(
+      await this.employeeRecords.requestBankDetailChange({
+        employeeId: toId<EmployeeId>(user.employeeId),
+        bankName: input.bankName ?? null,
+        bankAccountTitle: input.bankAccountTitle ?? null,
+        bankAccountNumber: input.bankAccountNumber ?? null,
+        bankIban: input.bankIban ?? null,
+        requestedByUserId: toId<UserId>(user.id),
+      }),
+    );
+  }
+
+  @Query(() => [BankDetailChangeRequestView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.employeeSensitiveRead)
+  async bankDetailChangeRequests(
+    @Args('employeeId', { type: () => ID, nullable: true }) employeeId?: string,
+  ): Promise<BankDetailChangeRequestView[]> {
+    return (
+      await this.employeeRecords.listBankDetailChangeRequests(
+        employeeId ? toId<EmployeeId>(employeeId) : undefined,
+      )
+    ).map(toBankChangeView);
+  }
+
+  @Mutation(() => BankDetailChangeRequestView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.employeeWrite)
+  async decideBankDetailChange(
+    @Args('input') input: DecideBankDetailChangeInput,
+  ): Promise<BankDetailChangeRequestView> {
+    const user = await this.auth.getCurrentUser();
+    return toBankChangeView(
+      await this.employeeRecords.decideBankDetailChange({
+        requestId: input.requestId,
+        approve: input.approve,
+        decidedByUserId: toId<UserId>(user.id),
+        note: input.note ?? null,
       }),
     );
   }

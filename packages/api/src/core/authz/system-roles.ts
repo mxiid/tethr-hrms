@@ -2,7 +2,7 @@ import type { DataScope, PortalKind, SystemRoleKey } from '@hrms/shared';
 
 import { ALL_PERMISSIONS, PERMISSIONS, type Permission } from './permissions';
 
-export type SystemRoleDefinition = {
+type SystemRoleDefinition = {
   readonly key: SystemRoleKey;
   readonly name: string;
   readonly portal: PortalKind;
@@ -38,10 +38,17 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.bonusManage,
       PERMISSIONS.leaveTeamRead,
       PERMISSIONS.leaveApprove,
+      PERMISSIONS.attendanceTeamRead,
+      PERMISSIONS.attendanceApprove,
       PERMISSIONS.holidayRead,
+      PERMISSIONS.platformReadAll,
       PERMISSIONS.hiringRequestRead,
       PERMISSIONS.hiringRequestWrite,
       PERMISSIONS.hiringRequestManage,
+      PERMISSIONS.candidateRead,
+      PERMISSIONS.candidateManage,
+      PERMISSIONS.shortlistRead,
+      PERMISSIONS.formManage,
       PERMISSIONS.assessmentRead,
       PERMISSIONS.assessmentWrite,
       PERMISSIONS.announcementRead,
@@ -65,6 +72,7 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.billingRead,
       PERMISSIONS.billingWrite,
       PERMISSIONS.leaveTeamRead,
+      PERMISSIONS.attendanceTeamRead,
       PERMISSIONS.holidayRead,
     ],
   },
@@ -79,6 +87,8 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.organizationManage,
       PERMISSIONS.hiringRequestRead,
       PERMISSIONS.hiringRequestWrite,
+      PERMISSIONS.shortlistRead,
+      PERMISSIONS.shortlistDecide,
       PERMISSIONS.assessmentRead,
       PERMISSIONS.assessmentWrite,
       PERMISSIONS.documentRead,
@@ -86,6 +96,8 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.compensationWrite,
       PERMISSIONS.bonusManage,
       PERMISSIONS.leaveTeamRead,
+      PERMISSIONS.attendanceTeamRead,
+      PERMISSIONS.attendanceApprove,
       PERMISSIONS.holidayRead,
       PERMISSIONS.announcementRead,
       PERMISSIONS.billingOwnRead,
@@ -100,10 +112,13 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.employeeRead,
       PERMISSIONS.hiringRequestRead,
       PERMISSIONS.hiringRequestWrite,
+      PERMISSIONS.shortlistRead,
+      PERMISSIONS.shortlistDecide,
       PERMISSIONS.assessmentRead,
       PERMISSIONS.documentRead,
       PERMISSIONS.compensationRead,
       PERMISSIONS.leaveTeamRead,
+      PERMISSIONS.attendanceTeamRead,
       PERMISSIONS.holidayRead,
       PERMISSIONS.announcementRead,
       PERMISSIONS.billingOwnRead,
@@ -121,6 +136,8 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.payslipOwnRead,
       PERMISSIONS.leaveOwnRead,
       PERMISSIONS.leaveOwnWrite,
+      PERMISSIONS.attendanceOwnRead,
+      PERMISSIONS.attendanceOwnWrite,
       PERMISSIONS.holidayRead,
       PERMISSIONS.announcementRead,
       PERMISSIONS.feedbackWrite,
