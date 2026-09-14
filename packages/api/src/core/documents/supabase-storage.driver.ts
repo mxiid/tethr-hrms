@@ -6,6 +6,7 @@ import type {
   CreateSignedUploadInput,
   SignedDownload,
   SignedUpload,
+  StoredObjectInfo,
   StorageDriver,
 } from './storage.driver';
 
@@ -49,6 +50,27 @@ export class SupabaseStorageDriver implements StorageDriver {
       url: this.absolute(body.signedURL ?? body.url),
       expiresAt: new Date(Date.now() + this.ttlSeconds() * 1000),
     };
+  }
+
+  // Object metadata (`size`) for verification; a missing object is null rather
+  // than an error — Supabase answers 400/404 depending on the endpoint version.
+  async statObject(storageKey: string): Promise<StoredObjectInfo | null> {
+    const serviceKey = this.serviceKey();
+    const response = await fetch(`${this.baseUrl()}/object/info/${this.bucketPath(storageKey)}`, {
+      headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status === 404 || response.status === 400) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new ValidationFailedError('Object storage could not stat the object', {
+        status: response.status,
+      });
+    }
+    const body = (await response.json()) as { size?: number; metadata?: { size?: number } };
+    const size = body.size ?? body.metadata?.size;
+    return typeof size === 'number' ? { sizeBytes: size } : null;
   }
 
   private async post(path: string, payload: unknown, action: string): Promise<SupabaseSignResponse> {

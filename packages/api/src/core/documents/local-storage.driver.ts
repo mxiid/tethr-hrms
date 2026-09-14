@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
 import { ForbiddenError } from '../../common/errors';
@@ -9,6 +10,7 @@ import type {
   CreateSignedUploadInput,
   SignedDownload,
   SignedUpload,
+  StoredObjectInfo,
   StorageDriver,
 } from './storage.driver';
 
@@ -87,6 +89,16 @@ export class LocalStorageDriver implements StorageDriver {
   private baseUrl(): string {
     const configured = this.config.get('PUBLIC_API_URL');
     return configured ?? `http://localhost:${this.config.get('PORT')}`;
+  }
+
+  async statObject(storageKey: string): Promise<StoredObjectInfo | null> {
+    try {
+      const info = await stat(resolveLocalStoragePath(storageKey));
+      return info.isFile() ? { sizeBytes: info.size } : null;
+    } catch (error) {
+      if ((error as { code?: string }).code === 'ENOENT') return null;
+      throw error;
+    }
   }
 
   private secret(): string {

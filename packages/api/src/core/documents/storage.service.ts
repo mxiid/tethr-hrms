@@ -8,6 +8,7 @@ import type {
   CreateSignedUploadInput,
   SignedDownload,
   SignedUpload,
+  StoredObjectInfo,
   StorageDriver,
 } from './storage.driver';
 import { SupabaseStorageDriver } from './supabase-storage.driver';
@@ -39,5 +40,9 @@ export class StorageService {
 
   createSignedDownload(input: CreateSignedDownloadInput): Promise<SignedDownload> {
     return this.driver.createSignedDownload(input);
+  }
+
+  statObject(storageKey: string): Promise<StoredObjectInfo | null> {
+    return this.driver.statObject(storageKey);
   }
 }

@@ -47,6 +47,10 @@ const configObjectSchema = z.object({
   // Public form links are bearer credentials for anonymous candidates — long
   // enough to run a hiring cycle, short enough to expire on their own.
   FORM_LINK_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // Sliding-window limits for the anonymous form surface (per form + IP, ten
+  // minutes). Deliberately blunt abuse protection, tunable per environment.
+  FORM_SUBMIT_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(10),
+  FORM_UPLOAD_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(30),
 
   GRAPHQL_PLAYGROUND: envBoolean(false),
 

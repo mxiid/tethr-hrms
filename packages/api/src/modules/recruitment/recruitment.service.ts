@@ -8,7 +8,7 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, type FindOptionsWhere, In } from 'typeorm';
+import { DataSource, type EntityManager, type FindOptionsWhere, In } from 'typeorm';
 
 import { ConflictError, NotFoundError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
@@ -66,6 +66,9 @@ type UpdateHiringRequestData = {
   // Set by the Tethr board when the row belongs to a client workspace. The
   // caller must be a platform operator; the update then runs in that workspace.
   readonly sourceOrganizationId?: OrganizationId | null;
+  // A caller-owned transaction (offer acceptance) to join instead of opening
+  // one; the caller then owns the position sync too.
+  readonly manager?: EntityManager;
 };
 
 export type HiringRequestRecord = {
@@ -226,7 +229,9 @@ export class RecruitmentService {
         () => this.updateHiringRequest({ ...input, sourceOrganizationId: null }),
       );
     }
-    const { saved, previousStatus } = await this.dataSource.transaction(async (manager) => {
+    const run = async (
+      manager: EntityManager,
+    ): Promise<{ saved: HiringRequest; previousStatus: HiringRequestStatus }> => {
       const current = await manager.findOne(HiringRequest, {
         where: {
           id: input.hiringRequestId,
@@ -267,9 +272,16 @@ export class RecruitmentService {
         payload: { hiringRequestId: toId<HiringRequestId>(saved.id), status: saved.status },
       });
       return { saved, previousStatus };
-    });
+    };
+    // A caller-owned transaction (offer acceptance) skips the position sync —
+    // it performs the position closure itself within the same transaction.
+    const { saved, previousStatus } = input.manager
+      ? await run(input.manager)
+      : await this.dataSource.transaction((manager) => run(manager));
 
-    const withPosition = await this.applyPositionTransition(saved, previousStatus);
+    const withPosition = input.manager
+      ? saved
+      : await this.applyPositionTransition(saved, previousStatus);
 
     await this.audit.record({
       action: 'update',

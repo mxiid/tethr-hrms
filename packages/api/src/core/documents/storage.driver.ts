@@ -33,7 +33,14 @@ export type CreateSignedDownloadInput = {
   readonly contentType: string;
 };
 
+export type StoredObjectInfo = {
+  readonly sizeBytes: number;
+};
+
 export interface StorageDriver {
   createSignedUpload(input: CreateSignedUploadInput): Promise<SignedUpload>;
   createSignedDownload(input: CreateSignedDownloadInput): Promise<SignedDownload>;
+  // Existence/metadata check so callers can verify bytes really landed instead
+  // of trusting a key a client handed them.
+  statObject(storageKey: string): Promise<StoredObjectInfo | null>;
 }

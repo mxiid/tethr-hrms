@@ -45,6 +45,10 @@ export class EmployeeTerminatedFinalSettlementConsumer implements OnModuleInit {
           this.logger.warn(
             `Could not compute final settlement for ${event.payload.employeeId}: ${cause instanceof Error ? cause.message : String(cause)}`,
           );
+          // Rethrow so the idempotency transaction rolls back and the outbox
+          // retries the event (MAX_ATTEMPTS = 5); swallowing here would mark a
+          // failed settlement processed forever.
+          throw cause;
         }
       }),
     );

@@ -7,6 +7,7 @@ import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.re
 import { FormDefinition } from './entities/form-definition.entity';
 import { FormField } from './entities/form-field.entity';
 import { FormSubmission } from './entities/form-submission.entity';
+import { FormUploadTicket } from './entities/form-upload-ticket.entity';
 import { FormRateLimiter } from './form-rate-limiter';
 import { FormsService } from './forms.service';
 
@@ -31,7 +32,14 @@ const makeField = (overrides: Partial<FormField>): FormField =>
     ...overrides,
   }) as FormField;
 
-const buildService = (options: { existingForm?: FormDefinition | null; fields?: FormField[] } = {}) => {
+const buildService = (
+  options: {
+    existingForm?: FormDefinition | null;
+    fields?: FormField[];
+    ticket?: Partial<FormUploadTicket> | null;
+    storedObject?: { sizeBytes: number } | null;
+  } = {},
+) => {
   const forms = {
     find: jest.fn().mockResolvedValue(options.existingForm ? [options.existingForm] : []),
     findOne: jest.fn().mockResolvedValue(options.existingForm ?? null),
@@ -52,6 +60,26 @@ const buildService = (options: { existingForm?: FormDefinition | null; fields?: 
     create: jest.fn((value: unknown) => ({ id: 'submission-1', ...(value as object) })),
     save: jest.fn((value: unknown) => Promise.resolve(value)),
   } as unknown as TenantScopedRepository<FormSubmission>;
+  const tickets = {
+    findOne: jest.fn().mockResolvedValue(options.ticket ?? null),
+    create: jest.fn((value: unknown) => value),
+    save: jest.fn((value: unknown) => Promise.resolve(value)),
+  } as unknown as TenantScopedRepository<FormUploadTicket>;
+  const manager = {
+    create: jest.fn((_entity: unknown, value: unknown) => ({ id: 'submission-1', ...(value as object) })),
+    save: jest.fn((value: unknown) => Promise.resolve(value)),
+    createQueryBuilder: jest.fn(() => ({
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    })),
+  };
+  const dataSource = {
+    transaction: jest.fn((work: (inner: unknown) => Promise<unknown>) => work(manager)),
+  };
+  const tenantContext = { getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION) };
   const storage = {
     createSignedUpload: jest.fn().mockResolvedValue({
       storageKey: 'form-submissions/form-1/file.pdf',
@@ -60,15 +88,43 @@ const buildService = (options: { existingForm?: FormDefinition | null; fields?: 
       headers: [{ name: 'Content-Type', value: 'application/pdf' }],
       expiresAt: new Date('2026-01-01T00:15:00.000Z'),
     }),
+    statObject: jest
+      .fn()
+      .mockImplementation((storageKey: string) =>
+        Promise.resolve(
+          options.storedObject === undefined
+            ? storageKey.startsWith('form-submissions/')
+              ? { sizeBytes: 2048 }
+              : null
+            : options.storedObject,
+        ),
+      ),
   } as unknown as StorageService;
   const publisher = { publish: jest.fn().mockResolvedValue(undefined) } as unknown as DomainEventPublisher;
   const rateLimiter = new FormRateLimiter();
+  const config = {
+    get: jest.fn((key: string) => (key === 'FORM_SUBMIT_LIMIT_PER_10_MIN' ? 10 : 30)),
+  };
 
   return {
-    service: new FormsService(forms, fields, submissions, storage, publisher, rateLimiter),
+    service: new FormsService(
+      forms,
+      fields,
+      submissions,
+      tickets,
+      dataSource as never,
+      tenantContext as never,
+      storage,
+      publisher,
+      rateLimiter,
+      config as never,
+    ),
     forms,
     fields,
     submissions,
+    tickets,
+    manager,
+    dataSource,
     storage,
     publisher,
     rateLimiter,
@@ -155,7 +211,7 @@ describe('FormsService', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     } as FormDefinition;
-    const { service, submissions, publisher } = buildService({
+    const { service, manager, publisher } = buildService({
       existingForm: published,
       fields: [
         makeField({ fieldKey: 'fullName', label: 'Full name', required: true }),
@@ -182,7 +238,7 @@ describe('FormsService', () => {
     });
 
     expect(submission.id).toBe('submission-1');
-    expect(submissions.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ formId: FORM, answers: { fullName: 'Ada', email: 'ada@example.com' } }),
     );
     expect(publisher.publish).toHaveBeenCalledWith(
@@ -193,7 +249,7 @@ describe('FormsService', () => {
     );
   });
 
-  it('refuses files whose storage key is not this form\u2019s', async () => {
+  it('refuses files that were not uploaded through this form', async () => {
     const published = {
       id: FORM,
       organizationId: ORGANIZATION,
@@ -207,6 +263,7 @@ describe('FormsService', () => {
     const { service } = buildService({
       existingForm: published,
       fields: [makeField({ fieldKey: 'resume', type: 'file', required: true })],
+      ticket: null,
     });
 
     await expect(
@@ -217,17 +274,64 @@ describe('FormsService', () => {
           files: [
             {
               fieldKey: 'resume',
-              storageKey: 'somewhere-else/cv.pdf',
+              storageKey: 'form-submissions/form-1/cv.pdf',
               fileName: 'cv.pdf',
               contentType: 'application/pdf',
-              sizeBytes: 100,
+              sizeBytes: 2048,
             },
           ],
           metadata: {},
         },
         rateLimitKey: 'test',
       }),
-    ).rejects.toThrow('does not belong to this form');
+    ).rejects.toThrow('was not uploaded through this form');
+  });
+
+  it('refuses a file whose bytes are not in storage', async () => {
+    const published = {
+      id: FORM,
+      organizationId: ORGANIZATION,
+      name: 'Application form',
+      slug: 'application',
+      status: 'published' as const,
+      target: 'application' as const,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as FormDefinition;
+    const { service } = buildService({
+      existingForm: published,
+      fields: [makeField({ fieldKey: 'resume', type: 'file', required: true })],
+      ticket: {
+        id: 'ticket-1',
+        formId: FORM,
+        fieldKey: 'resume',
+        storageKey: 'form-submissions/form-1/cv.pdf',
+        sizeBytes: '2048',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+      } as unknown as FormUploadTicket,
+      storedObject: null,
+    });
+
+    await expect(
+      service.submitForm({
+        formId: FORM,
+        data: {
+          answers: {},
+          files: [
+            {
+              fieldKey: 'resume',
+              storageKey: 'form-submissions/form-1/cv.pdf',
+              fileName: 'cv.pdf',
+              contentType: 'application/pdf',
+              sizeBytes: 2048,
+            },
+          ],
+          metadata: {},
+        },
+        rateLimitKey: 'test',
+      }),
+    ).rejects.toThrow('was not found in storage');
   });
 
   it('limits repeated submissions per key', () => {

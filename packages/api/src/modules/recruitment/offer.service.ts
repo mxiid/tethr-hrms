@@ -1,9 +1,12 @@
 import { toId, type HiringRequestId, type OrganizationId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { PERMISSIONS } from '../../core/authz/permissions';
 import { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
+import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 import { EmployeeService } from '../employee/employee.service';
 import { PositionService } from '../position/position.service';
@@ -50,6 +53,8 @@ export class OfferService {
     private readonly positions: PositionService,
     private readonly recruitment: RecruitmentService,
     private readonly platformScope: PlatformScopeService,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   async createOffer(input: CreateOfferData): Promise<OfferRecord> {
@@ -115,73 +120,107 @@ export class OfferService {
   }
 
   // Acceptance hires: employee in the client's workspace, application hired,
-  // posting closed, position filled, request filled. The offer stores the new
-  // employee id so the hire traces all the way back.
+  // posting closed, position filled, request filled — all in one transaction.
+  // The offer row is locked and re-checked first, so two concurrent acceptances
+  // cannot both pass the status check; a failure anywhere rolls the whole hire
+  // back and leaves the offer `sent` for a retry.
   async accept(offerId: string, hiredByUserId: UserId): Promise<AcceptedOffer> {
-    const offer = await this.getById(offerId);
-    if (offer.status !== 'sent') {
-      throw new ConflictError('Only a sent offer can be accepted');
-    }
-    const record = await this.compose(offer);
-    if (!record.candidate || !record.posting) {
-      throw new NotFoundError('The offer’s candidate or posting is missing');
-    }
     await this.platformScope.assertOperator(PERMISSIONS.candidateManage);
-    const clientOrganizationId = toId<OrganizationId>(record.posting.sourceOrganizationId);
-    const candidate = record.candidate;
-    const posting = record.posting;
+    const organizationId = this.tenantContext.getOrganizationId();
 
-    const employee = await this.platformScope.switchTo(
-      {
-        organizationId: clientOrganizationId,
-        purpose: 'offer acceptance hires the candidate',
-        resourceType: 'offer',
-        resourceId: offer.id,
-      },
-      () => this.hireEmployee(candidate, posting.title, offer),
-    );
+    const accepted = await this.dataSource.transaction(async (manager) => {
+      const offer = await manager.findOne(Offer, {
+        where: { id: offerId, organizationId } as FindOptionsWhere<Offer>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!offer) {
+        throw new NotFoundError('Offer not found', { id: offerId });
+      }
+      if (offer.status !== 'sent') {
+        throw new ConflictError('Only a sent offer can be accepted');
+      }
+      const application = await manager.findOne(Application, {
+        where: { id: offer.applicationId, organizationId } as FindOptionsWhere<Application>,
+      });
+      if (!application) {
+        throw new NotFoundError('Application not found', { id: offer.applicationId });
+      }
+      const [candidate, posting] = await Promise.all([
+        manager.findOne(Candidate, {
+          where: { id: application.candidateId, organizationId } as FindOptionsWhere<Candidate>,
+        }),
+        manager.findOne(JobPosting, {
+          where: { id: application.jobPostingId, organizationId } as FindOptionsWhere<JobPosting>,
+        }),
+      ]);
+      if (!candidate || !posting) {
+        throw new NotFoundError('The offer’s candidate or posting is missing');
+      }
+      const clientOrganizationId = toId<OrganizationId>(posting.sourceOrganizationId);
 
-    offer.status = 'accepted';
-    offer.respondedAt = new Date();
-    offer.hiredEmployeeId = employee.id;
-    const saved = await this.offers.save(offer);
+      // The employee lands in the client's workspace, inside this transaction.
+      const employee = await this.platformScope.switchTo(
+        {
+          organizationId: clientOrganizationId,
+          purpose: 'offer acceptance hires the candidate',
+          resourceType: 'offer',
+          resourceId: offer.id,
+        },
+        () => this.hireEmployee(candidate, posting.title, offer, manager),
+      );
 
-    // The application is hired; the posting stops accepting applicants.
-    record.application.stage = 'hired';
-    record.application.outcome = 'hired';
-    await this.applications.save(record.application);
-    posting.isPublished = false;
-    await this.postings.save(posting);
+      offer.status = 'accepted';
+      offer.respondedAt = new Date();
+      offer.hiredEmployeeId = employee.id;
+      await manager.save(offer);
 
-    // Close the client-side artefacts: the position and the hiring request.
-    await this.recruitment.updateHiringRequest({
-      hiringRequestId: toId<HiringRequestId>(posting.sourceHiringRequestId),
-      status: 'filled',
-      tethrNote: `Filled — ${candidate.fullName} accepted the offer.`,
-      updatedByUserId: hiredByUserId,
-      actor: 'tethr',
-      sourceOrganizationId: clientOrganizationId,
+      application.stage = 'hired';
+      application.outcome = 'hired';
+      await manager.save(application);
+
+      posting.isPublished = false;
+      await manager.save(posting);
+
+      // The client-side artefacts: hiring request and position, in the same
+      // transaction. `updateHiringRequest` joins this manager (it skips its own
+      // position sync when one is supplied).
+      await this.platformScope.switchTo(
+        {
+          organizationId: clientOrganizationId,
+          purpose: 'offer acceptance closes the requisition',
+          resourceType: 'offer',
+          resourceId: offer.id,
+        },
+        async () => {
+          await this.recruitment.updateHiringRequest({
+            hiringRequestId: toId<HiringRequestId>(posting.sourceHiringRequestId),
+            status: 'filled',
+            tethrNote: `Filled — ${candidate.fullName} accepted the offer.`,
+            updatedByUserId: hiredByUserId,
+            actor: 'tethr',
+            manager,
+          });
+          const position = await this.positions.ensureByTitle(posting.title, manager);
+          await this.positions.setStatus(position.id, 'filled', manager);
+        },
+      );
+
+      return {
+        offer,
+        application,
+        candidate,
+        posting,
+        employeeId: employee.id,
+      };
     });
-    const position = await this.platformScope.switchTo(
-      {
-        organizationId: clientOrganizationId,
-        purpose: 'offer acceptance fills the position',
-        resourceType: 'offer',
-        resourceId: offer.id,
-      },
-      () => this.positions.ensureByTitle(posting.title),
-    );
-    await this.platformScope.switchTo(
-      {
-        organizationId: clientOrganizationId,
-        purpose: 'offer acceptance fills the position',
-        resourceType: 'offer',
-        resourceId: offer.id,
-      },
-      () => this.positions.setStatus(position.id, 'filled'),
-    );
 
-    return { ...(await this.compose(saved)), employeeId: employee.id };
+    return {
+      offer: accepted.offer,
+      application: accepted.application,
+      candidate: accepted.candidate,
+      posting: accepted.posting,
+      employeeId: accepted.employeeId,
+    };
   }
 
   async listOffers(): Promise<OfferRecord[]> {
@@ -208,6 +247,7 @@ export class OfferService {
     candidate: Candidate,
     roleTitle: string,
     offer: Offer,
+    manager: EntityManager,
   ): Promise<{ id: string }> {
     const fullName = candidate.fullName.trim();
     const lastSpace = fullName.lastIndexOf(' ');
@@ -217,16 +257,23 @@ export class OfferService {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const suffix = `${Date.now().toString().slice(-6)}${attempt === 0 ? '' : attempt}`;
       try {
-        return await this.employees.create({
-          employeeNumber: `EMP-${suffix}`,
-          firstName,
-          lastName,
-          workEmail: candidate.email,
-          roleTitle,
-          hireDate: offer.startDate,
-          noticePeriodDays: offer.noticePeriodDays,
-          workerType: 'permanent',
-        });
+        // Each attempt is a savepoint: a unique violation aborts the ambient
+        // Postgres transaction, so the retry needs a rollback target.
+        return await manager.transaction((inner) =>
+          this.employees.create(
+            {
+              employeeNumber: `EMP-${suffix}`,
+              firstName,
+              lastName,
+              workEmail: candidate.email,
+              roleTitle,
+              hireDate: offer.startDate,
+              noticePeriodDays: offer.noticePeriodDays,
+              workerType: 'permanent',
+            },
+            inner,
+          ),
+        );
       } catch (error) {
         if ((error as { code?: string }).code !== '23505' || attempt === 4) {
           throw error;

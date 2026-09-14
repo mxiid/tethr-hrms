@@ -10,6 +10,11 @@ export type FormSubmissionFile = {
   readonly sizeBytes: number;
 };
 
+// `pending` until the target consumer acts; `projected` once its downstream
+// record exists; `rejected` when the target refused it (e.g. a closed posting)
+// — stored rather than dropped so staff can see late applications.
+export type FormSubmissionStatus = 'pending' | 'projected' | 'rejected';
+
 // One anonymous submission. Answers are stored as submitted (jsonb); file
 // answers keep their signed-storage key. `targetRefType`/`targetRefId` are
 // filled by the projection consumer once it creates the downstream record
@@ -25,6 +30,12 @@ export class FormSubmission extends TenantScopedEntity {
 
   @Column({ type: 'jsonb', default: () => "'[]'" })
   files!: FormSubmissionFile[];
+
+  @Column({ type: 'varchar', length: 16, default: 'pending' })
+  status!: FormSubmissionStatus;
+
+  @Column({ type: 'text', nullable: true })
+  statusReason!: string | null;
 
   @Column({ type: 'timestamptz' })
   submittedAt!: Date;

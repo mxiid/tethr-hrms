@@ -6,17 +6,27 @@ import {
   type FormTarget,
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 import { NotFoundError, ValidationFailedError } from '../../common/errors';
+import { ConfigService } from '../../core/config/config.service';
 import { StorageService } from '../../core/documents/storage.service';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
+import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
 import { FormDefinition, type FormDefinitionStatus } from './entities/form-definition.entity';
 import { FormField } from './entities/form-field.entity';
 import { FormSubmission, type FormSubmissionFile } from './entities/form-submission.entity';
+import { FormUploadTicket } from './entities/form-upload-ticket.entity';
 import { FormRateLimiter } from './form-rate-limiter';
-import { FORM_DEFINITION_REPOSITORY, FORM_FIELD_REPOSITORY, FORM_SUBMISSION_REPOSITORY } from './forms.tokens';
+import {
+  FORM_DEFINITION_REPOSITORY,
+  FORM_FIELD_REPOSITORY,
+  FORM_SUBMISSION_REPOSITORY,
+  FORM_UPLOAD_TICKET_REPOSITORY,
+} from './forms.tokens';
 
 export type CreateFormFieldData = {
   readonly fieldKey: string;
@@ -65,8 +75,7 @@ export type SubmissionProjection = {
 const FIELD_KEY_PATTERN = /^[a-z][a-zA-Z0-9_]{0,63}$/;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 3;
-const UPLOAD_RATE_LIMIT = { limit: 12, windowMs: 10 * 60 * 1000 };
-const SUBMIT_RATE_LIMIT = { limit: 6, windowMs: 10 * 60 * 1000 };
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 const APPLICATION_FORM_FIELDS: readonly CreateFormFieldData[] = [
   { fieldKey: 'fullName', label: 'Full name', type: 'text', required: true, mapsTo: 'candidate.fullName' },
@@ -97,9 +106,14 @@ export class FormsService {
     private readonly fields: TenantScopedRepository<FormField>,
     @Inject(FORM_SUBMISSION_REPOSITORY)
     private readonly submissions: TenantScopedRepository<FormSubmission>,
+    @Inject(FORM_UPLOAD_TICKET_REPOSITORY)
+    private readonly tickets: TenantScopedRepository<FormUploadTicket>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly tenantContext: TenantContextService,
     private readonly storage: StorageService,
     private readonly publisher: DomainEventPublisher,
     private readonly rateLimiter: FormRateLimiter,
+    private readonly config: ConfigService,
   ) {}
 
   async createForm(input: CreateFormData): Promise<PublicForm> {
@@ -167,7 +181,11 @@ export class FormsService {
     readonly sizeBytes: number;
     readonly rateLimitKey: string;
   }): Promise<PreparedFormUpload> {
-    this.rateLimiter.consume(input.rateLimitKey, UPLOAD_RATE_LIMIT.limit, UPLOAD_RATE_LIMIT.windowMs);
+    this.rateLimiter.consume(
+      input.rateLimitKey,
+      this.config.get('FORM_UPLOAD_LIMIT_PER_10_MIN'),
+      RATE_LIMIT_WINDOW_MS,
+    );
     const fields = await this.getFields(input.formId);
     const field = fields.find((candidate) => candidate.fieldKey === input.fieldKey);
     if (!field || field.type !== 'file') {
@@ -182,6 +200,18 @@ export class FormsService {
       storageKey,
       contentType: input.contentType,
     });
+    // Record exactly what was issued; submission can only reference a ticket.
+    await this.tickets.save(
+      this.tickets.create({
+        formId: input.formId,
+        fieldKey: input.fieldKey,
+        storageKey,
+        contentType: input.contentType,
+        sizeBytes: String(input.sizeBytes),
+        expiresAt: upload.expiresAt,
+        usedAt: null,
+      }),
+    );
     return upload;
   }
 
@@ -190,21 +220,46 @@ export class FormsService {
     readonly data: SubmitFormData;
     readonly rateLimitKey: string;
   }): Promise<FormSubmission> {
-    this.rateLimiter.consume(input.rateLimitKey, SUBMIT_RATE_LIMIT.limit, SUBMIT_RATE_LIMIT.windowMs);
+    this.rateLimiter.consume(
+      input.rateLimitKey,
+      this.config.get('FORM_SUBMIT_LIMIT_PER_10_MIN'),
+      RATE_LIMIT_WINDOW_MS,
+    );
     const publicForm = await this.getPublicForm(input.formId);
     this.validateSubmission(publicForm.fields, input.data);
+    const tickets = await this.verifyUploadTickets(publicForm.fields, input.data);
 
-    const submission = await this.submissions.save(
-      this.submissions.create({
-        formId: input.formId,
-        answers: { ...input.data.answers },
-        files: [...input.data.files],
-        submittedAt: new Date(),
-        metadata: { ...input.data.metadata },
-        targetRefType: null,
-        targetRefId: null,
-      }),
-    );
+    // Claim every ticket and insert the submission in one transaction: a ticket
+    // can back exactly one submission even under concurrent requests.
+    const organizationId = this.tenantContext.getOrganizationId();
+    const submission = await this.dataSource.transaction(async (manager) => {
+      for (const ticket of tickets) {
+        const claim = await manager
+          .createQueryBuilder()
+          .update(FormUploadTicket)
+          .set({ usedAt: new Date() })
+          .where('id = :id', { id: ticket.id })
+          .andWhere('"usedAt" IS NULL')
+          .execute();
+        if (!claim.affected) {
+          throw new ValidationFailedError('That uploaded file was already submitted');
+        }
+      }
+      return manager.save(
+        manager.create(FormSubmission, {
+          organizationId,
+          formId: input.formId,
+          answers: { ...input.data.answers },
+          files: [...input.data.files],
+          submittedAt: new Date(),
+          status: 'pending',
+          statusReason: null,
+          metadata: { ...input.data.metadata },
+          targetRefType: null,
+          targetRefId: null,
+        }),
+      );
+    });
     await this.publisher.publish({
       name: 'form.submitted',
       payload: {
@@ -253,8 +308,20 @@ export class FormsService {
   ): Promise<void> {
     const submission = await this.submissions.findById(submissionId);
     if (!submission) return;
+    submission.status = 'projected';
+    submission.statusReason = null;
     submission.targetRefType = refType;
     submission.targetRefId = refId;
+    await this.submissions.save(submission);
+  }
+
+  // The target refused the submission (e.g. the posting closed before it
+  // arrived). Kept with a reason rather than dropped.
+  async markSubmissionRejected(submissionId: FormSubmissionId, reason: string): Promise<void> {
+    const submission = await this.submissions.findById(submissionId);
+    if (!submission) return;
+    submission.status = 'rejected';
+    submission.statusReason = reason;
     await this.submissions.save(submission);
   }
 
@@ -286,9 +353,6 @@ export class FormsService {
       if (!field || field.type !== 'file') {
         throw new ValidationFailedError('Unknown file field', { fieldKey: file.fieldKey });
       }
-      if (!file.storageKey.startsWith(`form-submissions/${field.formId}/`)) {
-        throw new ValidationFailedError('File does not belong to this form');
-      }
       if (file.sizeBytes <= 0 || file.sizeBytes > MAX_FILE_BYTES) {
         throw new ValidationFailedError('File must be between 1 byte and 10 MB');
       }
@@ -310,5 +374,55 @@ export class FormsService {
         });
       }
     }
+  }
+
+  // Every file answer must match a ticket this form issued, be unused and
+  // unexpired, and correspond to bytes that actually exist in object storage at
+  // the declared size. Prefix-matching alone let anyone fabricate a key.
+  private async verifyUploadTickets(
+    fields: readonly FormField[],
+    data: SubmitFormData,
+  ): Promise<FormUploadTicket[]> {
+    const tickets: FormUploadTicket[] = [];
+    for (const file of data.files) {
+      const field = fields.find((candidate) => candidate.fieldKey === file.fieldKey);
+      if (!field) continue;
+      const ticket = await this.tickets.findOne({
+        where: { storageKey: file.storageKey, formId: field.formId, fieldKey: field.fieldKey },
+      });
+      if (!ticket) {
+        throw new ValidationFailedError('That file was not uploaded through this form', {
+          fieldKey: file.fieldKey,
+        });
+      }
+      if (ticket.usedAt !== null) {
+        throw new ValidationFailedError('That uploaded file was already submitted', {
+          fieldKey: file.fieldKey,
+        });
+      }
+      if (ticket.expiresAt.getTime() < Date.now()) {
+        throw new ValidationFailedError('The upload link has expired — please upload again', {
+          fieldKey: file.fieldKey,
+        });
+      }
+      if (Number(ticket.sizeBytes) !== file.sizeBytes) {
+        throw new ValidationFailedError('File size does not match the upload', {
+          fieldKey: file.fieldKey,
+        });
+      }
+      const stored = await this.storage.statObject(file.storageKey);
+      if (!stored) {
+        throw new ValidationFailedError('The uploaded file was not found in storage', {
+          fieldKey: file.fieldKey,
+        });
+      }
+      if (stored.sizeBytes !== file.sizeBytes) {
+        throw new ValidationFailedError('File size does not match the upload', {
+          fieldKey: file.fieldKey,
+        });
+      }
+      tickets.push(ticket);
+    }
+    return tickets;
   }
 }

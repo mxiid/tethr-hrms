@@ -318,6 +318,24 @@ export class AtsService {
     if (!posting) {
       return null;
     }
+    // A link can outlive the posting it was minted for (form links live for
+    // weeks). Record the late application with a reason instead of dropping it
+    // silently, and never create a live screening application for a closed role.
+    const today = new Date().toISOString().slice(0, 10);
+    if (!posting.isPublished) {
+      await this.forms.markSubmissionRejected(
+        submissionId,
+        'The posting is no longer accepting applications',
+      );
+      return null;
+    }
+    if (posting.closesOn !== null && posting.closesOn < today) {
+      await this.forms.markSubmissionRejected(
+        submissionId,
+        `The posting closed on ${posting.closesOn}`,
+      );
+      return null;
+    }
 
     const byMap = new Map<string, string>();
     for (const field of fields) {

@@ -11,7 +11,7 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 
 import { NotFoundError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
@@ -92,10 +92,12 @@ export class EmployeeService {
     private readonly audit: AuditService,
   ) {}
 
-  async create(input: CreateEmployeeData): Promise<Employee> {
+  // `manager` lets a caller that already owns a transaction (offer acceptance)
+  // include the employee write in it; otherwise this opens its own.
+  async create(input: CreateEmployeeData, manager?: EntityManager): Promise<Employee> {
     const organizationId = this.tenantContext.getOrganizationId();
-    const employee = await this.dataSource.transaction(async (manager) => {
-      const entity = manager.create(Employee, {
+    const run = async (transactionManager: EntityManager): Promise<Employee> => {
+      const entity = transactionManager.create(Employee, {
         organizationId,
         employeeNumber: input.employeeNumber,
         firstName: input.firstName,
@@ -117,13 +119,16 @@ export class EmployeeService {
         employmentStatus: 'active',
         workerType: input.workerType ?? 'permanent',
       });
-      const saved = await manager.save(entity);
-      await this.publisher.publishWithin(manager, {
+      const saved = await transactionManager.save(entity);
+      await this.publisher.publishWithin(transactionManager, {
         name: 'employee.created',
         payload: { employeeId: toId<EmployeeId>(saved.id) },
       });
       return saved;
-    });
+    };
+    const employee = manager
+      ? await run(manager)
+      : await this.dataSource.transaction((transactionManager) => run(transactionManager));
 
     await this.audit.record({
       action: 'create',

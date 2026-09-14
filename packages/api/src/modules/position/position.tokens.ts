@@ -1,2 +1,1 @@
 export const POSITION_REPOSITORY = Symbol('POSITION_REPOSITORY');
-export const JOB_REPOSITORY = Symbol('JOB_REPOSITORY');

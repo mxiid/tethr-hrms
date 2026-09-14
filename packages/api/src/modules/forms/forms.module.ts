@@ -8,6 +8,7 @@ import { provideTenantScopedRepository } from '../../core/tenancy/tenant-reposit
 import { FormDefinition } from './entities/form-definition.entity';
 import { FormField } from './entities/form-field.entity';
 import { FormSubmission } from './entities/form-submission.entity';
+import { FormUploadTicket } from './entities/form-upload-ticket.entity';
 import { FormRateLimiter } from './form-rate-limiter';
 import { FormsResolver } from './forms.resolver';
 import { FormsService } from './forms.service';
@@ -15,6 +16,7 @@ import {
   FORM_DEFINITION_REPOSITORY,
   FORM_FIELD_REPOSITORY,
   FORM_SUBMISSION_REPOSITORY,
+  FORM_UPLOAD_TICKET_REPOSITORY,
 } from './forms.tokens';
 import { PublicFormsResolver } from './public-forms.resolver';
 
@@ -23,7 +25,7 @@ import { PublicFormsResolver } from './public-forms.resolver';
 // applications is a `form.submitted` consumer in the recruitment module.
 @Module({
   imports: [
-    TypeOrmModule.forFeature([FormDefinition, FormField, FormSubmission]),
+    TypeOrmModule.forFeature([FormDefinition, FormField, FormSubmission, FormUploadTicket]),
     AuthModule,
     AuthzModule,
   ],
@@ -35,6 +37,7 @@ import { PublicFormsResolver } from './public-forms.resolver';
     provideTenantScopedRepository(FORM_DEFINITION_REPOSITORY, FormDefinition),
     provideTenantScopedRepository(FORM_FIELD_REPOSITORY, FormField),
     provideTenantScopedRepository(FORM_SUBMISSION_REPOSITORY, FormSubmission),
+    provideTenantScopedRepository(FORM_UPLOAD_TICKET_REPOSITORY, FormUploadTicket),
   ],
   exports: [FormsService],
 })
