@@ -6,6 +6,8 @@ import { TenantScopedEntity } from '../../../core/database/entities/tenant-scope
 
 type PositionStatus = 'open' | 'filled' | 'frozen' | 'closed';
 
+export type { PositionStatus };
+
 // A concrete seat. References its job, department, location, and grade by ID
 // (department and location live in the organization module — ID refs, no FK).
 @Entity('positions')

@@ -11,6 +11,7 @@ import { AuthorizationService } from '../src/core/authz/authz.service';
 import { TenantContextService } from '../src/core/tenancy/tenant-context.service';
 import { AccountService } from '../src/modules/account/account.service';
 import { EmployeeService } from '../src/modules/employee/employee.service';
+import { OrganizationService } from '../src/modules/organization/organization.service';
 
 // One-shot demo data: a Tethr admin workspace, an onboarded client workspace,
 // and an employee self-service account inside the client. Safe to re-run — if
@@ -44,6 +45,7 @@ async function main(): Promise<void> {
   const authz = app.get(AuthorizationService);
   const tenant = app.get(TenantContextService);
   const employees = app.get(EmployeeService);
+  const organizations = app.get(OrganizationService);
 
   const log = new Logger('seed-demo');
   let created = 0;
@@ -60,11 +62,16 @@ async function main(): Promise<void> {
       { organizationId: toId<OrganizationId>(user.organizationId), userId: toId<UserId>(user.id) },
       () => authz.replaceSystemRole(toId<UserId>(user.id), 'tethrAdmin'),
     );
+    // The kind is what platform-scope guards key on; ordinary signup always
+    // creates a client workspace, so the Tethr one is promoted explicitly.
+    await organizations.markAsTethr(toId<OrganizationId>(user.organizationId));
     created += 1;
     log.log(`Created Tethr admin workspace "${TETHR_WORKSPACE}" + ${EMAILS.tethrAdmin}`);
   } catch (error) {
     if (!isConflict(error)) throw error;
-    log.log(`Tethr admin workspace already exists — skipping`);
+    log.log(
+      `Tethr admin workspace already exists — skipping (run seed:demo fresh or mark:tethr-workspace --email ${EMAILS.tethrAdmin})`,
+    );
   }
 
   // 2. Client workspace: Tethr-staff-driven onboarding seeds a clientAdmin
@@ -157,7 +164,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  // eslint-disable-next-line no-console
   console.error(error);
   process.exit(1);
 });

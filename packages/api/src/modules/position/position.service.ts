@@ -5,7 +5,7 @@ import { NotFoundError } from '../../common/errors';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
 import { Job } from './entities/job.entity';
-import { Position } from './entities/position.entity';
+import { Position, type PositionStatus } from './entities/position.entity';
 import { JOB_REPOSITORY, POSITION_REPOSITORY } from './position.tokens';
 
 
@@ -59,6 +59,12 @@ export class PositionService {
 
   list(): Promise<Position[]> {
     return this.positions.find();
+  }
+
+  async setStatus(id: string, status: PositionStatus): Promise<Position> {
+    const position = await this.getById(id);
+    position.status = status;
+    return this.positions.save(position);
   }
 
   async getById(id: string): Promise<Position> {

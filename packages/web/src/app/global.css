@@ -4694,6 +4694,25 @@ button {
   background: var(--hrms-color-background-secondary);
 }
 
+/* Anonymous application form (public, no shell) */
+.public-apply {
+  display: grid;
+  place-items: start center;
+  min-height: 100vh;
+  padding: var(--hrms-space-8) var(--hrms-space-4);
+  background: var(--hrms-color-background-secondary);
+}
+
+.public-apply-card {
+  width: 100%;
+  max-width: 620px;
+  padding: var(--hrms-space-6);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-md);
+  box-shadow: var(--hrms-color-box-shadow-light);
+}
+
 .auth-card {
   width: 100%;
   max-width: 380px;

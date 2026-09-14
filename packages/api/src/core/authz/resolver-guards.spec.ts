@@ -25,6 +25,11 @@ const PUBLIC_OPERATIONS: ReadonlySet<string> = new Set([
   'modules/account/account.resolver.ts:switchWorkspace',
   'modules/organization/organization.resolver.ts:myOrganization',
   'modules/leave/leave.resolver.ts:leaveTypes',
+  // Anonymous form surface: no session, but every operation verifies the signed
+  // form-link token and runs inside that link's tenant (PublicFormsResolver).
+  'modules/forms/public-forms.resolver.ts:formByLink',
+  'modules/forms/public-forms.resolver.ts:prepareFormFileUpload',
+  'modules/forms/public-forms.resolver.ts:submitForm',
 ]);
 
 // Known gaps, kept explicit so they are visible and this list can only shrink.

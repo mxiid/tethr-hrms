@@ -14,8 +14,10 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/core/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/core/database/data-source.ts",
     "seed:demo": "node -r ts-node/register -r tsconfig-paths/register scripts/seed-demo.ts",
+    "mark:tethr-workspace": "node -r ts-node/register -r tsconfig-paths/register scripts/mark-tethr-workspace.ts",
     "sync:role-permissions": "node -r ts-node/register -r tsconfig-paths/register scripts/sync-system-role-permissions.ts",
     "seed:org-chart": "node -r ts-node/register -r tsconfig-paths/register scripts/seed-org-chart.ts",
+    "backfill:hiring-statuses": "node -r ts-node/register -r tsconfig-paths/register scripts/backfill-hiring-statuses.ts",
     "prune:empty-assignments": "node -r ts-node/register -r tsconfig-paths/register scripts/prune-empty-assignments.ts"
   },
   "dependencies": {
@@ -28,6 +30,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/typeorm": "^10.0.2",
+    "bullmq": "^5.12.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.5",

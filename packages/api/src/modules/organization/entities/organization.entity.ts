@@ -7,6 +7,12 @@ import { BaseEntity } from '../../../core/database/entities/base.entity';
 // `id` is the organizationId every other row carries. Everything else in the
 // system hangs off this (plan.md §3).
 @Entity('organizations')
+// There is exactly one platform (Tethr) workspace; the partial index makes that
+// a database invariant rather than a convention (only 'tethr' rows are indexed).
+@Index('organizations_single_tethr_workspace', ['kind'], {
+  unique: true,
+  where: `"kind" = 'tethr'`,
+})
 export class Organization extends BaseEntity {
   @Index()
   @Column({ type: 'varchar', length: 16, default: 'client' })

@@ -1,5 +1,8 @@
-import { Field, InputType, Int } from '@nestjs/graphql';
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
+import { HIRING_REQUEST_PRIORITIES } from '@hrms/shared';
+import { Field, Float, InputType, Int } from '@nestjs/graphql';
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, MaxLength, Min } from 'class-validator';
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 @InputType()
 export class CreateHiringRequestInput {
@@ -7,6 +10,12 @@ export class CreateHiringRequestInput {
   @IsString()
   @MaxLength(200)
   positionTitle!: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  jobDescription?: string;
 
   @Field(() => Int, { nullable: true })
   @IsOptional()
@@ -27,10 +36,46 @@ export class CreateHiringRequestInput {
 
   @Field(() => String, { nullable: true })
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'preferredStartDate must be an ISO date (YYYY-MM-DD)',
-  })
+  @Matches(ISO_DATE, { message: 'preferredStartDate must be an ISO date (YYYY-MM-DD)' })
   preferredStartDate?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @Matches(ISO_DATE, { message: 'targetFillDate must be an ISO date (YYYY-MM-DD)' })
+  targetFillDate?: string;
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  salaryMin?: number;
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  salaryMax?: number;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  salaryCurrency?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  hiringManagerEmployeeId?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  reportsToEmployeeId?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsIn([...HIRING_REQUEST_PRIORITIES])
+  priority?: string;
 
   @Field(() => String, { nullable: true })
   @IsOptional()

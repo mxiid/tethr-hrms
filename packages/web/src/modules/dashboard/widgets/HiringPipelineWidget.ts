@@ -1,4 +1,5 @@
 import { gql, useQuery } from '@apollo/client';
+import { HIRING_REQUEST_STATUSES, type HiringRequestStatus } from '@hrms/shared';
 
 import type { WidgetData, WidgetFieldDefinition } from './types';
 
@@ -15,24 +16,26 @@ type HiringPipelineData = {
   hiringRequests: ReadonlyArray<{ id: string; status: string }>;
 };
 
-const CLOSED_STATUSES = new Set(['filled', 'cancelled']);
+const CLOSED_STATUSES: ReadonlySet<string> = new Set(['filled', 'cancelled']);
+
+const STATUS_LABELS: Record<HiringRequestStatus, string> = {
+  submitted: 'Submitted',
+  open: 'Open',
+  onHold: 'On hold',
+  filled: 'Filled',
+  cancelled: 'Cancelled',
+};
 
 export const HIRING_PIPELINE_FIELDS: readonly WidgetFieldDefinition[] = [
   { id: 'total', label: 'Requests' },
   { id: 'active', label: 'Active' },
-  { id: 'submitted', label: 'Submitted' },
-  { id: 'inReview', label: 'In review' },
-  { id: 'sourcing', label: 'Sourcing' },
-  { id: 'interviewing', label: 'Interviewing' },
-  { id: 'offer', label: 'Offer' },
-  { id: 'filled', label: 'Filled' },
-  { id: 'cancelled', label: 'Cancelled' },
+  ...HIRING_REQUEST_STATUSES.map((status) => ({ id: status, label: STATUS_LABELS[status] })),
 ];
 
 export const useHiringPipelineData = (): WidgetData => {
   const { data, loading, error } = useQuery<HiringPipelineData>(HIRING_PIPELINE_QUERY);
   const requests = data?.hiringRequests ?? [];
-  const countWhere = (status: string): number =>
+  const countWhere = (status: HiringRequestStatus): number =>
     requests.filter((request) => request.status === status).length;
 
   return {
@@ -42,20 +45,15 @@ export const useHiringPipelineData = (): WidgetData => {
       total: requests.length,
       active: requests.filter((request) => !CLOSED_STATUSES.has(request.status)).length,
       submitted: countWhere('submitted'),
-      inReview: countWhere('inReview'),
-      sourcing: countWhere('sourcing'),
-      interviewing: countWhere('interviewing'),
-      offer: countWhere('offer'),
+      open: countWhere('open'),
+      onHold: countWhere('onHold'),
       filled: countWhere('filled'),
       cancelled: countWhere('cancelled'),
     },
-    breakdown: [
-      { id: 'submitted', label: 'Submitted', value: countWhere('submitted') },
-      { id: 'inReview', label: 'In review', value: countWhere('inReview') },
-      { id: 'sourcing', label: 'Sourcing', value: countWhere('sourcing') },
-      { id: 'interviewing', label: 'Interviewing', value: countWhere('interviewing') },
-      { id: 'offer', label: 'Offer', value: countWhere('offer') },
-      { id: 'filled', label: 'Filled', value: countWhere('filled') },
-    ],
+    breakdown: HIRING_REQUEST_STATUSES.map((status) => ({
+      id: status,
+      label: STATUS_LABELS[status],
+      value: countWhere(status),
+    })),
   };
 };

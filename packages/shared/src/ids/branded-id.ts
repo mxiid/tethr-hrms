@@ -60,6 +60,15 @@ export type InvoiceId = Brand<string, 'InvoiceId'>;
 
 // --- Recruitment ---
 export type HiringRequestId = Brand<string, 'HiringRequestId'>;
+export type JobPostingId = Brand<string, 'JobPostingId'>;
+export type CandidateId = Brand<string, 'CandidateId'>;
+export type ApplicationId = Brand<string, 'ApplicationId'>;
+export type CandidateDocumentId = Brand<string, 'CandidateDocumentId'>;
+
+// --- Forms ---
+export type FormId = Brand<string, 'FormId'>;
+export type FormFieldId = Brand<string, 'FormFieldId'>;
+export type FormSubmissionId = Brand<string, 'FormSubmissionId'>;
 
 // --- Employee extended ---
 export type EmployeePersonalDetailsId = Brand<string, 'EmployeePersonalDetailsId'>;

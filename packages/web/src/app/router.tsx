@@ -9,7 +9,6 @@ import { LoginPage } from '../modules/auth/pages/LoginPage';
 import { SignUpPage } from '../modules/auth/pages/SignUpPage';
 import { ClientWorkspacePage } from '../modules/client/pages/ClientWorkspacePage';
 import { ClientPortfolioPage } from '../modules/clients/pages/ClientPortfolioPage';
-import { CompensationPage } from '../modules/finance/compensation/pages/CompensationPage';
 import { DashboardPage } from '../modules/dashboard/pages/DashboardPage';
 import { EmployeeProfilePage } from '../modules/employees/pages/EmployeeProfilePage';
 import { EmployeesListPage } from '../modules/employees/pages/EmployeesListPage';
@@ -17,10 +16,15 @@ import { AnnouncementsPage } from '../modules/engagement/pages/AnnouncementsPage
 import { FeedbackInboxPage } from '../modules/engagement/pages/FeedbackInboxPage';
 import { BillingPage } from '../modules/finance/billing/pages/BillingPage';
 import { InvoiceDetailPage } from '../modules/finance/billing/pages/InvoiceDetailPage';
+import { CompensationPage } from '../modules/finance/compensation/pages/CompensationPage';
 import { PayrollPage } from '../modules/finance/payroll/pages/PayrollPage';
 import { PayrollRunDetailPage } from '../modules/finance/payroll/pages/PayrollRunDetailPage';
+import { ApplyPage } from '../modules/forms/pages/ApplyPage';
 import { LeaveTriagePage } from '../modules/leave/pages/LeaveTriagePage';
+import { CandidatesPage } from '../modules/recruitment/pages/CandidatesPage';
 import { HiringRequestsPage } from '../modules/recruitment/pages/HiringRequestsPage';
+import { InterviewsPage } from '../modules/recruitment/pages/InterviewsPage';
+import { ShortlistsPage } from '../modules/recruitment/pages/ShortlistsPage';
 import { EmployeeWorkspacePage } from '../modules/self-service/pages/EmployeeWorkspacePage';
 import { MyProfilePage } from '../modules/self-service/pages/MyProfilePage';
 import { SettingsBillingPage } from '../modules/settings/pages/SettingsBillingPage';
@@ -62,6 +66,8 @@ export const AppRouter = () => (
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignUpPage />} />
       <Route path="/access" element={<AccessPendingPage />} />
+      {/* Anonymous application form; the token in the path is the credential. */}
+      <Route path="/apply/:token" element={<ApplyPage />} />
       <Route element={<RequireAuth />}>
         {/* Settings replace the shell: their own full-screen sidebar surface. */}
         <Route
@@ -111,6 +117,15 @@ export const AppRouter = () => (
             <Route path="/attendance" element={<TimeAttendancePage />} />
             <Route path="/hiring" element={<HiringRequestsPage />} />
             <Route path="/leave" element={<LeaveTriagePage />} />
+          </Route>
+          <Route
+            element={
+              <RequirePortal portals={['tethr']} roleKeys={['tethrAdmin', 'tethrHr']} />
+            }
+          >
+            <Route path="/hiring/candidates" element={<CandidatesPage />} />
+            <Route path="/hiring/shortlists" element={<ShortlistsPage />} />
+            <Route path="/hiring/interviews" element={<InterviewsPage />} />
           </Route>
           <Route
             element={

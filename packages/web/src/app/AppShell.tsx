@@ -24,6 +24,9 @@ import {
   IconSun,
   IconUserCircle,
   IconUserPlus,
+  IconCalendarEvent,
+  IconListCheck,
+  IconUsers,
   IconUsersGroup,
   IconX,
   type TablerIcon,
@@ -85,6 +88,9 @@ const tethrNavigation: readonly NavigationEntry[] = [
       { label: 'Org chart', to: '/employees/org-chart', icon: IconSitemap },
       { label: 'Time & attendance', to: '/attendance', icon: IconClock },
       { label: 'Hiring requests', to: '/hiring', icon: IconBriefcase },
+      { label: 'Candidates', to: '/hiring/candidates', icon: IconUsers },
+      { label: 'Shortlists', to: '/hiring/shortlists', icon: IconListCheck },
+      { label: 'Interviews', to: '/hiring/interviews', icon: IconCalendarEvent },
       { label: 'Leave triage', to: '/leave', icon: IconPlaneDeparture },
     ],
   },
@@ -298,6 +304,24 @@ export const AppShell = () => {
   const isVisibleItem = (item: NavigationItem): boolean => {
     if (item.to === '/compensation') return canViewCompensation;
     if (item.to === '/payroll' || item.to === '/billing') return canManagePayroll;
+    // The candidate pool, shortlists and interviews are Tethr-only data.
+    if (
+      item.to === '/hiring/candidates' ||
+      item.to === '/hiring/shortlists' ||
+      item.to === '/hiring/interviews'
+    ) {
+      return Boolean(
+        user?.roleKeys.includes('tethrAdmin') || user?.roleKeys.includes('tethrHr'),
+      );
+    }
+    // Hiring requests need hiring-request:read; tethrFinance holds neither that
+    // nor the Tethr ATS permissions, so the item is hidden for them.
+    if (item.to === '/hiring') {
+      if (user?.portal !== 'tethr') return true;
+      return Boolean(
+        user?.roleKeys.includes('tethrAdmin') || user?.roleKeys.includes('tethrHr'),
+      );
+    }
     return true;
   };
   const visibleNavigation: readonly NavigationEntry[] = navigation

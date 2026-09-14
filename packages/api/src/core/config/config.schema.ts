@@ -12,7 +12,7 @@ const envBoolean = (defaultValue: boolean) =>
 // The single source of truth for environment shape. Validated once at startup;
 // a missing or malformed variable stops boot rather than failing at runtime
 // (architecture.md §12).
-const configSchema = z.object({
+const configObjectSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
@@ -30,18 +30,70 @@ const configSchema = z.object({
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
 
+  // How often the API delivers pending outbox messages to the in-process
+  // consumers. 0 disables the loop (tests run with NODE_ENV=test, also disabled).
+  OUTBOX_RELAY_INTERVAL_MS: z.coerce.number().int().nonnegative().default(5000),
+
+  // Notification delivery. Both optional: without credentials the logger
+  // transport records the intent instead of sending (the dev default).
+  RESEND_API_KEY: z.string().min(1).optional(),
+  EMAIL_FROM: z.string().email().optional(),
+  SLACK_WEBHOOK_URL: z.string().url().optional(),
+
   // A weak JWT secret is a security hole; require real entropy.
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.coerce.number().int().positive().default(3600),
 
+  // Public form links are bearer credentials for anonymous candidates — long
+  // enough to run a hiring cycle, short enough to expire on their own.
+  FORM_LINK_TTL_DAYS: z.coerce.number().int().positive().default(30),
+
   GRAPHQL_PLAYGROUND: envBoolean(false),
+
+  // Object storage. 'supabase' is the real driver; 'local' writes to disk under
+  // the API's working directory and exists so development can exercise the real
+  // upload/download flow without a bucket — it is refused in production.
+  STORAGE_DRIVER: z.enum(['local', 'supabase']).default('local'),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  SUPABASE_STORAGE_BUCKET: z.string().min(1).default('hrms-documents'),
+  STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  // Absolute base the browser can reach the API on; needed by the local
+  // storage driver to mint links. Falls back to http://localhost:${PORT}.
+  PUBLIC_API_URL: z.string().url().optional(),
 
   // Employer identity printed on generated payslip PDFs.
   PDF_EMPLOYER_NAME: z.string().min(1).default('Tethr Pvt. Ltd.'),
   PDF_EMPLOYER_LOCATION: z.string().min(1).default('Islamabad, Pakistan'),
 });
 
-export type AppConfig = z.infer<typeof configSchema>;
+const requireSupabaseStorage = (
+  config: z.infer<typeof configObjectSchema>,
+  context: z.RefinementCtx,
+) => {
+  if (config.STORAGE_DRIVER === 'local' && config.NODE_ENV === 'production') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['STORAGE_DRIVER'],
+      message: 'local storage is development-only; set STORAGE_DRIVER=supabase in production',
+    });
+  }
+  if (config.STORAGE_DRIVER === 'supabase') {
+    for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const) {
+      if (!config[key]) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when STORAGE_DRIVER=supabase`,
+        });
+      }
+    }
+  }
+};
+
+const configSchema = configObjectSchema.superRefine(requireSupabaseStorage);
+
+export type AppConfig = z.infer<typeof configObjectSchema>;
 
 // Validate a raw environment. Throws a single, readable error listing every
 // problem — call this exactly once, at startup.

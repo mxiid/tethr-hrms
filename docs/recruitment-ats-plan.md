@@ -192,3 +192,40 @@ A `Candidates` tab under hiring, plus per-request tabs: Overview / Candidates / 
 
 - **Target Fill Date vs start date.** See the field map — decide which one that column means.
 - **LinkedIn.** Posting stays manual for now — is automated posting in scope later, or does the job board page suffice?
+
+## Implementation plan (execution)
+
+**Decisions taken (2026-09-14):** checkpointed execution — M1–M3 first, then re-plan the domain phases · cross-tenant writes go through an audited `PlatformScopeService.switchTo` (kind + permission guarded) · email via Resend HTTP with a logger fallback · outbox relay runs as an in-API interval (consumers live in the in-process bus) · request lifecycle `submitted → open → onHold → filled → cancelled` · Supabase Storage is not provisioned yet, so storage ships behind a driver interface (`supabase` for production, dev-only `local`).
+
+**Corrections to this doc found while verifying against the code:** `Organization.kind = 'tethr'` is never written today (signup and `onboardClient` both create `client` orgs; the demo Tethr workspace is only promoted at the user level) — M1 adds a seed change, a backfill script and a partial unique index · the `x-organization-id` shim in `TenantContextMiddleware` runs in every environment, not just dev · `platform:read-all` does not exist and `ensureSystemRole` never updates existing tenant role rows, so `npm run sync:role-permissions` is part of M1 · `workspaceNameIsAvailable` is actually `legalNameIsAlreadyUsed` · `core/` cannot import module entities (two-bucket rule), so the entity allowlist for the board lives in `modules/recruitment` while the audited tenant switch lives in core · Position has no close/status API and `createEmployee` cannot carry source linkage — both extend in their phases.
+
+### M1 — Tenant-safe public surface + platform scope (0.3, 0.5, kind bootstrap)
+
+- Shared `FormId`; `FormLinkClaims { type:'form-link', formId, organizationId }` (no `sub`/`org`, so `readToken` can never promote one to a session); `FormTokenService` (mint/verify, `FORM_LINK_TTL_DAYS`).
+- `TenantContextMiddleware`: bearer-only — the `x-organization-id` fallback is deleted.
+- `PlatformScopeService` (core/tenancy): `assertOperator(permission)` (caller org `kind === 'tethr'` **and** permission), `resolveTethrOrganizationId()`, `listClientOrganizationIds()`, `switchTo({ organizationId, purpose, ... }, work)` — audits before switching, then runs work with the tenant ALS pointed at the target while keeping the caller's principal.
+- `platform:read-all` permission; explicit `tethrHr` grant; run `sync:role-permissions`.
+- Kind bootstrap: partial unique index on `kind = 'tethr'`, `OrganizationService.markAsTethr`, seed-demo marks its Tethr workspace, `npm run mark:tethr-workspace -w @hrms/api -- --email <tethr admin>` backfills existing DBs.
+- Verify: form-token spec (round trip, wrong type rejected, middleware never promotes it), platform-scope spec (non-tethr org refused, missing permission refused, audit + ALS switch), gates.
+
+### M2 — Real storage behind a driver interface (0.1)
+
+- Config `STORAGE_DRIVER` (`local | supabase`, production refuses `local`), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, `STORAGE_SIGNED_URL_TTL_SECONDS`.
+- `core/documents/storage.service.ts` + adapters: Supabase signed upload/download via REST `fetch` (absolute URLs, error mapping) and a dev-only Local adapter backed by disk plus an HMAC-signed dev route (the API's first REST controller, registered only for the local driver). `DocumentService` rewires to it; `buildStorageKey` and the metadata schema stay.
+- Web: employee documents lose the editable storage-key fields — PUT bytes to the signed URL, attach the server-issued key, download via signed URL.
+- Verify: adapter specs (Supabase fetch mocked), browser round trip with a 5 MB PDF on the local driver; rerun against Supabase once credentials exist.
+
+### M3 — Jobs, outbox relay, channels (0.4, 0.6)
+
+- `JOBS`/`QUEUES`/`JobPayloads` move to `@hrms/shared`; `parse-cv` added (stub, consumed in the ATS phase); worker listens on the default queue too and imports the shared contract.
+- API gains `bullmq` + `core/queue/message-queue.service.ts` (typed `add`, lazy connect, close on shutdown).
+- `core/events/outbox-relay.runner.ts`: `OnModuleInit` interval (`OUTBOX_RELAY_INTERVAL_MS`, default 5000, `0` disables) calling `relayPendingBatch()` with an overlap guard.
+- Notifications: `SendNotificationInput` gains an external-email shape; `ResendEmailTransport` (HTTP, `RESEND_API_KEY`, `EMAIL_FROM`) with logger fallback; `SlackTransport` (`SLACK_WEBHOOK_URL`); small template registry.
+- First consumer: `hiringRequest.submitted` → Slack notice (idempotent, tenant re-established from the event).
+- Verify: relay spec (dispatch, retry count, idempotency), job contract typechecks in both packages, end-to-end demo (pending → processed → notice; API-enqueued job processed by the worker; storage round trip). Checkpoint, then re-plan M4–M10.
+
+### M4–M10 — domain phases
+
+**Status: M1–M9 landed 2026-09-14, plus the M10 tidy-up** (checkpoint records in [STATUS.md](STATUS.md)); the full cycle runs in-product — client brief → published posting + signed apply link → anonymous application with CV (acknowledged by email) → candidate/application projection → ranked shortlist rounds with client verdicts → interviews with scorecards and rollups → typed offer → acceptance hires the employee into the client's workspace and closes the request, posting and position. **Remaining, deliberately deferred:** Supabase Storage verification (needs credentials; the local driver implements the same interface), the real CV parser behind `parse-cv`, a postings list/auto-close surface, the employee-photo/invoice-logo storage migration, a form-builder UI over the existing operator API, and targeting a client workspace when Tethr raises a request on their behalf.
+
+M4 Requisition (Phase 1 of this doc: fields, transition map, portal partitioning, Position reconciliation, cross-client board) · M5 Form builder (Phase 2) · M6 ATS core (Phase 3) · M7 Shortlists (Phase 4) · M8 Interviews (Phase 5) · M9 Offer & hire (Phase 6) · M10 cleanup (photo/logo migration, Notion backfill, doc updates). Each milestone: shared contracts → entity/service → resolver (+ guards) → schema and resolver-guards specs → web → browser verification → gates.

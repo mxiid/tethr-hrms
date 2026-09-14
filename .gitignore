@@ -39,3 +39,6 @@ Thumbs.db
 logins.md
 OpenCodeGUISession.json
 .diff_resolver.txt
+
+# Local object storage (dev driver — bytes never belong in git)
+**/.local-storage/

@@ -15,6 +15,8 @@ import type {
   EmployeePersonalDetailsId,
   EmployeeSeparationId,
   EmployeeWorkHistoryId,
+  FormId,
+  FormSubmissionId,
   HiringRequestId,
   InvoiceId,
   LeaveRequestId,
@@ -58,6 +60,7 @@ export const DOMAIN_EVENT_NAMES = [
   'compensation.revised',
   'hiringRequest.submitted',
   'hiringRequest.updated',
+  'form.submitted',
   'announcement.published',
   'employeeFeedback.submitted',
   'employeeFeedback.updated',
@@ -184,6 +187,13 @@ export type DomainEventPayloads = {
   'hiringRequest.updated': {
     readonly hiringRequestId: HiringRequestId;
     readonly status: string;
+  };
+  'form.submitted': {
+    readonly formId: FormId;
+    readonly submissionId: FormSubmissionId;
+    // What the form feeds (e.g. 'application'); the projection consumer keys
+    // its mapping on this.
+    readonly target: string;
   };
   'announcement.published': {
     readonly announcementId: AnnouncementId;

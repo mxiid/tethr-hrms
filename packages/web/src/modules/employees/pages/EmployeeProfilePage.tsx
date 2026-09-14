@@ -19,16 +19,17 @@ import {
   IconLoader2,
   IconProgressCheck,
   IconSignature,
-  IconUpload,
   IconUserCheck,
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { uploadToSignedUrl } from '../../../app/upload';
 import { StatusChip } from '../../../components/chip/StatusChip';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { DetailSection } from '../components/DetailSection';
+import { EmployeeJobPayHub } from '../components/EmployeeJobPayHub';
 import {
   ADD_EMPLOYEE_DOCUMENT_VERSION_MUTATION,
   ATTACH_EMPLOYEE_DOCUMENT_MUTATION,
@@ -53,7 +54,6 @@ import {
   UPDATE_OFFBOARDING_TASK_MUTATION,
   UPSERT_EXIT_INTERVIEW_MUTATION,
 } from '../graphql/employee.operations';
-import { EmployeeJobPayHub } from '../components/EmployeeJobPayHub';
 
 type AssignmentView = {
   readonly id: string;
@@ -448,7 +448,6 @@ const emptyAssessmentForm = {
 const emptyDocumentForm = {
   name: '',
   contentType: 'application/pdf',
-  storageKey: '',
   sizeBytes: '0',
   category: 'contract',
   visibility: 'client',
@@ -461,7 +460,6 @@ const emptyDocumentForm = {
 const emptyDocumentVersionForm = {
   employeeDocumentLinkId: '',
   contentType: 'application/pdf',
-  storageKey: '',
   sizeBytes: '0',
   signatureStatus: 'notRequired',
   signedAt: '',
@@ -508,8 +506,9 @@ export const EmployeeProfilePage = () => {
   const [addDocumentVersion, { loading: addingDocumentVersion }] = useMutation(
     ADD_EMPLOYEE_DOCUMENT_VERSION_MUTATION,
   );
-  const [prepareDocumentUpload, { loading: preparingDocumentUpload }] =
-    useMutation<PrepareDocumentUploadData>(PREPARE_EMPLOYEE_DOCUMENT_UPLOAD_MUTATION);
+  const [prepareDocumentUpload] = useMutation<PrepareDocumentUploadData>(
+    PREPARE_EMPLOYEE_DOCUMENT_UPLOAD_MUTATION,
+  );
   const [loadDocumentDownloadAccess, { loading: loadingDocumentDownloadAccess }] =
     useLazyQuery<EmployeeDocumentDownloadAccessData>(EMPLOYEE_DOCUMENT_DOWNLOAD_ACCESS_QUERY, {
       fetchPolicy: 'network-only',
@@ -563,9 +562,9 @@ export const EmployeeProfilePage = () => {
   const [assessmentForm, setAssessmentForm] = useState(emptyAssessmentForm);
   const [documentForm, setDocumentForm] = useState(emptyDocumentForm);
   const [documentVersionForm, setDocumentVersionForm] = useState(emptyDocumentVersionForm);
-  const [preparedUpload, setPreparedUpload] = useState<DocumentAccessDescriptor | null>(null);
-  const [preparedVersionUpload, setPreparedVersionUpload] =
-    useState<DocumentAccessDescriptor | null>(null);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentVersionFile, setDocumentVersionFile] = useState<File | null>(null);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [documentAccesses, setDocumentAccesses] = useState<
     Record<string, DocumentAccessDescriptor>
   >({});
@@ -669,7 +668,10 @@ export const EmployeeProfilePage = () => {
   const workHistories = detailData?.employeeWorkHistories ?? [];
   const separations = detailData?.employeeSeparations ?? [];
   const exitInterviews = detailData?.employeeExitInterviews ?? [];
-  const offboardingTasks = detailData?.employeeOffboardingTasks ?? [];
+  const offboardingTasks = useMemo(
+    () => detailData?.employeeOffboardingTasks ?? [],
+    [detailData?.employeeOffboardingTasks],
+  );
   const salary = detailData?.currentSalaryRevision ?? null;
   const salaryStructures = useMemo(
     () => salaryStructuresData?.salaryStructures ?? [],
@@ -838,48 +840,48 @@ export const EmployeeProfilePage = () => {
     }
   };
 
-  const onPrepareDocumentUpload = async (): Promise<void> => {
-    if (!detailEmployee) return;
-    const name = documentForm.name.trim();
-    const contentType = documentForm.contentType.trim();
-    if (!name || !contentType) {
-      setDetailError('Document name and content type are required before preparing upload');
-      return;
-    }
-    setDetailError(null);
-    try {
-      const result = await prepareDocumentUpload({
-        variables: {
-          input: {
-            employeeId: detailEmployee.id,
-            name,
-            contentType,
-          },
-        },
-      });
-      const access = result.data?.prepareEmployeeDocumentUpload;
-      if (access) {
-        setPreparedUpload(access);
-        setDocumentForm((current) => ({ ...current, storageKey: access.storageKey }));
-      }
-    } catch (caught) {
-      setDetailError(caught instanceof Error ? caught.message : 'Could not prepare upload access');
-    }
+  const onDocumentFileSelected = (file: File | null): void => {
+    setDocumentFile(file);
+    if (!file) return;
+    setDocumentForm((current) => ({
+      ...current,
+      name: current.name.trim() ? current.name : file.name,
+      // The browser knows the real type; the form default (application/pdf)
+      // must not win over it.
+      contentType: file.type || current.contentType,
+      sizeBytes: String(file.size),
+    }));
   };
 
   const onAttachDocument = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!detailEmployee) return;
+    if (!documentFile) {
+      setDetailError('Choose a file before attaching the document');
+      return;
+    }
+    const name = documentForm.name.trim() || documentFile.name;
+    const contentType =
+      documentForm.contentType.trim() || documentFile.type || 'application/octet-stream';
     setDetailError(null);
+    setUploadingDocument(true);
     try {
+      const result = await prepareDocumentUpload({
+        variables: { input: { employeeId: detailEmployee.id, name, contentType } },
+      });
+      const access = result.data?.prepareEmployeeDocumentUpload;
+      if (!access) {
+        throw new Error('Could not prepare the upload');
+      }
+      await uploadToSignedUrl(access, documentFile);
       await attachDocument({
         variables: {
           input: {
             employeeId: detailEmployee.id,
-            name: documentForm.name.trim(),
-            contentType: documentForm.contentType.trim(),
-            storageKey: documentForm.storageKey.trim(),
-            sizeBytes: Number(documentForm.sizeBytes),
+            name,
+            contentType,
+            storageKey: access.storageKey,
+            sizeBytes: documentFile.size,
             category: documentForm.category,
             visibility: documentForm.visibility,
             classification: documentForm.classification,
@@ -891,24 +893,45 @@ export const EmployeeProfilePage = () => {
         },
       });
       setDocumentForm(emptyDocumentForm);
-      setPreparedUpload(null);
+      setDocumentFile(null);
       await refetchDetail();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not attach document');
+    } finally {
+      setUploadingDocument(false);
     }
   };
 
-  const onPrepareDocumentVersionUpload = async (): Promise<void> => {
+  const onDocumentVersionFileSelected = (file: File | null): void => {
+    setDocumentVersionFile(file);
+    if (!file) return;
+    setDocumentVersionForm((current) => ({
+      ...current,
+      contentType: file.type || current.contentType,
+      sizeBytes: String(file.size),
+    }));
+  };
+
+  const onAddDocumentVersion = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
     if (!detailEmployee) return;
+    if (!documentVersionFile) {
+      setDetailError('Choose a file before adding the version');
+      return;
+    }
     const document = documents.find(
       (candidate) => candidate.id === documentVersionForm.employeeDocumentLinkId,
     );
-    const contentType = documentVersionForm.contentType.trim();
-    if (!document || !contentType) {
-      setDetailError('Select a document and content type before preparing a version upload');
+    if (!document) {
+      setDetailError('Select a document before adding a version');
       return;
     }
+    const contentType =
+      documentVersionForm.contentType.trim() ||
+      documentVersionFile.type ||
+      'application/octet-stream';
     setDetailError(null);
+    setUploadingDocument(true);
     try {
       const result = await prepareDocumentUpload({
         variables: {
@@ -920,29 +943,17 @@ export const EmployeeProfilePage = () => {
         },
       });
       const access = result.data?.prepareEmployeeDocumentUpload;
-      if (access) {
-        setPreparedVersionUpload(access);
-        setDocumentVersionForm((current) => ({ ...current, storageKey: access.storageKey }));
+      if (!access) {
+        throw new Error('Could not prepare the upload');
       }
-    } catch (caught) {
-      setDetailError(
-        caught instanceof Error ? caught.message : 'Could not prepare version upload access',
-      );
-    }
-  };
-
-  const onAddDocumentVersion = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    if (!detailEmployee) return;
-    setDetailError(null);
-    try {
+      await uploadToSignedUrl(access, documentVersionFile);
       await addDocumentVersion({
         variables: {
           input: {
             employeeDocumentLinkId: documentVersionForm.employeeDocumentLinkId,
-            contentType: documentVersionForm.contentType.trim(),
-            storageKey: documentVersionForm.storageKey.trim(),
-            sizeBytes: Number(documentVersionForm.sizeBytes),
+            contentType,
+            storageKey: access.storageKey,
+            sizeBytes: documentVersionFile.size,
             signatureStatus: documentVersionForm.signatureStatus,
             signedAt: documentVersionForm.signedAt
               ? `${documentVersionForm.signedAt}T00:00:00.000Z`
@@ -953,10 +964,12 @@ export const EmployeeProfilePage = () => {
         },
       });
       setDocumentVersionForm(emptyDocumentVersionForm);
-      setPreparedVersionUpload(null);
+      setDocumentVersionFile(null);
       await refetchDetail();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not add document version');
+    } finally {
+      setUploadingDocument(false);
     }
   };
 
@@ -2155,7 +2168,7 @@ export const EmployeeProfilePage = () => {
                               className="button button-secondary"
                               type="button"
                               onClick={() => {
-                                setPreparedVersionUpload(null);
+                                setDocumentVersionFile(null);
                                 setDocumentVersionForm({
                                   ...emptyDocumentVersionForm,
                                   employeeDocumentLinkId: document.id,
@@ -2204,7 +2217,7 @@ export const EmployeeProfilePage = () => {
                           signatureStatus:
                             selectedDocument?.signatureStatus ?? current.signatureStatus,
                         }));
-                        setPreparedVersionUpload(null);
+                        setDocumentVersionFile(null);
                       }}
                     >
                       <option value="">Select document</option>
@@ -2216,35 +2229,16 @@ export const EmployeeProfilePage = () => {
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor="document-version-storage">New storage key</label>
+                    <label htmlFor="document-version-file">File</label>
                     <input
-                      id="document-version-storage"
+                      id="document-version-file"
                       required
-                      value={documentVersionForm.storageKey}
+                      type="file"
                       onChange={(event) =>
-                        setDocumentVersionForm((current) => ({
-                          ...current,
-                          storageKey: event.target.value,
-                        }))
+                        onDocumentVersionFileSelected(event.target.files?.[0] ?? null)
                       }
                     />
                   </div>
-                  <div className="record-inline-actions">
-                    <button
-                      className="button button-secondary"
-                      disabled={
-                        preparingDocumentUpload || !documentVersionForm.employeeDocumentLinkId
-                      }
-                      type="button"
-                      onClick={() => void onPrepareDocumentVersionUpload()}
-                    >
-                      <IconUpload size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                      {preparingDocumentUpload ? 'Preparing...' : 'Prepare version upload'}
-                    </button>
-                  </div>
-                  {preparedVersionUpload
-                    ? renderAccessDescriptor(preparedVersionUpload, 'Prepared version upload')
-                    : null}
                   <div className="field-group">
                     <div className="field">
                       <label htmlFor="document-version-content-type">Content type</label>
@@ -2264,16 +2258,9 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-version-size">Size bytes</label>
                       <input
                         id="document-version-size"
-                        min="0"
-                        required
+                        readOnly
                         type="number"
                         value={documentVersionForm.sizeBytes}
-                        onChange={(event) =>
-                          setDocumentVersionForm((current) => ({
-                            ...current,
-                            sizeBytes: event.target.value,
-                          }))
-                        }
                       />
                     </div>
                   </div>
@@ -2344,11 +2331,15 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <button
                     className="button button-secondary"
-                    disabled={addingDocumentVersion}
+                    disabled={addingDocumentVersion || uploadingDocument}
                     type="submit"
                   >
                     <IconFileText size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {addingDocumentVersion ? 'Adding...' : 'Add version'}
+                    {uploadingDocument
+                      ? 'Uploading...'
+                      : addingDocumentVersion
+                        ? 'Adding...'
+                        : 'Add version'}
                   </button>
                 </form>
               ) : null}
@@ -2366,33 +2357,14 @@ export const EmployeeProfilePage = () => {
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor="document-storage">Storage key</label>
+                    <label htmlFor="document-file">File</label>
                     <input
-                      id="document-storage"
+                      id="document-file"
                       required
-                      value={documentForm.storageKey}
-                      onChange={(event) =>
-                        setDocumentForm((current) => ({
-                          ...current,
-                          storageKey: event.target.value,
-                        }))
-                      }
+                      type="file"
+                      onChange={(event) => onDocumentFileSelected(event.target.files?.[0] ?? null)}
                     />
                   </div>
-                  <div className="record-inline-actions">
-                    <button
-                      className="button button-secondary"
-                      disabled={preparingDocumentUpload || !detailEmployee}
-                      type="button"
-                      onClick={() => void onPrepareDocumentUpload()}
-                    >
-                      <IconUpload size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                      {preparingDocumentUpload ? 'Preparing...' : 'Prepare upload'}
-                    </button>
-                  </div>
-                  {preparedUpload
-                    ? renderAccessDescriptor(preparedUpload, 'Prepared upload')
-                    : null}
                   <div className="field-group">
                     <div className="field">
                       <label htmlFor="document-content-type">Content type</label>
@@ -2412,16 +2384,9 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-size">Size bytes</label>
                       <input
                         id="document-size"
-                        min="0"
-                        required
+                        readOnly
                         type="number"
                         value={documentForm.sizeBytes}
-                        onChange={(event) =>
-                          setDocumentForm((current) => ({
-                            ...current,
-                            sizeBytes: event.target.value,
-                          }))
-                        }
                       />
                     </div>
                   </div>
@@ -2550,11 +2515,15 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <button
                     className="button button-secondary"
-                    disabled={attachingDocument}
+                    disabled={attachingDocument || uploadingDocument}
                     type="submit"
                   >
                     <IconFileText size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {attachingDocument ? 'Attaching...' : 'Attach document'}
+                    {uploadingDocument
+                      ? 'Uploading...'
+                      : attachingDocument
+                        ? 'Attaching...'
+                        : 'Attach document'}
                   </button>
                 </form>
               ) : null}

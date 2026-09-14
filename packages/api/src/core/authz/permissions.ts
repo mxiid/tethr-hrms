@@ -13,9 +13,22 @@ export const PERMISSIONS = {
   userManage: 'user:manage',
   roleManage: 'role:manage',
   clientManage: 'client:manage',
+  // Cross-workspace operator scope: only ever granted to Tethr-side roles, and
+  // only honoured when the caller's organization is kind 'tethr' (both checks
+  // live in PlatformScopeService — the permission alone is not sufficient).
+  platformReadAll: 'platform:read-all',
   hiringRequestRead: 'hiring-request:read',
   hiringRequestWrite: 'hiring-request:write',
   hiringRequestManage: 'hiring-request:manage',
+  // The candidate pool is Tethr-only data (client visibility is the narrow
+  // shortlist projection, never a general read).
+  candidateRead: 'candidate:read',
+  candidateManage: 'candidate:manage',
+  // Shortlists cross the portal line deliberately: the client reads only the
+  // entries presented to them and records their verdict.
+  shortlistRead: 'shortlist:read',
+  shortlistDecide: 'shortlist:decide',
+  formManage: 'form:manage',
   assessmentRead: 'assessment:read',
   assessmentWrite: 'assessment:write',
   documentRead: 'document:read',

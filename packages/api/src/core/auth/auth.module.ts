@@ -2,13 +2,15 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { ConfigService } from '../config/config.service';
 import { AuthzModule } from '../authz/authz.module';
+import { ConfigService } from '../config/config.service';
 import { provideTenantScopedRepository } from '../tenancy/tenant-repository.provider';
+
 import { AuthResolver } from './auth.resolver';
 import { AuthService } from './auth.service';
 import { USER_REPOSITORY } from './auth.tokens';
 import { EmployeeLifecycleConsumer } from './employee-lifecycle.consumer';
+import { FormTokenService } from './form-token.service';
 import { PasswordService } from './password.service';
 import { User } from './user.entity';
 
@@ -31,9 +33,10 @@ import { User } from './user.entity';
     PasswordService,
     AuthService,
     AuthResolver,
+    FormTokenService,
     EmployeeLifecycleConsumer,
     provideTenantScopedRepository(USER_REPOSITORY, User),
   ],
-  exports: [AuthService, PasswordService],
+  exports: [AuthService, PasswordService, FormTokenService],
 })
 export class AuthModule {}
