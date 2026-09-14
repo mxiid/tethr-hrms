@@ -9,7 +9,7 @@ import { DomainEventPublisher } from '../../core/events/domain-event-publisher.s
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
-import { HiringRequestUpdate } from './entities/hiring-request-update.entity';
+import { HiringRequestUpdate, type HiringRequestUpdateActor } from './entities/hiring-request-update.entity';
 import { HiringRequest } from './entities/hiring-request.entity';
 import { HIRING_REQUEST_REPOSITORY, HIRING_REQUEST_UPDATE_REPOSITORY } from './recruitment.tokens';
 
@@ -21,6 +21,9 @@ type CreateHiringRequestData = {
   readonly preferredStartDate?: string | null;
   readonly clientNote?: string | null;
   readonly requestedByUserId: UserId;
+  // Who raised it: clients submit against their workspace, Tethr can raise one
+  // on their behalf. Drives the first entry of the update trail.
+  readonly actor: HiringRequestUpdateActor;
 };
 
 type UpdateHiringRequestData = {
@@ -70,7 +73,7 @@ export class RecruitmentService {
           organizationId,
           hiringRequestId: toId<HiringRequestId>(saved.id),
           status: saved.status,
-          actor: 'client',
+          actor: input.actor,
           note: input.clientNote ?? null,
           createdByUserId: input.requestedByUserId,
         }),

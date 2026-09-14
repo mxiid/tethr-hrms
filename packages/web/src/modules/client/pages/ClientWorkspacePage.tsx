@@ -113,7 +113,7 @@ export const ClientWorkspacePage = () => {
     {
       title: 'Manage teammates',
       detail: isClientAdmin ? 'Invite and manage workspace users' : 'Client admin only',
-      to: '/users',
+      to: '/settings/members',
       icon: IconUserPlus,
       complete: isClientAdmin,
       disabled: !isClientAdmin,
@@ -149,9 +149,9 @@ export const ClientWorkspacePage = () => {
     ...(isClientAdmin
       ? [
           {
-            title: 'Workspace users',
+            title: 'Workspace members',
             description: 'Invite teammates, link accounts',
-            to: '/users',
+            to: '/settings/members',
             icon: IconUserPlus,
           },
           {

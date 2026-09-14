@@ -64,6 +64,7 @@ describe('RecruitmentService', () => {
     const request = await service.createHiringRequest({
       positionTitle: 'Senior developer',
       requestedByUserId: USER,
+      actor: 'client',
     });
 
     expect(request.status).toBe('submitted');
@@ -77,6 +78,24 @@ describe('RecruitmentService', () => {
     expect(publisher.publishWithin).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ name: 'hiringRequest.submitted' }),
+    );
+  });
+
+  it('records a Tethr-raised request with a Tethr first update', async () => {
+    const { service, manager } = buildService();
+
+    await service.createHiringRequest({
+      positionTitle: 'Staff designer',
+      requestedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: 'tethr',
+        hiringRequestId: REQUEST,
+        status: 'submitted',
+      }),
     );
   });
 

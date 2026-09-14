@@ -117,7 +117,6 @@ button {
 }
 
 .icon-button:focus-visible,
-.account-button:focus-visible,
 .button:focus-visible {
   outline: 3px solid var(--hrms-color-border-blue);
   outline-offset: 1px;
@@ -131,8 +130,6 @@ button {
   outline-offset: 1px;
 }
 
-.topbar-actions,
-.account-button,
 .panel-title-row,
 .employee-name-cell,
 .row-actions,
@@ -234,13 +231,7 @@ button {
   font-size: var(--hrms-font-size-sm);
 }
 
-.topbar-actions {
-  justify-content: end;
-  gap: var(--hrms-space-2);
-}
-
 .icon-button,
-.account-button,
 .button {
   /* Same rounded-pill language as the top nav's pills, carried down to
      every other clickable surface in the app. */
@@ -260,18 +251,10 @@ button {
   background: transparent;
 }
 
-.icon-button:hover,
-.account-button:hover {
+.icon-button:hover {
   background: var(--hrms-color-background-tertiary);
 }
 
-.account-button {
-  gap: var(--hrms-space-2);
-  color: var(--hrms-color-text-secondary);
-  background: transparent;
-}
-
-.account-avatar,
 .employee-avatar {
   display: grid;
   place-items: center;
@@ -279,18 +262,6 @@ button {
   background: var(--chip-color, var(--hrms-color-background-inverted-primary));
   border-radius: var(--hrms-radius-rounded);
   font-weight: var(--hrms-font-weight-semi-bold);
-}
-
-.account-avatar {
-  width: 24px;
-  height: 24px;
-  font-size: var(--hrms-font-size-xxs);
-}
-
-.account-avatar-lg {
-  width: 36px;
-  height: 36px;
-  font-size: var(--hrms-font-size-sm);
 }
 
 /* Top navigation (replaces the sidebar — a horizontal bar: brand + workspace
@@ -366,6 +337,13 @@ button {
 .dropdown-panel-workspace {
   left: 0;
   min-width: 260px;
+}
+
+/* The workspace menu opens with the workspace's identity, then its actions. */
+.workspace-menu-header {
+  padding: var(--hrms-space-2) var(--hrms-space-2) var(--hrms-space-1);
+  margin-bottom: var(--hrms-space-1);
+  border-bottom: 1px solid var(--hrms-color-border-light);
 }
 
 .dropdown-panel-workspace .field {
@@ -451,6 +429,16 @@ button {
   background: var(--hrms-color-background-primary);
   border: 1px solid var(--hrms-color-border-strong);
   box-shadow: var(--hrms-box-shadow-light);
+}
+
+/* Browsing a section you're not inside yet: the pill reads as open (tinted,
+   caret down) while the section you're actually on keeps the white "you are
+   here" pill — so the two never look identical. */
+.nav-pill-group.is-open:not(.is-active) {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+  border: 1px solid var(--hrms-color-border-medium);
+  box-shadow: none;
 }
 
 /* Persistent second-row tab strip for the group whose page is currently
@@ -633,14 +621,11 @@ button {
   }
 }
 
+/* The strip expands and folds with the group pills: the grid row animates
+   0fr → 1fr so a section's tabs grow out of the nav instead of popping in. */
 .app-subnav {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 44px;
-  min-height: 44px;
-  gap: var(--hrms-space-1);
-  padding: var(--hrms-space-1) var(--hrms-space-10);
+  display: grid;
+  grid-template-rows: 0fr;
   /* Rather than a flat neutral bar, fade the header's own brand wash down
      into the page — the two rows read as one continuous surface instead of
      a plain gray shelf bolted underneath. */
@@ -649,8 +634,60 @@ button {
     color-mix(in srgb, var(--chip-color, var(--hrms-color-tag-gray)) 10%, var(--hrms-color-background-primary)) 0%,
     var(--hrms-color-background-primary) 100%
   );
+  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.app-subnav.is-open {
+  grid-template-rows: 1fr;
+}
+
+.app-subnav-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-subnav-tabs {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 44px;
+  min-height: 44px;
+  gap: var(--hrms-space-1);
+  padding: var(--hrms-space-1) var(--hrms-space-10);
   border-bottom: 1px solid var(--hrms-color-border-light);
   overflow-x: auto;
+  animation: subnav-tabs-in 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Switching groups swaps the tab row (keyed remount); this is the crossfade. */
+@keyframes subnav-tabs-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.nav-pill-caret {
+  transition: transform 0.15s ease;
+}
+
+.nav-pill-group.is-open .nav-pill-caret {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-subnav,
+  .nav-pill-caret {
+    transition: none;
+  }
+
+  .app-subnav-tabs {
+    animation: none;
+  }
 }
 
 .subnav-tab {
@@ -703,14 +740,6 @@ button {
   box-shadow: var(--hrms-box-shadow-strong);
 }
 
-.dropdown-panel-more {
-  left: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--hrms-between-siblings-gap);
-  min-width: 200px;
-}
-
 .dropdown-nav-item {
   display: flex;
   align-items: center;
@@ -743,20 +772,10 @@ button {
   color: var(--hrms-color-text-primary);
 }
 
-.dropdown-panel-account {
-  right: 0;
-  width: 260px;
-}
-
-.account-dropdown-header {
-  display: flex;
-  align-items: center;
-  gap: var(--hrms-space-3);
-  padding: var(--hrms-space-2);
-}
-
-.account-dropdown-identity {
-  min-width: 0;
+.dropdown-nav-item-danger,
+.dropdown-nav-item-danger:hover,
+.dropdown-nav-item-danger:hover svg {
+  color: var(--hrms-color-text-danger);
 }
 
 .account-dropdown-email {
@@ -769,11 +788,6 @@ button {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xxs);
   text-transform: capitalize;
-}
-
-.account-dropdown-section {
-  padding: var(--hrms-space-2);
-  border-top: 1px solid var(--hrms-color-border-light);
 }
 
 .account-dropdown-label {
@@ -817,56 +831,166 @@ button {
   font-size: var(--hrms-font-size-xxs);
 }
 
-.account-dropdown-signout {
+/* ---------------------------------------------------------------------------
+   Settings — a full-screen surface with its own grouped sidebar, the shape
+   Twenty uses. It replaces the app shell, so the sidebar owns the close action,
+   the theme switch, and log out; the right column carries the breadcrumb and
+   the routed section.
+   --------------------------------------------------------------------------- */
+.settings-surface {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--hrms-color-background-primary);
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hrms-space-4);
+  padding: var(--hrms-space-4);
+  background: var(--hrms-color-background-secondary);
+  border-right: 1px solid var(--hrms-color-border-light);
+}
+
+.settings-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-2);
+  /* Lines the title up with the nav items below it. */
+  padding-left: var(--hrms-space-2);
+}
+
+.settings-sidebar-title {
+  margin: 0;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-semi-bold);
+}
+
+.settings-sidebar-nav {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 2px;
+}
+
+.settings-sidebar-group-label {
+  padding: var(--hrms-space-2) var(--hrms-space-2) var(--hrms-space-1);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+.settings-nav-item {
   display: flex;
   align-items: center;
   width: 100%;
   gap: var(--hrms-space-2);
-  padding: var(--hrms-space-2);
-  color: var(--hrms-color-text-danger);
+  padding: 6px var(--hrms-space-2);
+  color: var(--hrms-color-text-secondary);
   background: transparent;
   border: 0;
-  border-top: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-sm);
   cursor: pointer;
-  font-size: var(--hrms-font-size-xs);
+  font: inherit;
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
   text-align: left;
-  transition: var(--hrms-animation-clickable-background-transition);
-}
-
-.account-dropdown-signout:hover {
-  background: var(--hrms-color-background-tertiary);
-}
-
-.account-dropdown-settings {
-  display: flex;
-  align-items: center;
-  gap: var(--hrms-space-2);
-  padding: var(--hrms-space-2);
-  color: var(--hrms-color-text-secondary);
-  border-top: 1px solid var(--hrms-color-border-light);
-  font-size: var(--hrms-font-size-xs);
   text-decoration: none;
-  transition: var(--hrms-animation-clickable-background-transition);
 }
 
-.account-dropdown-settings:hover {
+.settings-nav-item:hover {
   color: var(--hrms-color-text-primary);
   background: var(--hrms-color-background-tertiary);
 }
 
-/* ---------------------------------------------------------------------------
-   Settings — its own sub-nav strip under the app chrome, with content pages
-   provided by the routed children.
-   --------------------------------------------------------------------------- */
-.settings-subnav {
-  background: var(--hrms-color-background-primary);
-  border-bottom: 1px solid var(--hrms-color-border-light);
+.settings-nav-item.is-active {
+  color: var(--hrms-color-accent-accent11);
+  background: var(--hrms-color-accent-accent3);
 }
 
-.settings-subnav-inner {
-  margin-bottom: 0;
-  padding: 0 var(--hrms-space-10);
-  border-bottom: 0;
+.settings-sidebar-footer {
+  display: grid;
+  gap: 2px;
+  padding-top: var(--hrms-space-2);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.settings-nav-item-signout {
+  color: var(--hrms-color-text-danger);
+}
+
+.settings-nav-item-signout:hover {
+  color: var(--hrms-color-text-danger);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: var(--hrms-space-6) var(--hrms-space-10);
+}
+
+.settings-content-header {
+  margin-bottom: var(--hrms-space-2);
+}
+
+.settings-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-1);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xs);
+}
+
+.settings-breadcrumb-current {
+  color: var(--hrms-color-text-primary);
+  font-weight: var(--hrms-font-weight-medium);
+}
+
+@media (max-width: 900px) {
+  .settings-surface {
+    grid-template-columns: minmax(0, 1fr);
+    /* Auto rows would otherwise stretch to fill the viewport, floating the
+       horizontal sidebar in empty space. */
+    align-content: start;
+  }
+
+  .settings-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--hrms-space-2);
+    border-right: 0;
+    border-bottom: 1px solid var(--hrms-color-border-light);
+  }
+
+  .settings-sidebar-nav {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+  }
+
+  .settings-sidebar-group-label {
+    display: none;
+  }
+
+  .settings-sidebar-footer {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .settings-content {
+    max-height: none;
+    padding: var(--hrms-space-4);
+  }
 }
 
 .settings-section-body {
@@ -1826,13 +1950,86 @@ button {
    Nodes are the same compact identity card the directory uses; connectors are
    pure CSS pseudo-elements so there's no layout library to carry. */
 .org-chart {
+  display: flex;
+  align-items: flex-start;
+  /* Centres a small tree; `safe` keeps the left edge reachable once a zoomed-in
+     canvas is wider than the viewport. */
+  justify-content: safe center;
+  max-height: min(80vh, 900px);
   padding: var(--hrms-space-6);
-  overflow-x: auto;
+  overflow: auto;
+}
+
+/* The zoom implementation: the sizer reserves the scaled extent so the scroll
+   area grows and shrinks with the content, while the canvas keeps its natural
+   size and is scaled with a transform (origin top-left). */
+.org-chart-sizer {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.org-chart-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
 }
 
 .org-chart-empty {
   padding: var(--hrms-space-6);
   color: var(--hrms-color-text-secondary);
+}
+
+/* Zoom / search controls floating over the chart card. */
+.org-chart-frame {
+  position: relative;
+}
+
+.org-chart-zoom {
+  position: absolute;
+  z-index: 2;
+  top: var(--hrms-space-3);
+  right: var(--hrms-space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.org-chart-zoom button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--hrms-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--hrms-radius-sm);
+  cursor: pointer;
+}
+
+.org-chart-zoom button:hover:not(:disabled) {
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-tertiary);
+}
+
+.org-chart-zoom button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.org-chart-zoom button.org-chart-zoom-value {
+  width: auto;
+  min-width: 46px;
+  padding: 0 var(--hrms-space-1);
+  color: var(--hrms-color-text-primary);
+  font-size: var(--hrms-font-size-xs);
+  font-weight: var(--hrms-font-weight-medium);
 }
 
 .org-tree,
@@ -1860,6 +2057,31 @@ button {
   width: 0;
   height: var(--hrms-space-6);
   border-left: 1px solid var(--hrms-color-border-medium);
+}
+
+/* Expand/collapse: the grid row animates 0fr → 1fr (auto-height without a
+   measured value), and the item clips only while closed or mid-transition, so
+   a card's manager popover is never cut off once the animation settles. */
+.org-children {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.org-children:not(.is-open) {
+  grid-template-rows: 0fr;
+}
+
+.org-children-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+}
+
+.org-children:not(.is-open) > .org-children-inner,
+.org-children-inner.is-clipped {
+  overflow: hidden;
 }
 
 .org-tree li {
@@ -2073,7 +2295,11 @@ button {
   border: 1px solid var(--hrms-color-border-light);
   border-radius: var(--hrms-radius-md);
   cursor: pointer;
-  transition: var(--hrms-animation-clickable-background-transition);
+  transition:
+    var(--hrms-animation-clickable-background-transition),
+    opacity 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .org-node:hover {
@@ -2084,6 +2310,28 @@ button {
 .org-node.is-selected {
   border-color: var(--hrms-color-border-strong);
   box-shadow: var(--hrms-box-shadow-light);
+}
+
+/* Directory search on the chart: matches glow, everything else dims a little
+   but stays on screen — the hierarchy never disappears under a query. */
+.org-node.is-match {
+  border-color: var(--hrms-color-accent-accent9);
+  box-shadow:
+    0 0 0 3px var(--hrms-color-accent-accent4),
+    var(--hrms-box-shadow-strong);
+}
+
+.org-node.is-match .org-node-name {
+  color: var(--hrms-color-accent-accent11);
+}
+
+.org-node.is-dimmed {
+  opacity: 0.45;
+}
+
+.org-node.is-dimmed:hover,
+.org-node.is-dimmed:focus-visible {
+  opacity: 1;
 }
 
 .org-node:focus-visible {
@@ -5322,15 +5570,22 @@ button {
   margin-top: var(--hrms-space-1);
 }
 
+/* The role editor can hold two selects plus Save; flex-wrap keeps it inside its
+   cell instead of bleeding over the neighbouring column on narrow screens. */
 .access-role-control {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--hrms-space-2);
 }
 
-.access-role-control.is-role-only {
-  grid-template-columns: minmax(150px, 1fr) auto;
+.access-role-control select {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.access-role-control .button {
+  flex: 0 0 auto;
 }
 
 .access-role-static {

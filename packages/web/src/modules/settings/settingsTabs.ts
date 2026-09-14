@@ -1,4 +1,12 @@
 import type { PortalKind, SystemRoleKey } from '@hrms/shared';
+import {
+  IconCurrencyDollar,
+  IconFileInvoice,
+  IconReportMoney,
+  IconSettings,
+  IconUsers,
+  type TablerIcon,
+} from '@tabler/icons-react';
 
 export type SettingsTabKey = 'general' | 'members' | 'billing' | 'payroll' | 'pay';
 
@@ -7,6 +15,7 @@ type SettingsPortal = Exclude<PortalKind, 'none' | 'employee'>;
 export type SettingsTab = {
   readonly key: SettingsTabKey;
   readonly label: string;
+  readonly icon: TablerIcon;
   readonly portals: readonly SettingsPortal[];
   readonly roleKeys: readonly SystemRoleKey[];
 };
@@ -22,30 +31,35 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   {
     key: 'general',
     label: 'General',
+    icon: IconSettings,
     portals: ['tethr', 'client'],
     roleKeys: ['tethrAdmin', 'clientAdmin'],
   },
   {
     key: 'members',
     label: 'Members',
+    icon: IconUsers,
     portals: ['tethr', 'client'],
     roleKeys: ['tethrAdmin', 'clientAdmin'],
   },
   {
     key: 'billing',
     label: 'Billing',
+    icon: IconFileInvoice,
     portals: ['tethr'],
     roleKeys: ['tethrAdmin', 'tethrFinance'],
   },
   {
     key: 'payroll',
     label: 'Payroll',
+    icon: IconReportMoney,
     portals: ['tethr'],
     roleKeys: ['tethrAdmin', 'tethrFinance'],
   },
   {
     key: 'pay',
     label: 'Pay',
+    icon: IconCurrencyDollar,
     portals: ['tethr', 'client'],
     roleKeys: ['tethrAdmin', 'tethrHr', 'clientAdmin'],
   },

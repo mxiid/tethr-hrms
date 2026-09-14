@@ -3,6 +3,7 @@ import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { AuthService } from '../../core/auth/auth.service';
+import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
 import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
@@ -52,6 +53,7 @@ export class RecruitmentResolver {
   constructor(
     private readonly recruitmentService: RecruitmentService,
     private readonly authService: AuthService,
+    private readonly authorization: AuthorizationService,
   ) {}
 
   @Query(() => [HiringRequestView])
@@ -68,6 +70,12 @@ export class RecruitmentResolver {
     @Args('input') input: CreateHiringRequestInput,
   ): Promise<HiringRequestView> {
     const user = await this.authService.getCurrentUser();
+    // Attribute the trail to the portal that raised it: clients submit for
+    // their own workspace, Tethr staff can raise a request on their behalf.
+    const access = await this.authorization.getAccessForUserInOrganization(
+      user.id,
+      user.organizationId,
+    );
     const request = await this.recruitmentService.createHiringRequest({
       positionTitle: input.positionTitle,
       headcount: input.headcount,
@@ -76,6 +84,7 @@ export class RecruitmentResolver {
       preferredStartDate: input.preferredStartDate ?? null,
       clientNote: input.clientNote ?? null,
       requestedByUserId: toId<UserId>(user.id),
+      actor: access.portal === 'client' ? 'client' : 'tethr',
     });
     return toHiringRequestView(request);
   }

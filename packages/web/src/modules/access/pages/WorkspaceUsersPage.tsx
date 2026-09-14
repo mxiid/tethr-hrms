@@ -100,7 +100,7 @@ export const WorkspaceUsersPage = () => {
     [employeeData?.employees],
   );
   const workspaceUsers = data?.workspaceUsers ?? [];
-  const view = useListView({ routeKey: '/users' });
+  const view = useListView({ routeKey: '/settings/members' });
   const visibleUsers = useMemo(() => {
     const statuses = view.filters.status ?? [];
     const roles = view.filters.role ?? [];
@@ -139,9 +139,7 @@ export const WorkspaceUsersPage = () => {
         selectedEmployeeId !== (workspaceUser.employeeId ?? ''));
 
     return canEditRole ? (
-      <div
-        className={`access-role-control${selectedRole === 'employee' ? '' : ' is-role-only'}`}
-      >
+      <div className="access-role-control">
         <select
           aria-label={`Access role for ${workspaceUser.email}`}
           value={selectedRole}
@@ -336,7 +334,7 @@ export const WorkspaceUsersPage = () => {
         <header className="page-header">
           <div>
             <h1 className="page-title" id="workspace-users-title">
-              Workspace users
+              Members
             </h1>
             <p className="page-subtitle">Who can sign in, and what they can do.</p>
           </div>

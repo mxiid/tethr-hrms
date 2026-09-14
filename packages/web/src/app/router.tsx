@@ -63,6 +63,22 @@ export const AppRouter = () => (
       <Route path="/signup" element={<SignUpPage />} />
       <Route path="/access" element={<AccessPendingPage />} />
       <Route element={<RequireAuth />}>
+        {/* Settings replace the shell: their own full-screen sidebar surface. */}
+        <Route
+          element={<RequirePortal portals={['tethr', 'client']} roleKeys={SETTINGS_ROLE_KEYS} />}
+        >
+          <Route path="/settings" element={<SettingsLayout />}>
+            <Route index element={<SettingsIndexRedirect />} />
+            {SETTINGS_TABS.map((tab) => (
+              <Route
+                element={<RequirePortal portals={tab.portals} roleKeys={tab.roleKeys} />}
+                key={tab.key}
+              >
+                <Route path={tab.key} element={SETTINGS_PAGES[tab.key]} />
+              </Route>
+            ))}
+          </Route>
+        </Route>
         <Route element={<AppShell />}>
           <Route element={<RequirePortal portals={['tethr']} />}>
             <Route path="/dashboard" element={<DashboardPage />} />
@@ -105,31 +121,6 @@ export const AppRouter = () => (
             }
           >
             <Route path="/compensation" element={<CompensationPage />} />
-          </Route>
-          <Route
-            element={
-              <RequirePortal
-                portals={['tethr', 'client']}
-                roleKeys={['tethrAdmin', 'clientAdmin']}
-              />
-            }
-          >
-            <Route path="/users" element={<WorkspaceUsersPage />} />
-          </Route>
-          <Route
-            element={<RequirePortal portals={['tethr', 'client']} roleKeys={SETTINGS_ROLE_KEYS} />}
-          >
-            <Route path="/settings" element={<SettingsLayout />}>
-              <Route index element={<SettingsIndexRedirect />} />
-              {SETTINGS_TABS.map((tab) => (
-                <Route
-                  element={<RequirePortal portals={tab.portals} roleKeys={tab.roleKeys} />}
-                  key={tab.key}
-                >
-                  <Route path={tab.key} element={SETTINGS_PAGES[tab.key]} />
-                </Route>
-              ))}
-            </Route>
           </Route>
           <Route element={<RequirePortal portals={['client']} />}>
             <Route path="/client" element={<ClientWorkspacePage />} />

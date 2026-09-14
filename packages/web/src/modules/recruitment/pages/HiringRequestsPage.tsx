@@ -154,6 +154,14 @@ export const HiringRequestsPage = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
   const isTethr = user?.portal === 'tethr';
+  // Mirrors the hiringRequestWrite permission: clients raise requests for their
+  // own workspace, Tethr staff can raise one on their behalf.
+  const canCreateRequest = Boolean(
+    user?.roleKeys.includes('tethrAdmin') ||
+      user?.roleKeys.includes('tethrHr') ||
+      user?.roleKeys.includes('clientAdmin') ||
+      user?.roleKeys.includes('clientMember'),
+  );
   const { data, loading, error, refetch } = useQuery<HiringRequestsData>(HIRING_REQUESTS_QUERY);
   const [createRequest] = useMutation(CREATE_HIRING_REQUEST_MUTATION);
   const [updateRequest, { loading: updating }] = useMutation(UPDATE_HIRING_REQUEST_MUTATION);
@@ -344,13 +352,9 @@ export const HiringRequestsPage = () => {
             </h1>
             <p className="page-subtitle">Track open roles from request to hire.</p>
           </div>
-          {!isTethr ? (
+          {canCreateRequest ? (
             <div className="page-actions">
-              <button
-                className="button button-primary"
-                onClick={startCreate}
-                type="button"
-              >
+              <button className="button button-primary" onClick={startCreate} type="button">
                 <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 New request
               </button>
@@ -390,7 +394,19 @@ export const HiringRequestsPage = () => {
                 <EmptyState
                   icon={IconBriefcase}
                   title="No hiring requests yet"
-                  description="Requests submitted by clients will show up here for recruitment."
+                  description={
+                    isTethr
+                      ? 'Raise one here, or clients can submit them from their workspace.'
+                      : 'Requests you submit will show up here for recruitment.'
+                  }
+                  action={
+                    canCreateRequest ? (
+                      <button className="button button-primary" onClick={startCreate} type="button">
+                        <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                        New request
+                      </button>
+                    ) : null
+                  }
                 />
               ) : (
                 <EmptyState

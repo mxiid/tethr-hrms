@@ -85,7 +85,7 @@ const tethrSteps = (data: StepsData | undefined, isAdmin: boolean): readonly Get
     id: 'invite-teammate',
     title: 'Invite a teammate',
     detail: isAdmin ? 'Add Tethr staff to this workspace' : 'Workspace admin only',
-    to: '/users',
+    to: '/settings/members',
     icon: IconUserPlus,
     complete: isAdmin,
     locked: !isAdmin,

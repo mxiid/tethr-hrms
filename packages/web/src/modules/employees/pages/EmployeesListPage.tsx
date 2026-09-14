@@ -407,8 +407,9 @@ export const EmployeesListPage = () => {
   });
 
   const view = useListView({ routeKey: '/employees' });
-  const visibleEmployees = useMemo(() => {
-    const needle = searchTerm.trim().toLowerCase();
+  // Status/worker-type filters narrow the dataset; the search term does not —
+  // on the org chart it highlights and reveals instead of hiding the rest.
+  const chartEmployees = useMemo(() => {
     const statuses = view.filters.status ?? [];
     const workerTypes = view.filters.workerType ?? [];
     return employees.filter((employee) => {
@@ -418,8 +419,15 @@ export const EmployeesListPage = () => {
       if (workerTypes.length > 0 && !workerTypes.includes(employee.workerType)) {
         return false;
       }
-      if (needle === '') return true;
-      return [
+      return true;
+    });
+  }, [employees, view.filters.status, view.filters.workerType]);
+
+  const visibleEmployees = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase();
+    if (needle === '') return chartEmployees;
+    return chartEmployees.filter((employee) =>
+      [
         fullName(employee),
         employee.employeeNumber,
         employee.workEmail ?? '',
@@ -427,9 +435,9 @@ export const EmployeesListPage = () => {
       ]
         .join(' ')
         .toLowerCase()
-        .includes(needle);
-    });
-  }, [employees, searchTerm, view.filters.status, view.filters.workerType]);
+        .includes(needle),
+    );
+  }, [chartEmployees, searchTerm]);
 
   const columns: readonly ColumnDefinition<EmployeeRecord>[] = [
     {
@@ -513,6 +521,8 @@ export const EmployeesListPage = () => {
     searchTerm.trim() !== '' ||
     (view.filters.status ?? []).length > 0 ||
     (view.filters.workerType ?? []).length > 0;
+  const directoryFiltersActive =
+    (view.filters.status ?? []).length > 0 || (view.filters.workerType ?? []).length > 0;
 
   const clearFilters = (): void => {
     setSearchTerm('');
@@ -650,8 +660,8 @@ export const EmployeesListPage = () => {
             <span className="directory-count">
               {loading
                 ? 'Loading…'
-                : filtersActive
-                  ? `${visibleEmployees.length} of ${employees.length} people`
+                : directoryFiltersActive
+                  ? `${chartEmployees.length} of ${employees.length} people`
                   : `Total ${employees.length} ${employees.length === 1 ? 'person' : 'people'}`}
             </span>
           ) : null}
@@ -700,11 +710,11 @@ export const EmployeesListPage = () => {
                   ) : null
                 }
               />
-            ) : !loading && visibleEmployees.length === 0 ? (
+            ) : !loading && chartEmployees.length === 0 ? (
               <EmptyState
                 icon={IconFilterOff}
                 title="No result"
-                description="Adjust your search or filters to show the people in this workspace."
+                description="Adjust your filters to show the people in this workspace."
                 action={
                   <button className="button button-secondary" type="button" onClick={clearFilters}>
                     Clear all filters
@@ -713,8 +723,9 @@ export const EmployeesListPage = () => {
               />
             ) : (
               <EmployeeOrgChart
-                employees={visibleEmployees}
+                employees={chartEmployees}
                 reassigning={reassigning}
+                searchTerm={searchTerm}
                 selectedId={selectedId}
                 onReassign={
                   canRestructure ? (id, managerId) => void onReassign(id, managerId) : undefined

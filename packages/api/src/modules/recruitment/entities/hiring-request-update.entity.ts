@@ -3,7 +3,7 @@ import { Column, Entity, Index } from 'typeorm';
 
 import { TenantScopedEntity } from '../../../core/database/entities/tenant-scoped.entity';
 
-type HiringRequestUpdateActor = 'client' | 'tethr';
+export type HiringRequestUpdateActor = 'client' | 'tethr';
 
 @Entity('hiring_request_updates')
 @Index(['organizationId', 'hiringRequestId'])

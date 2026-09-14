@@ -23,7 +23,7 @@ import {
   IconSpeakerphone,
   IconSun,
   IconUserCircle,
-  IconUserCog,
+  IconUserPlus,
   IconUsersGroup,
   IconX,
   type TablerIcon,
@@ -40,6 +40,7 @@ import { EMPLOYEES_QUERY } from '../modules/employees/graphql/employee.operation
 import { INVOICES_JUMP_QUERY } from '../modules/finance/billing/graphql/billing.operations';
 import { PAYROLL_RUNS_QUERY } from '../modules/finance/payroll/graphql/payroll.operations';
 import { MY_ORGANIZATION_QUERY } from '../modules/organization/graphql/organization.operations';
+import { visibleSettingsTabs } from '../modules/settings/settingsTabs';
 import { useTheme } from '../providers/theme/useTheme';
 
 import { portalHome, portalLabel } from './portal';
@@ -137,12 +138,20 @@ const employeeNavigation: readonly NavigationEntry[] = [
   { kind: 'link', label: 'Profile', to: '/me/profile', icon: IconUserCircle },
 ];
 
-const workspaceUsersItem: NavigationItem = { label: 'Users', to: '/users', icon: IconUserCog };
-
 // A destination matches a detail route too, so the group's sub-nav strip stays
 // visible on `/payroll/:runId`, `/employees/:employeeId`, `/billing/:invoiceId`.
 const isWithinPath = (pathname: string, to: string): boolean =>
   pathname === to || pathname.startsWith(`${to}/`);
+
+// Most specific match wins: an entry is active when it matches the path and no
+// sibling matches a longer destination. Without this, "Employees" stays lit on
+// `/employees/org-chart` — and on any future pair where one route prefixes
+// another (`/payroll` vs `/payroll/:runId` is deliberate; siblings must not be).
+const isEntryActive = (pathname: string, to: string, siblings: readonly string[]): boolean =>
+  isWithinPath(pathname, to) &&
+  !siblings.some(
+    (other) => other !== to && other.startsWith(`${to}/`) && isWithinPath(pathname, other),
+  );
 
 const NAV_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -168,25 +177,33 @@ export const AppShell = () => {
   // Phone navigation is a drawer, not the pill row — see the mobile block in
   // global.css. Kept as separate state so the two never fight for the same menu.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const navRef = useRef<HTMLElement | null>(null);
-  const accountRef = useRef<HTMLDivElement | null>(null);
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const topnavRef = useRef<HTMLElement | null>(null);
+  const subnavRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Clicking anywhere outside the top bar dismisses the workspace dropdown and
+  // folds the section strip back up. `topnavRef` covers the pills, the workspace
+  // menu, and the search; the strip is its own sibling element.
   useEffect(() => {
-    const onClickOutside = (event: MouseEvent): void => {
-      const target = event.target as Node;
-      if (
-        navRef.current?.contains(target) ||
-        accountRef.current?.contains(target) ||
-        workspaceRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setOpenMenu(null);
+    const isOutsideChrome = (target: Node): boolean =>
+      !topnavRef.current?.contains(target) && !subnavRef.current?.contains(target);
+    // The dropdown is an overlay, so closing it on mousedown is fine.
+    const onMouseDown = (event: MouseEvent): void => {
+      if (isOutsideChrome(event.target as Node)) setOpenMenu(null);
     };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    // The strip is in normal flow: folding it on mousedown shifts the content
+    // up before mouseup, so the element under the pointer changes and the click
+    // is swallowed. Fold after the click has been dispatched instead.
+    const onClick = (event: MouseEvent): void => {
+      if (!isOutsideChrome(event.target as Node)) return;
+      setSubnavMode((current) => (current.mode === 'closed' ? current : { mode: 'closed' }));
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('click', onClick);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('click', onClick);
+    };
   }, []);
 
   // Cmd+K (Mac) / Ctrl+K (everywhere else) jumps straight to the search
@@ -209,6 +226,14 @@ export const AppShell = () => {
   useEffect(() => {
     setOpenMenu(null);
     setMobileNavOpen(false);
+  }, [pathname]);
+
+  // Remember the last app page, so closing the full-screen settings surface
+  // returns there instead of stepping back through settings history.
+  useEffect(() => {
+    if (!pathname.startsWith('/settings')) {
+      window.sessionStorage.setItem('hrms.lastAppPath', pathname);
+    }
   }, [pathname]);
 
   // The workspace switcher is two steps now — trigger -> pick a workspace —
@@ -239,7 +264,6 @@ export const AppShell = () => {
 
   const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
   const ThemeIcon = theme.name === 'light' ? IconMoon : IconSun;
-  const accountInitials = (user?.email ?? '?').slice(0, 2).toUpperCase();
   const portal = user?.portal ?? 'none';
   const navigation =
     portal === 'tethr'
@@ -251,8 +275,6 @@ export const AppShell = () => {
   // screens and nothing else. It drops the search field and the drawer, and on a
   // phone its nav becomes a fixed bottom bar instead of a hamburger.
   const isEmployeePortal = portal === 'employee';
-  const canManageUsers =
-    user?.roleKeys?.includes('tethrAdmin') || user?.roleKeys?.includes('clientAdmin');
   const canManagePayroll =
     user?.roleKeys?.includes('tethrAdmin') === true ||
     user?.roleKeys?.includes('tethrFinance') === true;
@@ -267,8 +289,12 @@ export const AppShell = () => {
     user?.roleKeys?.includes('tethrFinance') === true ||
     user?.roleKeys?.includes('clientAdmin') === true;
   const canManageClients = user?.roleKeys?.includes('tethrAdmin') === true;
-  const canManageOrganization =
-    user?.roleKeys?.includes('tethrAdmin') || user?.roleKeys?.includes('clientAdmin');
+  // The workspace banner is the workspace-level menu (Twenty's shape): settings
+  // for anyone with a settings section, and an invite shortcut for user admins.
+  const canOpenSettings = visibleSettingsTabs(user).length > 0;
+  const canInviteUsers =
+    user?.roleKeys?.includes('tethrAdmin') === true ||
+    user?.roleKeys?.includes('clientAdmin') === true;
   const isVisibleItem = (item: NavigationItem): boolean => {
     if (item.to === '/compensation') return canViewCompensation;
     if (item.to === '/payroll' || item.to === '/billing') return canManagePayroll;
@@ -279,22 +305,77 @@ export const AppShell = () => {
     .filter((entry) => entry.kind !== 'link' || entry.to !== '/compensation' || canViewCompensation)
     .map((entry): NavigationEntry => {
       if (entry.kind === 'link') return entry;
-      const items = [
-        ...entry.items.filter(isVisibleItem),
-        ...(entry.label === 'People' && canManageUsers ? [workspaceUsersItem] : []),
-      ];
+      // Workspace users live in /settings/members now, not in the People strip.
+      const items = entry.items.filter(isVisibleItem);
       return { ...entry, items };
     })
     // A group whose items all filtered out disappears entirely.
     .filter((entry) => entry.kind === 'link' || entry.items.length > 0);
 
-  // The group whose own sub-pages the user is currently on, if any — drives
-  // the persistent second-row tab strip so switching between a group's
-  // pages doesn't require reopening the pill's dropdown each time.
+  // Every destination in the visible nav, for the most-specific-match rule.
+  const navigationPaths: readonly string[] = visibleNavigation.flatMap((entry) =>
+    entry.kind === 'link' ? [entry.to] : entry.items.map((item) => item.to),
+  );
+
+  // The group whose own sub-pages the user is currently on, if any.
   const activeGroupEntry = visibleNavigation.find(
     (entry): entry is NavigationGroupEntry =>
       entry.kind === 'group' && entry.items.some((item) => isWithinPath(pathname, item.to)),
   );
+
+  // The strip below the pills shows one group's sections. By default that is
+  // the group you're inside; clicking another group's pill expands its sections
+  // there (no dropdown), clicking the shown one folds the strip away, and any
+  // navigation snaps back to the destination's own group.
+  const [subnavMode, setSubnavMode] = useState<
+    { readonly mode: 'auto' } | { readonly mode: 'open'; readonly label: string } | { readonly mode: 'closed' }
+  >({ mode: 'auto' });
+  const displayedGroup =
+    subnavMode.mode === 'open'
+      ? (visibleNavigation.find(
+          (entry): entry is NavigationGroupEntry =>
+            entry.kind === 'group' && entry.label === subnavMode.label,
+        ) ?? activeGroupEntry)
+      : subnavMode.mode === 'closed'
+        ? null
+        : activeGroupEntry;
+
+  // The tab row stays mounted while the strip folds so the height can animate
+  // down; it is simply inert once hidden. Keyed by label, not the entry object,
+  // because `visibleNavigation` rebuilds identities every render.
+  const displayedLabel = displayedGroup?.label ?? null;
+  const [lastGroupLabel, setLastGroupLabel] = useState<string | null>(displayedLabel);
+  const subnavInnerRef = useRef<HTMLDivElement | null>(null);
+  const tabsGroup =
+    visibleNavigation.find(
+      (entry): entry is NavigationGroupEntry =>
+        entry.kind === 'group' && entry.label === (displayedLabel ?? lastGroupLabel),
+    ) ?? null;
+
+  useEffect(() => {
+    if (displayedLabel !== null) setLastGroupLabel(displayedLabel);
+  }, [displayedLabel]);
+
+  useEffect(() => {
+    const element = subnavInnerRef.current;
+    if (!element) return;
+    if (displayedLabel !== null) {
+      element.removeAttribute('inert');
+    } else {
+      element.setAttribute('inert', '');
+    }
+  }, [displayedLabel]);
+
+  // Landing on a new route always snaps the strip back to that section's group.
+  useEffect(() => {
+    setSubnavMode({ mode: 'auto' });
+  }, [pathname]);
+
+  const onGroupClick = (label: string): void => {
+    setSubnavMode(
+      displayedGroup?.label === label ? { mode: 'closed' } : { mode: 'open', label },
+    );
+  };
 
   // --- Jump-to (⌘K) ---
   const [search, setSearch] = useState('');
@@ -461,40 +542,24 @@ export const AppShell = () => {
 
   const renderGroup = (entry: NavigationGroupEntry) => {
     const Icon = entry.icon;
-    const isOpen = openMenu === entry.label;
+    const isOpen = displayedGroup?.label === entry.label;
     const isActive = entry.items.some((item) => isWithinPath(pathname, item.to));
     return (
-      <div className="dropdown-anchor" key={entry.label}>
-        <button
-          className={`nav-pill nav-pill-group${isActive ? ' is-active' : ''}${isOpen ? ' is-open' : ''}`}
-          onClick={() => setOpenMenu((current) => (current === entry.label ? null : entry.label))}
-          type="button"
-        >
-          <Icon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-          <span>{entry.label}</span>
-          <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-        </button>
-        {isOpen ? (
-          <div className="dropdown-panel dropdown-panel-more" role="menu">
-            {entry.items.map((item) => {
-              const ItemIcon = item.icon;
-              return (
-                <NavLink
-                  key={item.label}
-                  className={({ isActive: linkIsActive }) =>
-                    `dropdown-nav-item${linkIsActive ? ' is-active' : ''}`
-                  }
-                  to={item.to}
-                  onClick={() => setOpenMenu(null)}
-                >
-                  <ItemIcon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                  <span>{item.label}</span>
-                </NavLink>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
+      <button
+        aria-expanded={isOpen}
+        className={`nav-pill nav-pill-group${isActive ? ' is-active' : ''}${isOpen ? ' is-open' : ''}`}
+        key={entry.label}
+        onClick={() => onGroupClick(entry.label)}
+        type="button"
+      >
+        <Icon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+        <span>{entry.label}</span>
+        <IconChevronDown
+          className="nav-pill-caret"
+          size={theme.icon.size.sm}
+          stroke={theme.icon.stroke.sm}
+        />
+      </button>
     );
   };
 
@@ -503,7 +568,7 @@ export const AppShell = () => {
       className={`app-shell${isEmployeePortal ? ' app-shell-employee' : ''}`}
       style={chipColorVar}
     >
-      <header className="app-topnav">
+      <header className="app-topnav" ref={topnavRef}>
         <div className="topnav-left">
           {isEmployeePortal ? null : (
             <button
@@ -523,78 +588,129 @@ export const AppShell = () => {
           <div className="topnav-brand" aria-hidden="true">
             H
           </div>
-          {hasOtherWorkspaces ? (
-            <div className="dropdown-anchor" ref={workspaceRef}>
-              <button
-                className="workspace-chip workspace-chip-button"
-                onClick={() =>
-                  setOpenMenu((current) => (current === 'workspace' ? null : 'workspace'))
-                }
-                title={organization?.legalName}
-                type="button"
-              >
-                <span className="workspace-chip-dot" aria-hidden="true" />
-                <span className="workspace-chip-name truncate">
-                  {organization?.displayName ?? 'Workspace'}
-                </span>
-                <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-              </button>
-              {openMenu === 'workspace' ? (
-                <div className="dropdown-panel dropdown-panel-workspace" role="menu">
-                  {switchStep === 'trigger' ? (
-                    <button
-                      className="dropdown-nav-item"
-                      onClick={openWorkspacePicker}
-                      type="button"
-                    >
-                      <IconArrowsRightLeft size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                      <span>Switch workspace</span>
-                    </button>
-                  ) : null}
-
-                  {switchStep === 'picker' ? (
-                    <div>
-                      <p className="account-dropdown-hint">Choose a workspace to switch to.</p>
-                      {switchError ? (
-                        <p className="auth-error" role="alert">
-                          {switchError}
-                        </p>
-                      ) : null}
-                      {loadingSwitchable ? (
-                        <p className="account-dropdown-hint">Loading…</p>
-                      ) : switchableWorkspaces.length === 0 ? (
-                        <p className="account-dropdown-hint">You have no other workspaces.</p>
-                      ) : (
-                        <div className="workspace-option-list">
-                          {switchableWorkspaces.map((workspace) => (
-                            <button
-                              key={workspace.organizationId}
-                              className="button button-secondary button-full"
-                              disabled={authBusy}
-                              type="button"
-                              onClick={() => void onPickSwitchWorkspace(workspace.organizationId)}
-                            >
-                              {workspace.organizationName}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="workspace-chip" title={organization?.legalName}>
+          <div className="dropdown-anchor">
+            <button
+              aria-expanded={openMenu === 'workspace'}
+              className="workspace-chip workspace-chip-button"
+              onClick={() =>
+                setOpenMenu((current) => (current === 'workspace' ? null : 'workspace'))
+              }
+              title={organization?.legalName}
+              type="button"
+            >
               <span className="workspace-chip-dot" aria-hidden="true" />
               <span className="workspace-chip-name truncate">
                 {organization?.displayName ?? 'Workspace'}
               </span>
-            </div>
-          )}
+              <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            </button>
+            {openMenu === 'workspace' ? (
+              <div className="dropdown-panel dropdown-panel-workspace" role="menu">
+                {switchStep === 'trigger' ? (
+                  <>
+                    <div className="workspace-menu-header">
+                      <div className="account-dropdown-email truncate">
+                        {organization?.legalName ?? 'Workspace'}
+                      </div>
+                      <div className="account-dropdown-portal">
+                        {portalLabel(portal)} workspace
+                      </div>
+                    </div>
+                    <button
+                      className="dropdown-nav-item"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        toggle();
+                      }}
+                      type="button"
+                    >
+                      <ThemeIcon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                      <span>Theme · {theme.name === 'light' ? 'Light' : 'Dark'}</span>
+                    </button>
+                    {canInviteUsers ? (
+                      <button
+                        className="dropdown-nav-item"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          navigate('/settings/members');
+                        }}
+                        type="button"
+                      >
+                        <IconUserPlus size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                        <span>Invite user</span>
+                      </button>
+                    ) : null}
+                    {canOpenSettings ? (
+                      <button
+                        className="dropdown-nav-item"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          navigate('/settings');
+                        }}
+                        type="button"
+                      >
+                        <IconSettings size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                        <span>Settings</span>
+                      </button>
+                    ) : null}
+                    {hasOtherWorkspaces ? (
+                      <button className="dropdown-nav-item" onClick={openWorkspacePicker} type="button">
+                        <IconArrowsRightLeft
+                          size={theme.icon.size.sm}
+                          stroke={theme.icon.stroke.sm}
+                        />
+                        <span>Switch workspace</span>
+                      </button>
+                    ) : null}
+                    <button
+                      className="dropdown-nav-item dropdown-nav-item-danger"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        void onLogout();
+                      }}
+                      type="button"
+                    >
+                      <IconLogout size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                      <span>Log out</span>
+                    </button>
+                  </>
+                ) : null}
+
+                {switchStep === 'picker' ? (
+                  <div>
+                    <p className="account-dropdown-hint">Choose a workspace to switch to.</p>
+                    {switchError ? (
+                      <p className="auth-error" role="alert">
+                        {switchError}
+                      </p>
+                    ) : null}
+                    {loadingSwitchable ? (
+                      <p className="account-dropdown-hint">Loading…</p>
+                    ) : switchableWorkspaces.length === 0 ? (
+                      <p className="account-dropdown-hint">You have no other workspaces.</p>
+                    ) : (
+                      <div className="workspace-option-list">
+                        {switchableWorkspaces.map((workspace) => (
+                          <button
+                            key={workspace.organizationId}
+                            className="button button-secondary button-full"
+                            disabled={authBusy}
+                            type="button"
+                            onClick={() => void onPickSwitchWorkspace(workspace.organizationId)}
+                          >
+                            {workspace.organizationName}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        <nav className="topnav-pills" aria-label="Primary navigation" ref={navRef}>
+        <nav className="topnav-pills" aria-label="Primary navigation">
           {visibleNavigation.map((entry) =>
             entry.kind === 'link' ? renderPill(entry) : renderGroup(entry),
           )}
@@ -648,61 +764,6 @@ export const AppShell = () => {
               ) : null}
             </div>
           )}
-
-          <div className="topbar-actions">
-            <button
-              className="icon-button"
-              onClick={toggle}
-              title={`Switch to ${theme.name === 'light' ? 'dark' : 'light'} theme`}
-              type="button"
-            >
-              <ThemeIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
-
-            <div className="dropdown-anchor" ref={accountRef}>
-              <button
-                className="account-button"
-                onClick={() =>
-                  setOpenMenu((current) => (current === 'account' ? null : 'account'))
-                }
-                title={user?.email ?? undefined}
-                type="button"
-              >
-                <span className="account-avatar">{accountInitials}</span>
-              </button>
-              {openMenu === 'account' ? (
-                <div className="dropdown-panel dropdown-panel-account" role="menu">
-                  <div className="account-dropdown-header">
-                    <span className="account-avatar account-avatar-lg">{accountInitials}</span>
-                    <div className="account-dropdown-identity">
-                      <div className="account-dropdown-email truncate">
-                        {user?.email ?? 'Account'}
-                      </div>
-                      <div className="account-dropdown-portal">
-                        {portalLabel(portal)} workspace
-                      </div>
-                    </div>
-                  </div>
-
-                  {canManageOrganization ? (
-                    <Link className="account-dropdown-settings" to="/settings">
-                      <IconSettings size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                      Workspace settings
-                    </Link>
-                  ) : null}
-
-                  <button
-                    className="account-dropdown-signout"
-                    onClick={() => void onLogout()}
-                    type="button"
-                  >
-                    <IconLogout size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                    Sign out
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
         </div>
       </header>
 
@@ -722,35 +783,36 @@ export const AppShell = () => {
             {visibleNavigation.map((entry) => {
               if (entry.kind === 'link') {
                 const Icon = entry.icon;
+                const linkIsActive = isEntryActive(pathname, entry.to, navigationPaths);
                 return (
-                  <NavLink
+                  <Link
+                    aria-current={linkIsActive ? 'page' : undefined}
                     key={entry.label}
-                    className={({ isActive }) =>
-                      `mobile-nav-item${isActive ? ' is-active' : ''}`
-                    }
+                    className={`mobile-nav-item${linkIsActive ? ' is-active' : ''}`}
                     to={entry.to}
                   >
                     <Icon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     <span>{entry.label}</span>
-                  </NavLink>
+                  </Link>
                 );
               }
+              const groupPaths = entry.items.map((item) => item.to);
               return (
                 <section className="mobile-nav-group" key={entry.label}>
                   <div className="mobile-nav-group-label">{entry.label}</div>
                   {entry.items.map((item) => {
                     const ItemIcon = item.icon;
+                    const itemIsActive = isEntryActive(pathname, item.to, groupPaths);
                     return (
-                      <NavLink
+                      <Link
+                        aria-current={itemIsActive ? 'page' : undefined}
                         key={item.label}
-                        className={({ isActive }) =>
-                          `mobile-nav-item${isActive ? ' is-active' : ''}`
-                        }
+                        className={`mobile-nav-item${itemIsActive ? ' is-active' : ''}`}
                         to={item.to}
                       >
                         <ItemIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                         <span>{item.label}</span>
-                      </NavLink>
+                      </Link>
                     );
                   })}
                 </section>
@@ -775,23 +837,38 @@ export const AppShell = () => {
         </>
       ) : null}
 
-      {activeGroupEntry ? (
-        <nav className="app-subnav" aria-label={`${activeGroupEntry.label} sections`}>
-          {activeGroupEntry.items.map((item) => {
-            const ItemIcon = item.icon;
-            return (
-              <NavLink
-                key={item.label}
-                className={({ isActive }) => `subnav-tab${isActive ? ' is-active' : ''}`}
-                to={item.to}
-              >
-                <ItemIcon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-                <span>{item.label}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
-      ) : null}
+      <nav
+        aria-hidden={displayedGroup === null ? true : undefined}
+        aria-label={tabsGroup ? `${tabsGroup.label} sections` : 'Sections'}
+        className={`app-subnav${displayedGroup ? ' is-open' : ''}`}
+        ref={subnavRef}
+      >
+        <div className="app-subnav-inner" ref={subnavInnerRef}>
+          {tabsGroup ? (
+            <div className="app-subnav-tabs" key={tabsGroup.label}>
+              {tabsGroup.items.map((item) => {
+                const ItemIcon = item.icon;
+                const itemIsActive = isEntryActive(
+                  pathname,
+                  item.to,
+                  tabsGroup.items.map((entryItem) => entryItem.to),
+                );
+                return (
+                  <Link
+                    aria-current={itemIsActive ? 'page' : undefined}
+                    className={`subnav-tab${itemIsActive ? ' is-active' : ''}`}
+                    key={item.label}
+                    to={item.to}
+                  >
+                    <ItemIcon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </nav>
 
       <main className="app-content">
         <Outlet />
