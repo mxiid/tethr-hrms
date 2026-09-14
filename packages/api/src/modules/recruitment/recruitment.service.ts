@@ -283,13 +283,17 @@ export class RecruitmentService {
       ? saved
       : await this.applyPositionTransition(saved, previousStatus);
 
-    await this.audit.record({
-      action: 'update',
-      resourceType: 'hiring_request',
-      resourceId: withPosition.id,
-      before: { status: previousStatus },
-      after: { status: withPosition.status, positionId: withPosition.positionId },
-    });
+    await this.audit.record(
+      {
+        action: 'update',
+        resourceType: 'hiring_request',
+        resourceId: withPosition.id,
+        before: { status: previousStatus },
+        after: { status: withPosition.status, positionId: withPosition.positionId },
+      },
+      // Join the caller's transaction when one is supplied (offer acceptance).
+      input.manager,
+    );
     return withPosition;
   }
 

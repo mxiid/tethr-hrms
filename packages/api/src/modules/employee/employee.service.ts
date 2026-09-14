@@ -130,15 +130,20 @@ export class EmployeeService {
       ? await run(manager)
       : await this.dataSource.transaction((transactionManager) => run(transactionManager));
 
-    await this.audit.record({
-      action: 'create',
-      resourceType: 'employee',
-      resourceId: employee.id,
-      after: {
-        employeeNumber: employee.employeeNumber,
-        employmentStatus: employee.employmentStatus,
+    await this.audit.record(
+      {
+        action: 'create',
+        resourceType: 'employee',
+        resourceId: employee.id,
+        after: {
+          employeeNumber: employee.employeeNumber,
+          employmentStatus: employee.employmentStatus,
+        },
       },
-    });
+      // Join the caller's transaction when one is supplied, so a rolled-back
+      // hire does not leave an "employee created" audit behind.
+      manager,
+    );
     return employee;
   }
 

@@ -8,7 +8,7 @@ import { AuditService } from '../../../core/audit/audit.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repository';
 
-import { TaxSlab, TaxSlabGroup } from './entities/tax-slab.entities';
+import { TaxSlab, TaxSlabGroup } from './entities/tax-slab.entity';
 import { TAX_SLAB_GROUP_REPOSITORY, TAX_SLAB_REPOSITORY } from './payroll.tokens';
 import type { TaxSlabInput } from './tax/calculator';
 

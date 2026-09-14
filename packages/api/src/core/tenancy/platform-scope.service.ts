@@ -1,7 +1,7 @@
 import { toId, type OrganizationId, type OrganizationKind, type UserId } from '@hrms/shared';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 
 import { ForbiddenError, UnauthenticatedError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../audit/audit.service';
@@ -97,21 +97,31 @@ export class PlatformScopeService {
   // hiring request without weakening TenantScopedRepository for everyone.
   //
   // The audit record is written BEFORE switching, so it lands in the actor's
-  // home workspace with the target named in metadata.
-  async switchTo<TResult>(input: PlatformSwitch, work: () => Promise<TResult>): Promise<TResult> {
+  // home workspace with the target named in metadata. When the caller already
+  // owns a transaction (offer acceptance), pass its `manager` so the audit
+  // joins it — otherwise a rolled-back hire would still leave an audit trail
+  // claiming a platform switch for work that never happened.
+  async switchTo<TResult>(
+    input: PlatformSwitch,
+    work: () => Promise<TResult>,
+    manager?: EntityManager,
+  ): Promise<TResult> {
     const userId = this.tenantContext.getUserId();
     if (!userId) {
       throw new UnauthenticatedError();
     }
-    await this.audit.record({
-      action: 'platform.switch',
-      resourceType: input.resourceType,
-      resourceId: input.resourceId,
-      metadata: {
-        purpose: input.purpose,
-        targetOrganizationId: input.organizationId,
+    await this.audit.record(
+      {
+        action: 'platform.switch',
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        metadata: {
+          purpose: input.purpose,
+          targetOrganizationId: input.organizationId,
+        },
       },
-    });
+      manager,
+    );
     return this.tenantContext.run({ organizationId: input.organizationId, userId }, work);
   }
 

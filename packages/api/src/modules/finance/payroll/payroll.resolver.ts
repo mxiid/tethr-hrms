@@ -1,4 +1,4 @@
-﻿import {
+import {
   toId,
   type EmployeeId,
   type HolidayCalendarId,
@@ -31,7 +31,7 @@ import { PayrollRun } from './entities/payroll-run.entity';
 import type { PayslipLine } from './entities/payslip-line.entity';
 import type { Payslip } from './entities/payslip.entity';
 import type { FinalSettlement } from './entities/final-settlement.entity';
-import { TaxSlab, TaxSlabGroup } from './entities/tax-slab.entities';
+import { TaxSlab, TaxSlabGroup } from './entities/tax-slab.entity';
 import type { PayrollReadiness, RunDetail } from './payroll-run.service';
 import { PayrollRunService } from './payroll-run.service';
 import { FinalSettlementService } from './final-settlement.service';import { PayslipPdfService } from './pdf/payslip-pdf.service';

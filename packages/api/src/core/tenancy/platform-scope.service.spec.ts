@@ -133,6 +133,7 @@ describe('PlatformScopeService', () => {
         resourceId: 'request-1',
         metadata: { purpose: 'board read', targetOrganizationId: CLIENT },
       }),
+      undefined,
     );
     expect(run).toHaveBeenCalledWith({ organizationId: CLIENT, userId: USER }, work);
   });

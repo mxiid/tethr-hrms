@@ -1,4 +1,4 @@
-﻿import { Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuthModule } from '../../../core/auth/auth.module';
@@ -18,7 +18,7 @@ import {
 import { PayslipLine } from './entities/payslip-line.entity';
 import { Payslip } from './entities/payslip.entity';
 import { FinalSettlement } from './entities/final-settlement.entity';
-import { TaxSlabGroup, TaxSlab } from './entities/tax-slab.entities';
+import { TaxSlabGroup, TaxSlab } from './entities/tax-slab.entity';
 import { EmployeeTerminatedFinalSettlementConsumer } from './final-settlement.consumer';
 import { FinalSettlementService } from './final-settlement.service';
 import { SalaryRevisedPayrollConsumer } from './payroll.consumer';

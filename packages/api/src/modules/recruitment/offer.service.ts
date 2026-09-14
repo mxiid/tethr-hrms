@@ -167,6 +167,7 @@ export class OfferService {
           resourceId: offer.id,
         },
         () => this.hireEmployee(candidate, posting.title, offer, manager),
+        manager,
       );
 
       offer.status = 'accepted';
@@ -203,6 +204,7 @@ export class OfferService {
           const position = await this.positions.ensureByTitle(posting.title, manager);
           await this.positions.setStatus(position.id, 'filled', manager);
         },
+        manager,
       );
 
       return {

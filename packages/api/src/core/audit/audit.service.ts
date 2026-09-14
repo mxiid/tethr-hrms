@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { EntityManager } from 'typeorm';
 import { Repository } from 'typeorm';
 
 import { TenantContextService } from '../tenancy/tenant-context.service';
@@ -17,6 +18,11 @@ type AuditRecordInput = {
 
 // Writes append-only audit events. Stamps the actor and tenant from context, so
 // callers only describe the change — they cannot misattribute it.
+//
+// `manager` lets a caller join an open transaction. That matters when an audit
+// describes work inside a multi-step transaction (a platform switch during a
+// hire): without it the audit row commits on its own connection and survives a
+// rollback, describing something that never happened.
 @Injectable()
 export class AuditService {
   constructor(
@@ -24,8 +30,8 @@ export class AuditService {
     private readonly tenantContext: TenantContextService,
   ) {}
 
-  async record(input: AuditRecordInput): Promise<void> {
-    const event = this.repository.create({
+  async record(input: AuditRecordInput, manager?: EntityManager): Promise<void> {
+    const values = {
       organizationId: this.tenantContext.getOrganizationId(),
       actorUserId: this.tenantContext.getUserId(),
       action: input.action,
@@ -35,7 +41,11 @@ export class AuditService {
       after: input.after ?? null,
       metadata: input.metadata ?? null,
       occurredAt: new Date(),
-    });
-    await this.repository.save(event);
+    };
+    if (manager) {
+      await manager.save(manager.create(AuditEvent, values));
+      return;
+    }
+    await this.repository.save(this.repository.create(values));
   }
 }
