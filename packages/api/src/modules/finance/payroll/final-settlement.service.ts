@@ -2,6 +2,7 @@ import {
   addIsoDays,
   compareIsoDate,
   countWorkingDays,
+  isIsoDate,
   isoMonthRange,
   type EmployeeId,
   type IsoDate,
@@ -216,6 +217,12 @@ export class FinalSettlementService {
   }): Promise<FinalSettlement> {
     if (input.paymentReference != null && input.paymentReference.length > 120) {
       throw new ValidationFailedError('paymentReference must be 120 characters or fewer');
+    }
+    if (input.settlementDate != null && !isIsoDate(input.settlementDate)) {
+      throw new ValidationFailedError(
+        'settlementDate must be a real calendar date (YYYY-MM-DD)',
+        { settlementDate: input.settlementDate },
+      );
     }
     // Lock the settlement row so two concurrent confirmations cannot both read
     // `computed`, and keep the audit record in the same transaction: a failed

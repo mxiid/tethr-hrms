@@ -423,6 +423,14 @@ B_ISSUED -.-> NO_REVERSAL
 7. **Confirmed absent, not guessed:** per-employee tax profile/withholding election, benefits enrollment, employee expense-claim/reimbursement workflow, and any general-ledger/chart-of-accounts/journal-entry concept. None of these exist anywhere in the codebase — verified by direct search, not inferred from their absence in the parts of the code I happened to read.
 8. **No billing-specific period close or reconciliation step exists** distinct from payroll's own one-way `finalize`. The nearest thing, a client-facing cost breakdown, summarizes what was billed — it does not reconcile invoiced amounts against actual payroll cost.
 
+### Payment-confirmation contract (recorded 2026-09-15)
+
+`markInvoicePaid`, `markRunPaid` and `FinalSettlementService.markPaid` are value-date-aware, at-most-once transitions:
+
+- `settlementDate` must be a real calendar date (the shared `isIsoDate` round-trips the components, so `2026-02-31` is rejected instead of being normalized). An invoice's settlement date may not precede its `issueDate`; future value dates stay legal for advance-billed documents.
+- Each transition takes an organization-scoped pessimistic lock, re-checks its precondition inside it, and commits the state change together with its audit record. The audit carries the supplied settlement date and the effective `paidAt`.
+- **Retries are not replayed.** A retry after an ambiguous successful commit receives a `ConflictError` that reports the recorded facts (`status`, `paidAt`, `paymentReference`), and the caller reconciles from those. This is deliberate: a replay cannot distinguish "the first call committed but its response was lost" from "someone else already paid it".
+
 ### Files this diagram was derived from
 
 ```

@@ -420,6 +420,50 @@ describe('InvoiceService.markInvoicePaid', () => {
     );
   });
 
+  it('records the settlement date and effective paidAt in the audit payload', async () => {
+    const { service, mocks } = buildService();
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'issued',
+      number: 'SP0001',
+      issueDate: '2026-09-01',
+      paymentReference: null,
+    }));
+    await service.markInvoicePaid({ invoiceId: INVOICE_ID, settlementDate: '2026-09-10' });
+    expect(mocks.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'markPaid',
+        after: expect.objectContaining({
+          settlementDate: '2026-09-10',
+          paidAt: '2026-09-10T00:00:00.000Z',
+        }),
+      }),
+      mocks.manager,
+    );
+  });
+
+  it('rejects a regex-shaped but impossible settlement date before any read', async () => {
+    const { service, mocks } = buildService();
+    await expect(
+      service.markInvoicePaid({ invoiceId: INVOICE_ID, settlementDate: '2026-02-31' }),
+    ).rejects.toThrow(/real calendar date/);
+    expect(mocks.manager.findOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects a settlement date before the invoice issue date', async () => {
+    const { service, mocks } = buildService();
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'issued',
+      number: 'SP0001',
+      issueDate: '2026-09-01',
+      paymentReference: null,
+    }));
+    await expect(
+      service.markInvoicePaid({ invoiceId: INVOICE_ID, settlementDate: '2026-08-31' }),
+    ).rejects.toThrow(/cannot precede the invoice issue date/);
+  });
+
   it('rejects marking a draft invoice paid', async () => {
     const { service, mocks } = buildService();
     mocks.manager.findOne = jest.fn(async () => ({ id: INVOICE_ID, status: 'draft' }));

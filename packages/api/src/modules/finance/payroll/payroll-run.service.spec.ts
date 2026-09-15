@@ -624,3 +624,13 @@ describe('PayrollRunService.getReadiness', () => {
     ).toBe(true);
   });
 });
+
+describe('PayrollRunService.markRunPaid', () => {
+  it('rejects a regex-shaped but impossible settlement date before any read', async () => {
+    const { service, mocks } = buildService();
+    await expect(
+      service.markRunPaid({ runId: RUN_ID, settlementDate: '2026-02-31' }),
+    ).rejects.toThrow(/real calendar date/);
+    expect(mocks.runs.findById).not.toHaveBeenCalled();
+  });
+});

@@ -136,3 +136,12 @@ describe('FinalSettlementService.compute', () => {
     expect(attrs.netPayableAmount).toBe('68285.71');
   });
 });
+
+describe('FinalSettlementService.markPaid', () => {
+  it('rejects a regex-shaped but impossible settlement date before any read', async () => {
+    const { service } = buildService();
+    await expect(
+      service.markPaid({ employeeId: EMPLOYEE, settlementDate: '2026-02-31' }),
+    ).rejects.toThrow(/real calendar date/);
+  });
+});

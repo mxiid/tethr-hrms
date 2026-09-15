@@ -2,6 +2,16 @@
 
 > As of 2026-09-04 (`feat/attendance-module-and-ux-revamp`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## PR #2 fifth review round: settlement-date integrity and migration locking (2026-09-15)
+
+The fifth pass flagged one migration-locking suggestion and a settlement-date integrity review; both are addressed.
+
+**Settlement-date integrity.** `markInvoicePaid` accepted any regex-shaped `YYYY-MM-DD`, so `2026-02-31` reached `new Date(...)` and persisted a normalized `paidAt` (March 3) that differed from the supplied financial fact. The shared `isIsoDate` now round-trips the date components through UTC instead of relying on `Date.parse`, rejecting impossible calendar dates for every caller (tax profiles, salary revisions, fx rates included), and `markInvoicePaid` validates the date before any read. Inside the locked transaction the chronology policy is explicit: a settlement date may not precede the invoice's `issueDate` (future value dates stay legal for advance-billed documents). The audit payload records the complete transition — the supplied `settlementDate` and the effective `paidAt` — and the conflict context reports the recorded facts. `markRunPaid` and `FinalSettlementService.markPaid` gained the same real-calendar validation, and the retry contract is documented in `docs/process-flows.md` (a retry after an ambiguous commit conflicts rather than replaying).
+
+**Migration locking.** `Phase2AdjustmentSourceGuard` now adds the provenance CHECK as `NOT VALID` and then `VALIDATE CONSTRAINT`, so the constraint ends fully validated while the table-altering step holds `ACCESS EXCLUSIVE` only briefly; the validation scan runs under `SHARE UPDATE EXCLUSIVE`.
+
+**Verification.** Gates **232 API / 21 shared / 5 UI tests**, lint 0 errors, typecheck/build clean. Battery: API Phase 1 **15/15**, M1 **20/20**, M2 **14/14**, M3 **16/16**; UI billing **7/7**, expenses **11/11**, tax **5/5**, benefits **5/5**; round-three live checks **5/5**, round-five live checks **3/3** (impossible date rejected before any read, pre-issue date rejected, invoice untouched). Scratch migration test: one-sided row normalized, constraint validated (`convalidated = true`), mismatched insert rejected `23514`. Schema parity **1145 columns, 0 differences**.
+
 ## PR #2 fourth review round: migration safety and transition atomicity (2026-09-15)
 
 The fourth bot pass flagged deploy-safety and atomicity follow-ups; all three are fixed.

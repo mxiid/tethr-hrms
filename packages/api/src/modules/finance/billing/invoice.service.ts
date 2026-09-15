@@ -1,6 +1,7 @@
 import {
   addIsoDays,
   compareIsoDate,
+  isIsoDate,
   rangesOverlap,
   toId,
   type BillingGroupId,
@@ -1340,6 +1341,15 @@ export class InvoiceService {
 
   async markInvoicePaid(input: MarkInvoicePaidData): Promise<Invoice> {
     const organizationId = this.tenantContext.getOrganizationId();
+    // Input integrity before any read: a regex-shaped but impossible date
+    // (2026-02-31) would otherwise be normalized by Date and persisted as a
+    // different financial fact than the caller supplied.
+    if (input.settlementDate != null && !isIsoDate(input.settlementDate)) {
+      throw new ValidationFailedError(
+        'settlementDate must be a real calendar date (YYYY-MM-DD)',
+        { settlementDate: input.settlementDate },
+      );
+    }
     // The locked read, the status re-check, the payment facts and the audit are
     // one unit of work: a concurrent confirmation cannot double-apply, and a
     // crash cannot leave a paid invoice with no audit trail.
@@ -1352,9 +1362,27 @@ export class InvoiceService {
         throw new NotFoundError('Invoice not found', { id: input.invoiceId });
       }
       if (invoice.status !== 'issued') {
+        // A retry after an ambiguous commit never replays the successful
+        // result: it conflicts and reports the recorded payment facts so the
+        // caller can reconcile. (Deliberate contract; see docs/process-flows.md.)
         throw new ConflictError(
           `Only issued invoices can be marked paid (status: ${invoice.status})`,
+          {
+            status: invoice.status,
+            paidAt: invoice.paidAt,
+            paymentReference: invoice.paymentReference,
+          },
         );
+      }
+      if (
+        input.settlementDate != null &&
+        invoice.issueDate !== null &&
+        compareIsoDate(input.settlementDate, invoice.issueDate) < 0
+      ) {
+        throw new ValidationFailedError('settlementDate cannot precede the invoice issue date', {
+          settlementDate: input.settlementDate,
+          issueDate: invoice.issueDate,
+        });
       }
       invoice.status = 'paid';
       // The settlement date can lag the moment finance records it (checks clear
@@ -1369,7 +1397,14 @@ export class InvoiceService {
           action: 'markPaid',
           resourceType: 'invoice',
           resourceId: saved.id,
-          after: { number: saved.number, reference: saved.paymentReference },
+          after: {
+            number: saved.number,
+            reference: saved.paymentReference,
+            // The complete transition: the supplied value date and the
+            // effective paidAt it produced.
+            settlementDate: input.settlementDate ?? null,
+            paidAt: saved.paidAt?.toISOString() ?? null,
+          },
         },
         manager,
       );

@@ -2,6 +2,7 @@ import {
   addIsoDays,
   compareIsoDate,
   countWorkingDays,
+  isIsoDate,
   isoMonthRange,
   toId,
   type EmployeeId,
@@ -758,6 +759,12 @@ export class PayrollRunService {
     readonly paymentReference?: string | null;
     readonly settlementDate?: IsoDate | null;
   }): Promise<PayrollRun> {
+    if (input.settlementDate != null && !isIsoDate(input.settlementDate)) {
+      throw new ValidationFailedError(
+        'settlementDate must be a real calendar date (YYYY-MM-DD)',
+        { settlementDate: input.settlementDate },
+      );
+    }
     const run = await this.getRun(input.runId);
     if (run.status !== 'finalized') {
       throw new ConflictError('Only finalized runs can be marked paid', { status: run.status });
