@@ -305,11 +305,16 @@ export class RecruitmentService {
 
     // State-based and idempotent: run on every call, not only on a status
     // change, so replaying the same status repairs a position that a previous
-    // attempt failed to synchronize. Best-effort — the updated event's consumer
-    // reconciles again durably.
+    // attempt failed to synchronize. Reconciles the request's *current* state
+    // (not this call's snapshot) with a convergence re-check, so a slow
+    // reconciliation can never reopen a position after a newer transition —
+    // and the result below reports that freshest state (the link an `open`
+    // reconciliation just made included). Best-effort — the updated event's
+    // consumer reconciles again durably.
+    let current = saved;
     if (!input.manager) {
       try {
-        await this.reconcilePosition(saved);
+        current = (await this.reconcilePositionForRequest(saved.id)) ?? saved;
       } catch (cause) {
         this.logger.error(
           `Position reconciliation failed for request ${saved.id}: ${
@@ -325,16 +330,18 @@ export class RecruitmentService {
         resourceType: 'hiring_request',
         resourceId: saved.id,
         before: { status: previousStatus },
-        after: { status: saved.status, positionId: saved.positionId },
+        after: { status: saved.status, positionId: current.positionId },
       },
       // Join the caller's transaction when one is supplied (offer acceptance).
       input.manager,
     );
 
-    // A closed (or held) request takes its posting off the air. Postings live
-    // in the caller's workspace (Tethr's, for client requests): on the board
-    // path the platform switch has already unwound, so this queries at home and
-    // is a no-op for a client workspace. Best-effort here; the durable consumer
+    // A closed (or held) request takes its posting off the air — decided from
+    // the freshest state, so a stale transition (this call's snapshot) cannot
+    // unpublish a posting whose request has since moved on. Postings live in
+    // the caller's workspace (Tethr's, for client requests): on the board path
+    // the platform switch has already unwound, so this queries at home and is a
+    // no-op for a client workspace. Best-effort here; the durable consumer
     // retries until the posting is down.
     //
     // Skipped when the caller owns the transaction (offer acceptance): it has
@@ -342,11 +349,13 @@ export class RecruitmentService {
     // a sibling transaction here would block on the row lock the caller holds.
     if (
       !input.manager &&
-      (saved.status === 'cancelled' || saved.status === 'filled' || saved.status === 'onHold')
+      (current.status === 'cancelled' ||
+        current.status === 'filled' ||
+        current.status === 'onHold')
     ) {
-      await this.unpublishPostingBestEffort(saved.id);
+      await this.unpublishPostingBestEffort(current.id);
     }
-    return saved;
+    return current;
   }
 
   // The sync attempt in front of the durable consumer: failures are logged, not
@@ -369,10 +378,19 @@ export class RecruitmentService {
   // can never leave a partial set or an unaudited unpublish. It reconciles
   // every row for the request, not just the first, in case legacy duplicates
   // exist.
+  //
+  // The raw manager query carries the active organization explicitly: the
+  // system principal runs this in the operator workspace, and
+  // `sourceHiringRequestId` has no uniqueness guarantee, so without the
+  // predicate a posting owned by another workspace could be matched and
+  // unpublished.
   async unpublishPostingsForRequest(hiringRequestId: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       const postings = await manager.find(JobPosting, {
-        where: { sourceHiringRequestId: hiringRequestId } as FindOptionsWhere<JobPosting>,
+        where: {
+          sourceHiringRequestId: hiringRequestId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<JobPosting>,
         order: { createdAt: 'ASC' },
       });
       for (const posting of postings) {
@@ -394,14 +412,29 @@ export class RecruitmentService {
     });
   }
 
-  // Loads the request under the current tenant and reconciles its position.
-  // The consumer calls this from the request's workspace after a held or
-  // terminal transition, repairing a sync that failed in the request call.
-  async reconcilePositionForRequest(hiringRequestId: string): Promise<void> {
-    const request = await this.hiringRequests.findById(hiringRequestId);
-    if (request) {
+  // Fresh-state entry point for position reconciliation: loads the request,
+  // applies the reconciliation for its *current* status, then re-reads. If the
+  // status changed while the position was being written (a concurrent
+  // transition's reconciliation, or this call's own later state), it applies
+  // the newer state too, so the position converges on the latest request
+  // instead of a stale snapshot. Bounded: the next event or update reconciles
+  // again if the status keeps moving.
+  //
+  // Returns the latest request (or null when it no longer exists). Decisions
+  // that must reflect reality — the cleanup consumer's publication gate — read
+  // this value, never an event payload's status.
+  async reconcilePositionForRequest(hiringRequestId: string): Promise<HiringRequest | null> {
+    const maxAttempts = 3;
+    let request = await this.hiringRequests.findById(hiringRequestId);
+    for (let attempt = 0; attempt < maxAttempts && request; attempt += 1) {
       await this.reconcilePosition(request);
+      const latest = await this.hiringRequests.findById(hiringRequestId);
+      if (!latest || latest.status === request.status) {
+        return latest;
+      }
+      request = latest;
     }
+    return request;
   }
 
   // Reconcile with Position, whose status and headcount shadow the request's:

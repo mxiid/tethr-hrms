@@ -297,7 +297,7 @@ export class OfferService {
           resourceId: offer.id,
         },
         async () => {
-          await this.recruitment.updateHiringRequest({
+          const filled = await this.recruitment.updateHiringRequest({
             hiringRequestId: toId<HiringRequestId>(posting.sourceHiringRequestId),
             status: 'filled',
             tethrNote: `Filled — ${candidate.fullName} accepted the offer.`,
@@ -305,8 +305,16 @@ export class OfferService {
             actor: 'tethr',
             manager,
           });
-          const position = await this.positions.ensureByTitle(posting.title, manager);
-          await this.positions.setStatus(position.id, 'filled', manager);
+          // Fill the request's authoritative linked position by id; the title
+          // lookup is only the fallback for a request with no established link
+          // (titles are neither unique nor immutable, so resolving by title
+          // here could fill a different position than the request owns).
+          if (filled.positionId) {
+            await this.positions.setStatus(filled.positionId, 'filled', manager);
+          } else {
+            const position = await this.positions.ensureByTitle(posting.title, manager);
+            await this.positions.setStatus(position.id, 'filled', manager);
+          }
         },
         manager,
       );

@@ -112,7 +112,9 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
     publishWithin: jest.fn().mockResolvedValue(undefined),
   } as unknown as DomainEventPublisher;
   const recruitment = {
-    updateHiringRequest: jest.fn().mockResolvedValue(undefined),
+    updateHiringRequest: jest
+      .fn()
+      .mockResolvedValue({ id: 'request-1', status: 'filled', positionId: 'position-1' }),
   } as unknown as RecruitmentService;
   const platformScope = {
     assertOperator: jest.fn().mockResolvedValue({ organizationId: TETHR }),
@@ -302,6 +304,22 @@ describe('OfferService', () => {
     expect(recruitment.updateHiringRequest).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'filled', actor: 'tethr', manager: expect.anything() }),
     );
+    // The request's authoritative link wins: the title-resolved position is
+    // never used when a linked position exists.
+    expect(positions.ensureByTitle).not.toHaveBeenCalled();
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'filled', expect.anything());
+  });
+
+  it('falls back to the title lookup only when the request has no linked position', async () => {
+    const { service, positions, recruitment } = buildService();
+    (recruitment.updateHiringRequest as jest.Mock).mockResolvedValue({
+      id: 'request-1',
+      status: 'filled',
+      positionId: null,
+    });
+
+    await service.accept(OFFER_ID, USER);
+
     expect(positions.ensureByTitle).toHaveBeenCalledWith('Staff Engineer', expect.anything());
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'filled', expect.anything());
   });

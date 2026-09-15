@@ -12,6 +12,7 @@ import type { PositionService } from '../position/position.service';
 
 import type { HiringRequestUpdate } from './entities/hiring-request-update.entity';
 import { HiringRequest } from './entities/hiring-request.entity';
+import { JobPosting } from './entities/job-posting.entity';
 import { RecruitmentService } from './recruitment.service';
 
 const ORGANIZATION = toId<OrganizationId>('org-1');
@@ -51,6 +52,7 @@ const buildService = (existing: HiringRequest | null = null) => {
   let currentOrganization: string = ORGANIZATION;
   const repository = {
     find: jest.fn().mockResolvedValue([]),
+    findById: jest.fn().mockResolvedValue(existing),
     save: jest.fn((value: HiringRequest) => Promise.resolve(value)),
   } as unknown as TenantScopedRepository<HiringRequest>;
   const updates = {
@@ -321,9 +323,66 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
+    // The raw manager query must carry the active workspace: without it a
+    // posting owned by another organization that happens to share the request
+    // id could be matched and unpublished.
+    expect(manager.find).toHaveBeenCalledWith(
+      JobPosting,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          sourceHiringRequestId: REQUEST,
+          organizationId: ORGANIZATION,
+        }),
+      }),
+    );
     expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'posting-1', isPublished: false }),
     );
+  });
+
+  it('reconciles the reloaded request, never the just-written snapshot', async () => {
+    const { service, repository, positions } = buildService(
+      makeRequest({ status: 'open', positionId: 'position-1' }),
+    );
+    // The request moved on while this call ran: by the time reconciliation
+    // looks, it is cancelled. A snapshot-based reconcile would reopen the
+    // position the newer transition closed.
+    (repository.findById as jest.Mock).mockResolvedValue(
+      makeRequest({ status: 'cancelled', positionId: 'position-1' }),
+    );
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(positions.getById).toHaveBeenCalledWith('position-1');
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+    expect(positions.setStatus).not.toHaveBeenCalledWith('position-1', 'open');
+  });
+
+  it('converges when the status changes while the position is reconciled', async () => {
+    const { service, repository, positions } = buildService(
+      makeRequest({ status: 'open', positionId: 'position-1' }),
+    );
+    // First read: open (nothing to do). Second read after applying: cancelled,
+    // so the loop applies the newer state too.
+    (repository.findById as jest.Mock)
+      .mockResolvedValueOnce(makeRequest({ status: 'open', positionId: 'position-1' }))
+      .mockResolvedValueOnce(makeRequest({ status: 'cancelled', positionId: 'position-1' }))
+      .mockResolvedValue(makeRequest({ status: 'cancelled', positionId: 'position-1' }));
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+    expect((repository.findById as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 
   it('emits the request title with the status update so the notifier can name it', async () => {

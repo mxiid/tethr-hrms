@@ -48,9 +48,11 @@ export class HiringRequestUpdatedConsumer implements OnModuleInit {
         // Positions live in the request's workspace, so reconcile under the
         // event's tenant — for every status change, a resume included: the
         // sync attempt in the request call may have failed, and this is the
-        // durable retry that repairs it.
-        await this.recruitment.reconcilePositionForRequest(hiringRequestId);
-        if (UNPUBLISH_STATUSES.includes(status)) {
+        // durable retry that repairs it. The returned request is the freshest
+        // state, which every decision below follows instead of the event's
+        // status: a retried stale event must not undo a newer transition.
+        const current = await this.recruitment.reconcilePositionForRequest(hiringRequestId);
+        if (current && UNPUBLISH_STATUSES.includes(current.status)) {
           // Postings live in the operator's workspace: step over there as the
           // system principal (the unpublish writes its own audit records), no
           // user session exists for this consumer.
@@ -60,11 +62,21 @@ export class HiringRequestUpdatedConsumer implements OnModuleInit {
             () => this.recruitment.unpublishPostingsForRequest(hiringRequestId),
           );
         }
-        await this.notifications.sendSlack({
-          templateKey: 'hiringRequestUpdated',
-          data: { hiringRequestId, status, positionTitle },
-        });
-        this.logger.log(`Handled hiring request ${hiringRequestId} update to ${status}`);
+        if (current?.status === status) {
+          await this.notifications.sendSlack({
+            templateKey: 'hiringRequestUpdated',
+            data: { hiringRequestId, status, positionTitle },
+          });
+        } else {
+          // A superseded event: announcing its old status would be wrong, and
+          // the newer status has (or had) its own event.
+          this.logger.log(
+            `Superseded ${status} event for hiring request ${hiringRequestId}${
+              current ? ` (now ${current.status})` : ' (request missing)'
+            }; notice skipped`,
+          );
+        }
+        this.logger.log(`Reconciled hiring request ${hiringRequestId} after a ${status} event`);
       }),
     );
   }

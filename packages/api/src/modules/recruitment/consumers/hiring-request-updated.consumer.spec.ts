@@ -13,7 +13,7 @@ const CLIENT = toId<OrganizationId>('org-client');
 const TETHR = toId<OrganizationId>('org-tethr');
 const REQUEST = toId<HiringRequestId>('request-1');
 
-const buildConsumer = (status: string) => {
+const buildConsumer = (status: string, currentStatus: string = status) => {
   let handler: ((event: DomainEvent) => Promise<void>) | null = null;
   const eventBus = {
     register: jest.fn((_name: string, next: (event: DomainEvent) => Promise<void>) => {
@@ -30,7 +30,10 @@ const buildConsumer = (status: string) => {
     resolveTethrOrganizationId: jest.fn().mockResolvedValue(TETHR),
   } as unknown as PlatformScopeService;
   const recruitment = {
-    reconcilePositionForRequest: jest.fn().mockResolvedValue(undefined),
+    // The service returns the freshest request; every decision follows it.
+    reconcilePositionForRequest: jest
+      .fn()
+      .mockImplementation(async () => ({ id: REQUEST, status: currentStatus })),
     unpublishPostingsForRequest: jest.fn().mockResolvedValue(undefined),
   } as unknown as RecruitmentService;
   const visitedTenants: string[] = [];
@@ -98,5 +101,22 @@ describe('HiringRequestUpdatedConsumer', () => {
     expect(recruitment.unpublishPostingsForRequest).not.toHaveBeenCalled();
     expect(visitedTenants).toEqual([CLIENT]);
     expect(notifications.sendSlack).toHaveBeenCalled();
+  });
+
+  it('a stale held event cannot unpublish a request that is open again', async () => {
+    // The held event failed once and was retried after the resume landed; the
+    // request's current state, not the event's, decides the cleanup.
+    const { dispatch, recruitment, notifications, visitedTenants } = buildConsumer(
+      'onHold',
+      'open',
+    );
+
+    await dispatch();
+
+    expect(recruitment.reconcilePositionForRequest).toHaveBeenCalledWith(REQUEST);
+    expect(recruitment.unpublishPostingsForRequest).not.toHaveBeenCalled();
+    expect(visitedTenants).toEqual([CLIENT]);
+    // Announcing "now onHold" after the open notice would be wrong.
+    expect(notifications.sendSlack).not.toHaveBeenCalled();
   });
 });
