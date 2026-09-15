@@ -131,7 +131,7 @@ const buildService = () => {
     create: jest.fn((attrs: Record<string, unknown>) => ({ ...attrs })),
     save: jest.fn(async (v: unknown) => v),
   };
-  const fx = { getRate: jest.fn(async () => 0.0036) };
+  const fx = { getRate: jest.fn(async () => 0.0036) as jest.Mock };
   const employeeDirectory = {
     getById: jest.fn(async () => employeeFixture()) as jest.Mock,
     exists: jest.fn(async () => true),
@@ -163,7 +163,7 @@ const buildService = () => {
 
   return {
     service,
-    mocks: { manager, configs, groups, members, invoices, lines, costSnapshots, periodCloses, employeeDirectory, payrollRuns, publisher },
+    mocks: { manager, configs, groups, members, invoices, lines, costSnapshots, periodCloses, employeeDirectory, payrollRuns, publisher, fx },
   };
 };
 
@@ -391,6 +391,27 @@ describe('InvoiceService.addExpenseClaimLines', () => {
     sourceLabel: 'EXP-0001',
     lines: [{ description: 'Travel: taxi', amount: 500 }],
   };
+
+  it('converts each line at its own expense date rate', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findOne.mockResolvedValue(expensesInvoice('draft'));
+    mocks.fx.getRate.mockImplementation(async (_base: string, _quote: string, date: string) =>
+      date === '2026-09-04' ? 0.0036 : 0.004,
+    );
+    const result = await service.addExpenseClaimLines({
+      ...claimLines,
+      sourceCurrency: 'PKR',
+      lines: [
+        { description: 'Older taxi', amount: 1000, asOf: '2026-09-04' },
+        { description: 'Newer taxi', amount: 1000, asOf: '2026-09-12' },
+      ],
+    });
+    expect(result.addedLines).toBe(2);
+    const created = mocks.manager.create.mock.calls
+      .map((call) => call[1] as Record<string, unknown>)
+      .filter((line) => line['kind'] === 'expense');
+    expect(created.map((line) => line['total'])).toEqual(['3.60', '4.00']);
+  });
 
   it('refuses pass-through lines once the month has been issued', async () => {
     const { service, mocks } = buildService();

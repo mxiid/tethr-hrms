@@ -386,9 +386,13 @@ export class BenefitService {
     const charges: EnrollmentCharge[] = [];
     for (const enrollment of covering) {
       const plan = planById.get(enrollment.planId);
-      if (!plan || !plan.isActive) {
+      if (!plan) {
         continue;
       }
+      // Deliberately independent of `plan.isActive`: an existing enrollment
+      // bills what it was sold (the snapshot below). Deactivating a plan blocks
+      // new enrollments; stopping charges for enrolled people is an explicit
+      // effective-dated `endEnrollment`.
       const share = coverageShare(
         enrollment.validFrom,
         enrollment.validTo,

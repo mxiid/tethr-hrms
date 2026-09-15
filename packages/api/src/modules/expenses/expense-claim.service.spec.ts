@@ -83,6 +83,7 @@ const buildService = () => {
   };
   const dataSource = {
     transaction: jest.fn(async (work: (mgr: typeof manager) => Promise<unknown>) => work(manager)),
+    query: jest.fn(async () => [] as unknown[]),
   };
   const stableClaim = claimFixture();
   const claims = {
@@ -131,7 +132,7 @@ const buildService = () => {
   };
   const compensation = {
     createAdjustment: jest.fn(async () => ({ id: 'adjustment-1' })),
-    getAdjustmentsForPeriod: jest.fn(async () => []),
+    findAdjustmentBySource: jest.fn(async () => null),
   };
   const invoices = {
     addExpenseClaimLines: jest.fn(async () => ({ invoice: { id: 'invoice-1' }, addedLines: 1 })),
@@ -160,7 +161,10 @@ const buildService = () => {
     audit as unknown as AuditService,
   );
 
-  return { service, mocks: { claims, lines, categories, workflow, storage, compensation, invoices, manager } };
+  return {
+    service,
+    mocks: { claims, lines, categories, workflow, storage, compensation, invoices, manager, dataSource },
+  };
 };
 
 describe('ExpenseClaimService', () => {
@@ -249,9 +253,30 @@ describe('ExpenseClaimService', () => {
         sourceId: 'claim-1',
         amount: 6000,
       }),
+      // The claim's transaction manager joins the write.
+      expect.anything(),
     );
     expect(saved.claim.payrollAdjustmentId).toBe('adjustment-1');
     expect(saved.claim.status).toBe('paid');
+  });
+
+  it('reuses the adjustment already recorded for the claim, whatever period the retry asks for', async () => {
+    const { service, mocks } = buildService();
+    mocks.compensation.findAdjustmentBySource.mockResolvedValue({
+      id: 'adjustment-existing',
+      periodYear: 2027,
+      periodMonth: 6,
+    } as never);
+    const saved = await service.markReimbursed(
+      'claim-1',
+      { method: 'payroll', componentId: 'component-reimb', periodYear: 2027, periodMonth: 7 },
+      null,
+    );
+    expect(mocks.compensation.createAdjustment).not.toHaveBeenCalled();
+    expect(saved.claim.payrollAdjustmentId).toBe('adjustment-existing');
+    // The reused adjustment keeps its original period — the retry's period is
+    // ignored so the employee can never be paid twice.
+    expect(saved.claim.reimbursementPeriodMonth).toBe(6);
   });
 
   it('refuses reimbursement before approval', async () => {
@@ -276,7 +301,7 @@ describe('ExpenseClaimService', () => {
     mocks.lines.find.mockResolvedValue([
       { id: 'line-1', claimId: 'claim-1' } as ExpenseClaimLine,
     ]);
-    mocks.claims.find.mockResolvedValue([{ claimNumber: 'EXP-0002' } as ExpenseClaim]);
+    mocks.dataSource.query.mockResolvedValue([{ number: 'EXP-0002' }]);
     const submitted = await service.submitClaim('claim-1', selfActor);
     expect(submitted.claimNumber).toBe('EXP-0003');
     expect(submitted.status).toBe('submitted');
@@ -286,16 +311,16 @@ describe('ExpenseClaimService', () => {
     expect(submitted.approvalRequestId).toBe('approval-1');
   });
 
-  it('numbers from the highest issued claim, not from draft rows', async () => {
+  it('orders the highest claim number numerically past four digits', async () => {
     const { service, mocks } = buildService();
     mocks.claims.findById.mockResolvedValue(claimFixture({ status: 'draft', claimNumber: null }));
     mocks.lines.find.mockResolvedValue([
       { id: 'line-1', claimId: 'claim-1' } as ExpenseClaimLine,
     ]);
-    // Two abandoned drafts (null numbers) must not influence the sequence.
-    mocks.claims.find.mockResolvedValue([{ claimNumber: 'EXP-0007' } as ExpenseClaim]);
+    // Text ordering would pick EXP-9999 here and loop on the unique index.
+    mocks.dataSource.query.mockResolvedValue([{ number: 'EXP-10000' }]);
     const submitted = await service.submitClaim('claim-1', selfActor);
-    expect(submitted.claimNumber).toBe('EXP-0008');
+    expect(submitted.claimNumber).toBe('EXP-10001');
   });
 
   it('survives a concurrent default-category seed without failing the read', async () => {

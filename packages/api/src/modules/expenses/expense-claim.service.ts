@@ -12,7 +12,7 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, Not, type FindOptionsWhere } from 'typeorm';
+import { DataSource, In, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
@@ -476,15 +476,18 @@ export class ExpenseClaimService {
     const maxAttempts = 3;
     for (let attempt = 1; ; attempt += 1) {
       try {
-        // Derive from the highest issued number, never a row count: drafts hold
-        // null numbers, and a concurrent winner just advances the max so the
-        // retry picks the next free value (the unique index is the backstop).
-        const highest = await this.claims.find({
-          where: { claimNumber: Not(IsNull()) } as FindOptionsWhere<ExpenseClaim>,
-          order: { claimNumber: 'DESC' },
-          take: 1,
-        });
-        const highestNumber = Number(highest[0]?.claimNumber?.slice('EXP-'.length) ?? '0') || 0;
+        // Numeric ordering, not text: after EXP-10000 exists, EXP-9999 must not
+        // sort above it. Explicit org filter because this reads outside the
+        // tenant-scoped repository (the unique index is still the backstop and a
+        // concurrent winner just advances the max for the retry).
+        const rows = await this.dataSource.query<{ number: string | null }[]>(
+          `SELECT "claimNumber" AS number FROM expense_claims
+            WHERE "organizationId" = $1 AND "claimNumber" IS NOT NULL
+            ORDER BY CAST(SUBSTRING("claimNumber" FROM 5) AS INTEGER) DESC
+            LIMIT 1`,
+          [this.tenantContext.getOrganizationId()],
+        );
+        const highestNumber = Number(rows[0]?.number?.slice('EXP-'.length) ?? '0') || 0;
         claim.claimNumber = `EXP-${pad4(highestNumber + 1)}`;
         claim.status = 'submitted';
         claim.submittedAt = new Date();
@@ -607,7 +610,10 @@ export class ExpenseClaimService {
     }
     const saved = await this.dataSource.transaction(async (manager) => {
       const claim = await manager.findOne(ExpenseClaim, {
-        where: { id: claimId } as FindOptionsWhere<ExpenseClaim>,
+        where: {
+          id: claimId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<ExpenseClaim>,
         lock: { mode: 'pessimistic_write' },
       });
       if (!claim) {
@@ -622,20 +628,20 @@ export class ExpenseClaimService {
         const periodYear = input.periodYear as number;
         const periodMonth = input.periodMonth as number;
         // A retry after the adjustment was created but the claim save failed
-        // must reuse that adjustment instead of paying the employee twice.
-        const existing = await this.compensation.getAdjustmentsForPeriod(
-          claim.employeeId,
-          periodYear,
-          periodMonth,
+        // must reuse that adjustment — regardless of the period the retry asks
+        // for — instead of paying the employee twice. The unique source index
+        // (organizationId, sourceType, sourceId) makes that the only row.
+        const existing = await this.compensation.findAdjustmentBySource(
+          'expenseClaim',
+          claim.id,
         );
-        const match = existing.find(
-          (adjustment) =>
-            adjustment.sourceType === 'expenseClaim' && adjustment.sourceId === claim.id,
-        );
-        const adjustmentId =
-          match?.adjustmentId ??
-          (
-            await this.compensation.createAdjustment({
+        if (existing) {
+          claim.payrollAdjustmentId = existing.id;
+          claim.reimbursementPeriodYear = existing.periodYear;
+          claim.reimbursementPeriodMonth = existing.periodMonth;
+        } else {
+          const adjustment = await this.compensation.createAdjustment(
+            {
               employeeId: claim.employeeId,
               componentId: toId<PayComponentId>(input.componentId as string),
               amount: Number(claim.totalAmount),
@@ -646,11 +652,15 @@ export class ExpenseClaimService {
               sourceType: 'expenseClaim',
               sourceId: claim.id,
               note: `Expense claim ${claim.claimNumber ?? claim.id}`,
-            })
-          ).id;
-        claim.payrollAdjustmentId = adjustmentId;
-        claim.reimbursementPeriodYear = periodYear;
-        claim.reimbursementPeriodMonth = periodMonth;
+            },
+            // One unit of work: the adjustment and its audit join the claim's
+            // transaction, so a later failure rolls the whole payment back.
+            manager,
+          );
+          claim.payrollAdjustmentId = adjustment.id;
+          claim.reimbursementPeriodYear = periodYear;
+          claim.reimbursementPeriodMonth = periodMonth;
+        }
         claim.reimbursementReference = input.paymentReference ?? null;
       } else {
         claim.reimbursementReference = input.paymentReference?.slice(0, 120) ?? null;
@@ -734,13 +744,12 @@ export class ExpenseClaimService {
     if (billableLines.length === 0) {
       throw new ValidationFailedError('This claim has no client-billable lines');
     }
-    const latestExpenseDate = billableLines.reduce(
-      (latest, line) => (line.expenseDate > latest ? line.expenseDate : latest),
-      billableLines[0].expenseDate,
-    );
     const saved = await this.dataSource.transaction(async (manager) => {
       const locked = await manager.findOne(ExpenseClaim, {
-        where: { id: claim.id } as FindOptionsWhere<ExpenseClaim>,
+        where: {
+          id: claim.id,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<ExpenseClaim>,
         lock: { mode: 'pessimistic_write' },
       });
       if (!locked) {
@@ -751,20 +760,24 @@ export class ExpenseClaimService {
           invoiceId: locked.billedInvoiceId,
         });
       }
-      const result = await this.invoices.addExpenseClaimLines({
-        employeeId: locked.employeeId,
-        serviceYear,
-        serviceMonth,
-        sourceLabel: locked.claimNumber ?? locked.id,
-        // The invoice is denominated in the billing currency; pass the claim's
-        // own currency and let billing convert at the frozen claim rate.
-        sourceCurrency: locked.currency,
-        asOf: latestExpenseDate,
-        lines: billableLines.map((line) => ({
-          description: `${billableCategories.get(line.categoryId)?.name ?? 'Expense'}: ${line.description}`,
-          amount: Number(line.amount),
-        })),
-      });
+      const result = await this.invoices.addExpenseClaimLines(
+        {
+          employeeId: locked.employeeId,
+          serviceYear,
+          serviceMonth,
+          sourceLabel: locked.claimNumber ?? locked.id,
+          // The invoice is denominated in the billing currency; each line is
+          // converted at its own expense date's frozen rate.
+          sourceCurrency: locked.currency,
+          lines: billableLines.map((line) => ({
+            description: `${billableCategories.get(line.categoryId)?.name ?? 'Expense'}: ${line.description}`,
+            amount: Number(line.amount),
+            asOf: line.expenseDate,
+          })),
+        },
+        // One unit of work: the invoice write joins the claim's transaction.
+        manager,
+      );
       locked.billedInvoiceId = result.invoice.id;
       locked.billedAt = new Date();
       const persisted = await manager.save(locked);
@@ -913,7 +926,10 @@ export class ExpenseClaimService {
     claimId: string,
   ): Promise<void> {
     const lines = await manager.find(ExpenseClaimLine, {
-      where: { claimId } as FindOptionsWhere<ExpenseClaimLine>,
+      where: {
+        claimId,
+        organizationId: this.tenantContext.getOrganizationId(),
+      } as FindOptionsWhere<ExpenseClaimLine>,
     });
     const categories = await manager.find(ExpenseCategory, {
       where: {
@@ -930,7 +946,10 @@ export class ExpenseClaimService {
         .reduce((sum, line) => sum + Number(line.amount), 0),
     );
     const claim = await manager.findOne(ExpenseClaim, {
-      where: { id: claimId } as FindOptionsWhere<ExpenseClaim>,
+      where: {
+        id: claimId,
+        organizationId: this.tenantContext.getOrganizationId(),
+      } as FindOptionsWhere<ExpenseClaim>,
     });
     if (!claim) {
       throw new NotFoundError('Expense claim not found', { id: claimId });

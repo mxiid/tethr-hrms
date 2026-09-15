@@ -330,6 +330,7 @@ export const PayrollRunDetailPage = () => {
                 disabled={markingPaid}
                 type="button"
                 onClick={() => {
+                  setError(null);
                   setPayReference('');
                   setPayModalOpen(true);
                 }}

@@ -221,8 +221,12 @@ export class FinalSettlementService {
     // `computed`, and keep the audit record in the same transaction: a failed
     // audit rolls the transition back instead of leaving a paid row without one.
     const saved = await this.dataSource.transaction(async (manager) => {
+      const organizationId = this.tenantContext.getOrganizationId();
       const settlement = await manager.findOne(FinalSettlement, {
-        where: { employeeId: input.employeeId } as FindOptionsWhere<FinalSettlement>,
+        where: {
+          employeeId: input.employeeId,
+          organizationId,
+        } as FindOptionsWhere<FinalSettlement>,
         order: { computedAt: 'DESC' },
         lock: { mode: 'pessimistic_write' },
       });

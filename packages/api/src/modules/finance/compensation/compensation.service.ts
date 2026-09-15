@@ -681,7 +681,10 @@ export class CompensationService {
 
   // --- Pay adjustments: the one choke point for period-scoped money changes ---
 
-  async createAdjustment(input: CreatePayAdjustmentData): Promise<PayAdjustment> {
+  async createAdjustment(
+    input: CreatePayAdjustmentData,
+    manager?: EntityManager,
+  ): Promise<PayAdjustment> {
     if (!(await this.employeeDirectory.exists(input.employeeId))) {
       throw new NotFoundError('Employee not found', { id: input.employeeId });
     }
@@ -728,35 +731,59 @@ export class CompensationService {
         { componentId: input.componentId, category: component.category },
       );
     }
-    const adjustment = this.payAdjustments.create({
-      employeeId: input.employeeId,
-      componentId: input.componentId,
-      amount: toAmount(input.amount),
-      currency: normalizeCurrency(input.currency),
-      periodYear: input.periodYear,
-      periodMonth: input.periodMonth,
-      kind: input.kind,
-      sourceType: input.sourceType ?? null,
-      sourceId: input.sourceId ?? null,
-      overwritesStructureAmount: input.overwritesStructureAmount ?? false,
-      isRecurring: input.isRecurring ?? false,
-      recurringFrom: input.recurringFrom ?? null,
-      recurringTo: input.recurringTo ?? null,
-      note: input.note ?? null,
+    const persist = async (target: EntityManager): Promise<PayAdjustment> => {
+      const saved = await target.save(
+        target.create(PayAdjustment, {
+          // Explicit because a raw manager create bypasses the tenant-scoped
+          // repository's automatic organization stamping.
+          organizationId: this.tenantContext.getOrganizationId(),
+          employeeId: input.employeeId,
+          componentId: input.componentId,
+          amount: toAmount(input.amount),
+          currency: normalizeCurrency(input.currency),
+          periodYear: input.periodYear,
+          periodMonth: input.periodMonth,
+          kind: input.kind,
+          sourceType: input.sourceType ?? null,
+          sourceId: input.sourceId ?? null,
+          overwritesStructureAmount: input.overwritesStructureAmount ?? false,
+          isRecurring: input.isRecurring ?? false,
+          recurringFrom: input.recurringFrom ?? null,
+          recurringTo: input.recurringTo ?? null,
+          note: input.note ?? null,
+        }),
+      );
+      await this.audit.record(
+        {
+          action: 'create',
+          resourceType: 'pay_adjustment',
+          resourceId: saved.id,
+          after: {
+            employeeId: saved.employeeId,
+            kind: saved.kind,
+            amount: Number(saved.amount),
+            period: `${saved.periodYear}-${String(saved.periodMonth).padStart(2, '0')}`,
+          },
+        },
+        target,
+      );
+      return saved;
+    };
+    // Callers inside a larger unit of work (expense reimbursement) pass their
+    // manager so the adjustment and its audit commit or roll back together.
+    if (manager) {
+      return persist(manager);
+    }
+    return this.dataSource.transaction((target) => persist(target));
+  }
+
+  // The published lookup behind idempotent expense reimbursement: the unique
+  // (organizationId, sourceType, sourceId) index guarantees at most one
+  // adjustment per source fact, so a retry can recover it by source alone.
+  findAdjustmentBySource(sourceType: string, sourceId: string): Promise<PayAdjustment | null> {
+    return this.payAdjustments.findOne({
+      where: { sourceType, sourceId } as FindOptionsWhere<PayAdjustment>,
     });
-    const saved = await this.payAdjustments.save(adjustment);
-    await this.audit.record({
-      action: 'create',
-      resourceType: 'pay_adjustment',
-      resourceId: saved.id,
-      after: {
-        employeeId: saved.employeeId,
-        kind: saved.kind,
-        amount: Number(saved.amount),
-        period: `${saved.periodYear}-${String(saved.periodMonth).padStart(2, '0')}`,
-      },
-    });
-    return saved;
   }
 
   listAdjustmentsFor(employeeId: EmployeeId): Promise<PayAdjustment[]> {

@@ -27,6 +27,13 @@ export type PayAdjustmentKind =
 
 @Entity('pay_adjustments')
 @Index(['organizationId', 'employeeId', 'periodYear', 'periodMonth'])
+// One adjustment per source fact (a bonus award, an expense claim): makes
+// retries idempotent instead of paying twice when the first attempt's
+// transaction partially completed.
+@Index('pay_adjustments_org_source_unique', ['organizationId', 'sourceType', 'sourceId'], {
+  unique: true,
+  where: '"sourceId" IS NOT NULL',
+})
 export class PayAdjustment extends TenantScopedEntity {
   @Column({ type: 'uuid' })
   employeeId!: EmployeeId;
