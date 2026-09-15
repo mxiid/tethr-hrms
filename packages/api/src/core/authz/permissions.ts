@@ -59,6 +59,15 @@ export const PERMISSIONS = {
   billingRead: 'billing:read',
   billingWrite: 'billing:write',
   billingOwnRead: 'billing:own:read',
+  // Employee expense claims: employees file their own; approvers decide; finance
+  // pays (directly or by scheduling a payroll adjustment) and can pass billable
+  // lines through to the client's expenses invoice.
+  expenseRead: 'expense:read',
+  expenseWrite: 'expense:write',
+  expenseApprove: 'expense:approve',
+  expensePay: 'expense:pay',
+  expenseOwnRead: 'expense:own:read',
+  expenseOwnWrite: 'expense:own:write',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

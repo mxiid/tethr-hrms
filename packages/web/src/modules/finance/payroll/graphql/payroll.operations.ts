@@ -31,6 +31,8 @@ const RUN_LINE_FIELDS = `
   taxableAmount
   incomeTax
   netPayAmount
+  employerContributions
+  employerCost
   components {
     ${RUN_LINE_COMPONENT_FIELDS}
   }
@@ -45,7 +47,16 @@ const RUN_FIELDS = `
   standardWorkingDays
   holidayCalendarId
   finalizedAt
+  payDate
   finalizeOverrideReason
+  finalizeOverrideGuards
+  grossTotal
+  deductionsTotal
+  netTotal
+  employerContributionTotal
+  employerCostTotal
+  paidAt
+  paymentReference
   isStale
   staleReason
 `;
@@ -165,6 +176,17 @@ export const FINALIZE_PAYROLL_RUN_MUTATION = gql`
 export const BANK_ADVICE_CSV_QUERY = gql`
   query BankAdviceCsv($runId: ID!) {
     bankAdviceCsv(runId: $runId)
+  }
+`;
+
+export const MARK_PAYROLL_RUN_PAID_MUTATION = gql`
+  mutation MarkPayrollRunPaid($runId: ID!, $paymentReference: String) {
+    markPayrollRunPaid(runId: $runId, paymentReference: $paymentReference) {
+      id
+      status
+      paidAt
+      paymentReference
+    }
   }
 `;
 

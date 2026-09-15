@@ -6,10 +6,11 @@ import { AuditService } from '../../../core/audit/audit.service';
 import { DomainEventPublisher } from '../../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repository';
-import { CompensationService } from '../compensation';
+import type { BenefitService } from '../../benefits';
 import { EmployeeDirectoryService } from '../../employee';
 import { EmployeeRecordsService } from '../../employee-records';
 import { HolidayService, LeaveRequestService } from '../../leave';
+import { CompensationService } from '../compensation';
 
 import { PayrollRunLineComponent } from './entities/payroll-run-line-component.entity';
 import { PayrollRunLine } from './entities/payroll-run-line.entity';
@@ -179,7 +180,9 @@ const buildService = (options: Options = {}) => {
       .fn()
       .mockResolvedValue(breakdownFixture) as jest.Mock,
     getAdjustmentsForPeriod: jest.fn().mockResolvedValue([]) as jest.Mock,
+    getTaxProfile: jest.fn().mockResolvedValue(null) as jest.Mock,
   };
+  const benefits = { getEnrollmentCharges: jest.fn(async () => []) as jest.Mock };
   const leaveRequests = {
     getApprovedUnpaidWorkDays: jest.fn(async () => options.unpaidDays ?? 0) as jest.Mock,
   };
@@ -202,6 +205,7 @@ const buildService = (options: Options = {}) => {
     audit as unknown as AuditService,
     employeeDirectory as unknown as EmployeeDirectoryService,
     compensation as unknown as CompensationService,
+    benefits as unknown as BenefitService,
     leaveRequests as unknown as LeaveRequestService,
     holidays as unknown as HolidayService,
     taxSlabs as unknown as TaxSlabService,
@@ -618,5 +622,15 @@ describe('PayrollRunService.getReadiness', () => {
     expect(
       readiness.employees[0].blockers.some((blocker) => blocker.code === 'structureHasNoComponents'),
     ).toBe(true);
+  });
+});
+
+describe('PayrollRunService.markRunPaid', () => {
+  it('rejects a regex-shaped but impossible settlement date before any read', async () => {
+    const { service, mocks } = buildService();
+    await expect(
+      service.markRunPaid({ runId: RUN_ID, settlementDate: '2026-02-31' }),
+    ).rejects.toThrow(/real calendar date/);
+    expect(mocks.runs.findById).not.toHaveBeenCalled();
   });
 });

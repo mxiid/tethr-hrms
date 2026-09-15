@@ -25,6 +25,7 @@ import {
   MARK_INVOICE_PAID_MUTATION,
   REMOVE_INVOICE_LINE_MUTATION,
   UPDATE_INVOICE_LINE_MUTATION,
+  VOID_INVOICE_MUTATION,
 } from '../graphql/billing.operations';
 
 type InvoiceLineRecord = {
@@ -57,6 +58,11 @@ type InvoiceRecord = {
   readonly totalAmount: number;
   readonly paidAt: string | null;
   readonly paymentReference: string | null;
+  readonly reconciliationStatus: string;
+  readonly payrollCostAmount: number | null;
+  readonly reconciledAt: string | null;
+  readonly isStale: boolean;
+  readonly staleReason: string | null;
   readonly lines?: readonly InvoiceLineRecord[];
 };
 
@@ -147,6 +153,7 @@ export const InvoiceDetailPage = () => {
   const [removeLine] = useMutation(REMOVE_INVOICE_LINE_MUTATION);
   const [issueInvoice, { loading: issuing }] = useMutation(ISSUE_INVOICE_MUTATION);
   const [markPaid, { loading: paying }] = useMutation(MARK_INVOICE_PAID_MUTATION);
+  const [voidInvoice, { loading: voiding }] = useMutation(VOID_INVOICE_MUTATION);
 
   const run = async (action: () => Promise<unknown>, successMessage?: string): Promise<boolean> => {
     setError(null);
@@ -391,8 +398,45 @@ export const InvoiceDetailPage = () => {
                   {issuing ? 'Issuing…' : 'Approve & issue'}
                 </button>
               ) : null}
+              {isDraft ? (
+                <button
+                  className="button button-secondary"
+                  disabled={voiding}
+                  type="button"
+                  onClick={() =>
+                    void run(
+                      () => voidInvoice({ variables: { invoiceId } }),
+                      'Draft voided. The month can be re-drafted.',
+                    )
+                  }
+                >
+                  <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  {voiding ? 'Voiding…' : 'Void draft'}
+                </button>
+              ) : null}
+              {invoice?.isStale ? (
+                <StatusChip color="amber" label={invoice.staleReason ?? 'Stale draft'} />
+              ) : null}
               {!isDraft && invoice?.status === 'issued' ? (
                 <StatusChip color="blue" label={`Due ${invoice.dueDate ?? '—'}`} />
+              ) : null}
+              {invoice && invoice.reconciliationStatus !== 'pending' ? (
+                <StatusChip
+                  color={
+                    invoice.reconciliationStatus === 'matched'
+                      ? 'green'
+                      : invoice.reconciliationStatus === 'variance'
+                        ? 'amber'
+                        : 'gray'
+                  }
+                  label={
+                    invoice.reconciliationStatus === 'matched'
+                      ? 'Reconciled'
+                      : invoice.reconciliationStatus === 'variance'
+                        ? `Cost variance${invoice.payrollCostAmount === null ? '' : ` · ${formatMoney(invoice.payrollCostAmount, invoice.currency)} cost`}`
+                        : 'No FX rate'
+                  }
+                />
               ) : null}
               <Link className="button button-secondary" to="/billing">All invoices</Link>
             </div>

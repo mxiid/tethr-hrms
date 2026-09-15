@@ -32,6 +32,34 @@ const INVOICE_FIELDS = `
   totalAmount
   paidAt
   paymentReference
+  reconciliationStatus
+  payrollCostAmount
+  reconciledAt
+  isStale
+  staleReason
+`;
+
+const RECONCILIATION_PERIOD_FIELDS = `
+  serviceYear
+  serviceMonth
+  status
+  currency
+  invoiceCount
+  invoicedAmount
+  payrollCostAmount
+  varianceAmount
+  payrollRunId
+  payDate
+  invoices {
+    invoiceId
+    number
+    groupId
+    status
+    reconciliationStatus
+    invoicedAmount
+    payrollCostAmount
+    reconciledAt
+  }
 `;
 
 export const BILLING_PAGE_DATA_QUERY = gql`
@@ -69,6 +97,9 @@ export const BILLING_PAGE_DATA_QUERY = gql`
       employeeNumber
       firstName
       lastName
+    }
+    billingReconciliation {
+      ${RECONCILIATION_PERIOD_FIELDS}
     }
   }
 `;
@@ -193,6 +224,15 @@ export const MARK_INVOICE_PAID_MUTATION = gql`
       status
       paidAt
       paymentReference
+    }
+  }
+`;
+
+export const VOID_INVOICE_MUTATION = gql`
+  mutation VoidInvoice($invoiceId: ID!) {
+    voidInvoice(invoiceId: $invoiceId) {
+      id
+      status
     }
   }
 `;

@@ -79,6 +79,8 @@ type InvoiceRow = {
   readonly dueDate: string | null;
   readonly currency: string;
   readonly totalAmount: number;
+  readonly isStale?: boolean;
+  readonly staleReason?: string | null;
 };
 
 type EmployeeOption = {
@@ -88,12 +90,31 @@ type EmployeeOption = {
   readonly lastName: string;
 };
 
+type ReconciliationPeriodRecord = {
+  readonly serviceYear: number;
+  readonly serviceMonth: number;
+  readonly status: string;
+  readonly currency: string;
+  readonly invoiceCount: number;
+  readonly invoicedAmount: number;
+  readonly payrollCostAmount: number | null;
+  readonly varianceAmount: number | null;
+  readonly payDate: string | null;
+  readonly invoices: readonly {
+    readonly invoiceId: string;
+    readonly number: string | null;
+    readonly reconciliationStatus: string;
+    readonly invoicedAmount: number;
+  }[];
+};
+
 type BillingPageData = {
   readonly billingConfig: BillingConfigRecord;
   readonly billingGroups: readonly BillingGroupRecord[];
   readonly billingMembers: readonly BillingMemberRecord[];
   readonly invoices: readonly InvoiceRow[];
   readonly employees: readonly EmployeeOption[];
+  readonly billingReconciliation: readonly ReconciliationPeriodRecord[];
 };
 
 const MONTH_NAMES = [
@@ -102,12 +123,19 @@ const MONTH_NAMES = [
 ] as const;
 
 const statusColor = (status: InvoiceStatus): MainColorName =>
-  status === 'paid' ? 'green' : status === 'issued' ? 'blue' : 'amber';
+  status === 'paid'
+    ? 'green'
+    : status === 'issued'
+      ? 'blue'
+      : status === 'voided'
+        ? 'gray'
+        : 'amber';
 
 const invoiceStatusLabels: Record<InvoiceStatus, string> = {
   draft: 'Draft',
   issued: 'Issued',
   paid: 'Paid',
+  voided: 'Voided',
 };
 
 const formatMoney = (amount: number, currency: string): string =>
@@ -178,7 +206,10 @@ const INVOICE_COLUMNS: readonly ColumnDefinition<InvoiceRow>[] = [
     hideable: false,
     sortValue: (invoice) => invoice.status,
     render: (invoice) => (
-      <StatusChip color={statusColor(invoice.status)} label={invoiceStatusLabels[invoice.status]} />
+      <span className="record-inline-actions">
+        <StatusChip color={statusColor(invoice.status)} label={invoiceStatusLabels[invoice.status]} />
+        {invoice.isStale ? <StatusChip color="amber" label="Stale" /> : null}
+      </span>
     ),
   },
   {
@@ -204,6 +235,82 @@ const INVOICE_COLUMNS: readonly ColumnDefinition<InvoiceRow>[] = [
 
 const now = new Date();
 
+const reconciliationColor: Record<string, MainColorName> = {
+  open: 'gray',
+  balanced: 'green',
+  variance: 'amber',
+  no_cost_data: 'gray',
+};
+
+const reconciliationLabels: Record<string, string> = {
+  open: 'Awaiting run',
+  balanced: 'Balanced',
+  variance: 'Variance',
+  no_cost_data: 'No FX rate',
+};
+
+const RECONCILIATION_COLUMNS: readonly ColumnDefinition<ReconciliationPeriodRecord>[] = [
+  {
+    key: 'period',
+    header: 'Service month',
+    width: '20%',
+    hideable: false,
+    sortValue: (row) => row.serviceYear * 100 + row.serviceMonth,
+    render: (row) => (
+      <span className="employee-primary">
+        {`${MONTH_NAMES[row.serviceMonth - 1]} ${row.serviceYear}`}
+      </span>
+    ),
+  },
+  {
+    key: 'invoices',
+    header: 'Invoices',
+    width: '10%',
+    align: 'right',
+    sortValue: (row) => row.invoiceCount,
+    render: (row) => row.invoiceCount,
+  },
+  {
+    key: 'invoiced',
+    header: 'Invoiced (salary)',
+    width: '18%',
+    align: 'right',
+    sortValue: (row) => row.invoicedAmount,
+    render: (row) => formatMoney(row.invoicedAmount, row.currency),
+  },
+  {
+    key: 'cost',
+    header: 'Payroll cost',
+    width: '18%',
+    align: 'right',
+    sortValue: (row) => row.payrollCostAmount ?? -1,
+    render: (row) =>
+      row.payrollCostAmount === null ? '—' : formatMoney(row.payrollCostAmount, row.currency),
+  },
+  {
+    key: 'variance',
+    header: 'Variance',
+    width: '16%',
+    align: 'right',
+    sortValue: (row) => row.varianceAmount ?? 0,
+    render: (row) =>
+      row.varianceAmount === null ? '—' : formatMoney(row.varianceAmount, row.currency),
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    width: '18%',
+    hideable: false,
+    sortValue: (row) => row.status,
+    render: (row) => (
+      <StatusChip
+        color={reconciliationColor[row.status] ?? 'gray'}
+        label={reconciliationLabels[row.status] ?? row.status}
+      />
+    ),
+  },
+];
+
 export const BillingPage = () => {
   const { theme } = useTheme();
   const { data, loading, error, refetch } = useQuery<BillingPageData>(BILLING_PAGE_DATA_QUERY);
@@ -216,6 +323,11 @@ export const BillingPage = () => {
     routeKey: '/billing/invoices',
     paramKeyPrefix: 'invoices',
     defaultSorts: [{ key: 'covers', direction: 'desc' }],
+  });
+  const reconciliationView = useListView({
+    routeKey: '/billing/reconciliation',
+    paramKeyPrefix: 'reconciliation',
+    defaultSorts: [{ key: 'period', direction: 'desc' }],
   });
 
   const [groupName, setGroupName] = useState('');
@@ -238,6 +350,7 @@ export const BillingPage = () => {
   const groups = data?.billingGroups ?? [];
   const members = data?.billingMembers ?? [];
   const invoices = data?.invoices ?? [];
+  const reconciliation = data?.billingReconciliation ?? [];
 
   const memberGroups = useMemo(
     () =>
@@ -581,6 +694,34 @@ export const BillingPage = () => {
             onSort={invoiceView.setSort}
             skeletonRows={3}
             sorts={invoiceView.sorts}
+          />
+        </section>
+
+        <section className="table-shell" aria-label="Reconciliation">
+          <ViewBar
+            columns={toViewColumns(RECONCILIATION_COLUMNS)}
+            count={reconciliation.length}
+            filters={[]}
+            view={reconciliationView}
+            viewLabel="Payroll vs invoiced"
+          />
+          <DataTable
+            columns={RECONCILIATION_COLUMNS}
+            emptyState={
+              <EmptyState
+                icon={IconFileInvoice}
+                title="No reconciliation yet"
+                description="Monthly payroll cost vs invoiced salary appears here once a run finalizes."
+              />
+            }
+            loading={loading}
+            rows={reconciliation}
+            getRowKey={(row) => `${row.serviceYear}-${row.serviceMonth}`}
+            hiddenColumns={reconciliationView.hiddenColumns}
+            onHideColumn={reconciliationView.hideColumn}
+            onSort={reconciliationView.setSort}
+            skeletonRows={2}
+            sorts={reconciliationView.sorts}
           />
         </section>
       </div>

@@ -23,6 +23,7 @@ import { useTheme } from '../../../providers/theme/useTheme';
 import { ClockInOutCard } from '../../attendance/components/ClockInOutCard';
 import { useSelfClock } from '../../attendance/hooks/useSelfClock';
 import { SUBMIT_MY_FEEDBACK_MUTATION } from '../../engagement/graphql/engagement.operations';
+import { MyExpensesSection } from '../../expenses/components/MyExpensesSection';
 import {
   MY_PAYSLIP_PDF_QUERY,
   MY_PAYSLIP_QUERY,
@@ -478,6 +479,8 @@ export const EmployeeWorkspacePage = () => {
               ) : null}
             </div>
           </section>
+
+          <MyExpensesSection />
         </>
       ) : (
         <>

@@ -1,0 +1,176 @@
+%% Hiring / Recruitment end-to-end flow — reverse-engineered from source.
+%% See docs/process-flows.md for the citation list and flagged ambiguities.
+flowchart TD
+
+classDef automated fill:#eef0ff,stroke:#6666aa,stroke-dasharray: 3 3,color:#333;
+classDef flagged fill:#fff2e0,stroke:#cc8800,color:#663d00;
+classDef terminal fill:#f4f4f4,stroke:#999,color:#333;
+
+%% ===================== REQUISITION =====================
+subgraph PHASE_REQ["Phase 1: Requisition"]
+  R_START(["Client or Tethr staff\nraises a Hiring Request"])
+  R_CREATE["Hiring Request created\nstatus = submitted\nActor: Client (clientAdmin/clientMember)\nor Tethr (tethrHr/tethrAdmin)\nhiring-request.entity.ts, recruitment.service.ts"]
+  R_DECISION{"Tethr HR/Admin reviews\n(hiringRequestManage permission)"}
+  R_OPEN["status = open\nPosition ensured and opened\napplyPositionTransition, recruitment.service.ts"]
+  R_HOLD["status = onHold"]
+  R_CANCEL_EARLY(["Request Cancelled\n(terminal - Position closed)"])
+  R_PUBLISH["Tethr publishes Job Posting\nfrom an open request only\nisPublished = true\nats.service.ts publishPostingFromRequest"]
+  R_LINK["Signed apply link minted\nFormTokenService.mint\n/apply/:token, no sub/org claims\nTTL = FORM_LINK_TTL_DAYS"]
+
+  R_START --> R_CREATE --> R_DECISION
+  R_DECISION -- "approve" --> R_OPEN
+  R_DECISION -- "cancel" --> R_CANCEL_EARLY
+  R_OPEN -- "put on hold" --> R_HOLD
+  R_HOLD -- "resume" --> R_OPEN
+  R_HOLD -- "cancel" --> R_CANCEL_EARLY
+  R_OPEN -- "cancel" --> R_CANCEL_EARLY
+  R_OPEN --> R_PUBLISH --> R_LINK
+end
+
+subgraph AUTO_REQ["Automated"]
+  A_EVT1[["hiringRequest.submitted\nevent published"]]
+  A_SLACK[["Slack notification\nwebhook or logger fallback\nhiring-request-submitted.consumer.ts"]]
+  A_EVT1 --> A_SLACK
+end
+class A_EVT1,A_SLACK automated
+R_CREATE -.-> A_EVT1
+
+%% ===================== APPLICATION INTAKE =====================
+subgraph PHASE_INTAKE["Phase 2: Public Application Intake"]
+  I_CANDIDATE(["Candidate\n(no login - public signed link)"])
+  I_FORM["Opens application form\nformByLink query, public-forms.resolver.ts"]
+  I_UPLOAD["Uploads CV\nprepareFormFileUpload issues a signed URL\nFormUploadTicket recorded (key/field/size/expiry)"]
+  I_SUBMIT["Submits form\nsubmitForm: ticket + storage-existence\nverified via statObject before accepting"]
+  I_PENDING["FormSubmission created\nstatus = pending"]
+
+  I_CANDIDATE --> I_FORM --> I_UPLOAD --> I_SUBMIT --> I_PENDING
+end
+R_LINK -.-> I_CANDIDATE
+
+subgraph AUTO_INTAKE["Automated"]
+  A_EVT2[["form.submitted event\npublished, target = application"]]
+  A_CHECK{"Posting still isPublished\nand closesOn not passed?"}
+  A_REJECT_SUB(["Submission Rejected\nstatus = rejected, reason recorded\n(closed-posting guard)"])
+  A_EMAILCHECK{"Answer email valid?"}
+  A_STUCK(["Left permanently pending -\nno reject, no retry path"])
+  A_CANDIDATE["Find-or-create Candidate\nmatch by email; existing row is\noverwritten with latest facts (no versioning)"]
+  A_APPLICATION["Application created\nstage = screening, outcome = active\nsnapshot fields captured from the submission"]
+  A_CV["CV recorded as CandidateDocument"]
+  A_PARSE["CvParse row created, status = pending"]
+  A_PARSEJOB[["parse-cv job enqueued -\nworker processor is a no-op stub today.\nEvery CvParse row stays pending forever."]]
+  A_PROJECTED["FormSubmission marked projected"]
+  A_ACK[["Candidate acknowledgement email\nResend, or logger fallback in dev"]]
+
+  A_EVT2 --> A_CHECK
+  A_CHECK -- "no" --> A_REJECT_SUB
+  A_CHECK -- "yes" --> A_EMAILCHECK
+  A_EMAILCHECK -- "no" --> A_STUCK
+  A_EMAILCHECK -- "yes" --> A_CANDIDATE --> A_APPLICATION
+  A_APPLICATION --> A_CV --> A_PARSE --> A_PARSEJOB
+  A_APPLICATION --> A_PROJECTED --> A_ACK
+end
+class A_EVT2,A_SLACK,A_CANDIDATE,A_APPLICATION,A_CV,A_PARSE,A_PARSEJOB,A_PROJECTED,A_ACK automated
+class A_PARSEJOB,A_STUCK flagged
+I_PENDING -.-> A_EVT2
+
+%% ===================== SCREENING / PIPELINE =====================
+subgraph PHASE_SCREEN["Phase 3: Screening and Pipeline"]
+  S_REVIEW["Tethr recruiter reviews Application\nsets manualRating / notes\ncandidateManage permission (Tethr-only)"]
+  S_DECISION{"Recruiter decision"}
+  S_REJECTED(["Application Rejected or Withdrawn\noutcome = rejected/withdrawn.\nRow persists; no unique constraint blocks\nthe same person re-applying later."])
+  S_ADVANCE["Advance toward Shortlisting"]
+
+  S_REVIEW --> S_DECISION
+  S_DECISION -- "reject / withdraw" --> S_REJECTED
+  S_DECISION -- "advance" --> S_ADVANCE
+end
+A_PROJECTED -.-> S_REVIEW
+
+%% ===================== SHORTLISTING =====================
+subgraph PHASE_SHORTLIST["Phase 4: Shortlisting"]
+  SL_BUILD["Tethr builds a ranked round\ncreateShortlist, status = draft\nrank = caller-supplied order (no scoring logic here)"]
+  SL_PRESENT["Tethr presents the round\nstatus = presented\nApplication.stage set to shortlisted for every entry"]
+  SL_CLIENT(["Client\nclientAdmin / clientMember"])
+  SL_DECIDE["Client records a decision per candidate\nrecordShortlistDecision, shortlistDecide permission.\nOrg derived server-side from the caller -\nnever trusts a client-supplied id."]
+  SL_INTERESTED{"Client decision\nper candidate"}
+  SL_FEEDBACK["Round status = feedbackReceived\n(on the first decision in the round)"]
+  SL_NOTE(["Decision recorded on ShortlistEntry only -\ndoes NOT auto-update Application.outcome"])
+  SL_CLOSE["Tethr closes the round\nstatus = closed (no effect on Application)"]
+  SL_NEXTROUND{"Any candidates\nof interest?"}
+  SL_NOINTEREST(["No interest in this round -\nTethr builds the next round\n(nextRoundNumber) from the remaining pool"])
+
+  S_ADVANCE --> SL_BUILD --> SL_PRESENT --> SL_CLIENT --> SL_DECIDE --> SL_INTERESTED
+  SL_INTERESTED -- "interested" --> SL_FEEDBACK
+  SL_INTERESTED -- "not interested" --> SL_FEEDBACK
+  SL_FEEDBACK -.-> SL_NOTE
+  SL_FEEDBACK --> SL_CLOSE --> SL_NEXTROUND
+  SL_NEXTROUND -- "yes" --> SL_PROCEED["Proceed to Interviewing\nfor the interested candidate(s)"]
+  SL_NEXTROUND -- "no" --> SL_NOINTEREST
+  SL_NOINTEREST -.-> SL_BUILD
+end
+class SL_NOTE flagged
+
+%% ===================== INTERVIEWING =====================
+subgraph PHASE_INTERVIEW["Phase 5: Interviewing"]
+  IV_SCHEDULE["Tethr schedules an Interview\nround + panel + time, candidateManage.\nPanel: internal user OR external name/email\n(client staff usually have no HRMS login).\nApplication.stage = interviewing"]
+  IV_FEEDBACK["Panellist scorecard recorded\n1-5 per skill. One active scorecard per\npanellist; withdraw to refile. Cannot file\nbefore the scheduled time. Tethr records\non the client panellist's behalf - no\n'session user is the interviewer' check."]
+  IV_WITHDRAW["Feedback withdrawn"]
+  IV_ROLLUP[["Averages computed on every read:\nper feedback to per interview to per skill.\nNever stored."]]
+  IV_OUTCOME{"Interview status /\noutcome set by Tethr\n(free-form, no transition guard)"}
+  IV_FAIL(["Failed / No-show -\nrecorded on Interview only, does NOT\nauto-update Application.outcome"])
+  IV_PASS["Passed"]
+
+  IV_SCHEDULE --> IV_FEEDBACK
+  IV_FEEDBACK -- "withdraw" --> IV_WITHDRAW --> IV_FEEDBACK
+  IV_FEEDBACK --> IV_ROLLUP --> IV_OUTCOME
+  IV_OUTCOME -- "failed / noShow" --> IV_FAIL
+  IV_OUTCOME -- "passed" --> IV_PASS
+end
+class IV_ROLLUP automated
+class IV_FAIL flagged
+SL_PROCEED --> IV_SCHEDULE
+IV_FAIL -.-> SL_BUILD
+
+%% ===================== OFFER =====================
+subgraph PHASE_OFFER["Phase 6: Offer"]
+  OF_CREATE["Tethr creates an Offer\nstatus = draft. One active (draft/sent)\noffer per application, candidateManage."]
+  OF_SEND["Tethr sends the offer\nstatus = sent"]
+  OF_RESPONSE{"Candidate response\n(recorded by Tethr - the\ncandidate has no system login)"}
+  OF_DECLINE(["Offer Declined\nstatus = declined"])
+  OF_WITHDRAW(["Offer Withdrawn by Tethr\nstatus = withdrawn"])
+  OF_ACCEPT["Offer Accepted\nstatus = accepted.\nRow locked (pessimistic_write) and\nre-checked before anything else runs."]
+
+  IV_PASS --> OF_CREATE --> OF_SEND --> OF_RESPONSE
+  OF_RESPONSE -- "declines" --> OF_DECLINE
+  OF_RESPONSE -- "Tethr withdraws" --> OF_WITHDRAW
+  OF_RESPONSE -- "accepts" --> OF_ACCEPT
+end
+OF_DECLINE -.-> SL_NOINTEREST
+OF_WITHDRAW -.-> SL_NOINTEREST
+class OF_DECLINE,OF_WITHDRAW flagged
+
+%% ===================== HIRE + ONBOARDING =====================
+subgraph PHASE_HIRE["Phase 7: Hire and Onboarding"]
+  H_TXN["Single database transaction\n(all steps below succeed or none do)"]
+  H_EMPLOYEE["Employee record created in the\nCLIENT's workspace via platform switch.\nName split from Candidate.fullName (a one-word\nname is duplicated into both first/last).\nemploymentStatus = active.\nofferBaseSalary and probationDays are\nNOT copied onto the new Employee."]
+  H_CLOSE["Application -> stage/outcome = hired\nJobPosting.isPublished = false\nHiring Request -> status = filled\nPosition -> status = filled"]
+  H_ONBOARD["Onboarding checklist available\n(7 fixed tasks: profile, contract, nda,\nresume, bankDetails, hardware,\nemployeeRecordForm) - employee-records.service.ts"]
+  H_TASK_DECISION{"HR updates a task\n(employeeWrite permission, tethrHr)"}
+  H_DONE(["Task marked completed\ncompletedAt / completedByUserId recorded"])
+  H_END(["Hire complete\n(terminal - no aggregate\n'onboarding complete' gate exists anywhere)"])
+
+  OF_ACCEPT --> H_TXN --> H_EMPLOYEE --> H_CLOSE
+  H_CLOSE -. "NO automatic trigger -\nchecklist exists independently\nand must be opened manually" .-> H_ONBOARD
+  H_ONBOARD --> H_TASK_DECISION
+  H_TASK_DECISION -- "completed" --> H_DONE --> H_END
+  H_TASK_DECISION -- "notStarted / inProgress / blocked" --> H_ONBOARD
+end
+class H_EMPLOYEE,H_CLOSE flagged
+class H_ONBOARD,H_END terminal
+
+subgraph AUTO_HIRE["Automated"]
+  A_EVT3[["employee.created event published -\nNO REGISTERED CONSUMER anywhere\n(dead event: onboarding is not\nauto-triggered by hire)"]]
+end
+class A_EVT3 automated
+class A_EVT3 flagged
+H_EMPLOYEE -.-> A_EVT3

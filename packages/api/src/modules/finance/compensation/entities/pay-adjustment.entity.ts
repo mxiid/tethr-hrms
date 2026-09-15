@@ -1,5 +1,5 @@
 import type { EmployeeId, IsoDate, PayComponentId } from '@hrms/shared';
-import { Column, Entity, Index } from 'typeorm';
+import { Check, Column, Entity, Index } from 'typeorm';
 
 import { TenantScopedEntity } from '../../../../core/database/entities/tenant-scoped.entity';
 
@@ -20,10 +20,24 @@ export type PayAdjustmentKind =
   | 'advanceRecovery'
   | 'arrear'
   | 'correction'
-  | 'other';
+  | 'other'
+  // Expense reimbursement: an earning on the payslip with the claim id carried
+  // as provenance, so the money reaches the employee through the normal run.
+  | 'reimbursement';
 
 @Entity('pay_adjustments')
+// Provenance is both-or-neither, so the partial unique index below can actually
+// guarantee one adjustment per source fact (a null sourceType would read as
+// distinct to Postgres and let duplicates through).
+@Check('pay_adjustments_source_pair_check', '("sourceType" IS NULL) = ("sourceId" IS NULL)')
 @Index(['organizationId', 'employeeId', 'periodYear', 'periodMonth'])
+// One adjustment per source fact (a bonus award, an expense claim): makes
+// retries idempotent instead of paying twice when the first attempt's
+// transaction partially completed.
+@Index('pay_adjustments_org_source_unique', ['organizationId', 'sourceType', 'sourceId'], {
+  unique: true,
+  where: '"sourceId" IS NOT NULL',
+})
 export class PayAdjustment extends TenantScopedEntity {
   @Column({ type: 'uuid' })
   employeeId!: EmployeeId;

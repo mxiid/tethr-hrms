@@ -36,4 +36,47 @@ describe('calculateMonthlyWithholding', () => {
   it('returns zero when no ladder exists so runs never invent tax', () => {
     expect(calculateMonthlyWithholding(100_000, [])).toBe(0);
   });
+
+  it('reduces the taxable base by the profile exemption before annualizing', () => {
+    // 100,000 − 20,000 = 80,000/month → annual 960,000 → 5% × 360,000 = 18,000 → 1,500.
+    expect(
+      calculateMonthlyWithholding(100_000, SLABS, { monthlyExemptionAmount: 20_000 }),
+    ).toBe(1_500);
+  });
+
+  it('removes prior-employer income from the annual liability (marginal method)', () => {
+    // Annual 1,200,000 + prior 600,000 = 1,800,000.
+    // Tax(1,800,000) = 30,000 + 15% × 600,000 = 120,000; tax(600,000) = 0.
+    // Net 120,000 → 10,000/month.
+    expect(
+      calculateMonthlyWithholding(100_000, SLABS, { priorAnnualIncome: 600_000 }),
+    ).toBe(10_000);
+    // Prior income that itself consumes a band reduces the delta.
+    // Tax(2,400,000) − tax(1,200,000) = 230,000 − 30,000 = 200,000 → 16,666.67/month.
+    expect(
+      calculateMonthlyWithholding(100_000, SLABS, { priorAnnualIncome: 1_200_000 }),
+    ).toBe(16_666.67);
+  });
+
+  it('subtracts resolved annual tax credits before dividing into months', () => {
+    // Annual 1,200,000 → 30,000 tax; credit 24,000 → 6,000 → 500/month.
+    expect(
+      calculateMonthlyWithholding(100_000, SLABS, { annualTaxCreditAmount: 24_000 }),
+    ).toBe(500);
+  });
+
+  it('never returns a negative withholding when credits exceed the liability', () => {
+    expect(
+      calculateMonthlyWithholding(100_000, SLABS, { annualTaxCreditAmount: 500_000 }),
+    ).toBe(0);
+  });
+
+  it('lets a fixed monthly amount override the ladder (even without slabs)', () => {
+    expect(
+      calculateMonthlyWithholding(100_000, SLABS, { fixedMonthlyWithholding: 12_345.678 }),
+    ).toBe(12_345.68);
+    expect(calculateMonthlyWithholding(100_000, [], { fixedMonthlyWithholding: 4_000 })).toBe(
+      4_000,
+    );
+  });
 });

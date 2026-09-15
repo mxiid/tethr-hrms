@@ -9,16 +9,12 @@ import { Link } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../app/download';
 import { useTheme } from '../../../providers/theme/useTheme';
+import { BenefitEnrollmentsSection } from '../../benefits/components/BenefitEnrollmentsSection';
+import { TaxProfileSection } from '../../finance/compensation/components/TaxProfileSection';
 import {
   EMPLOYEE_PAYROLL_READINESS_QUERY,
   PAYSLIP_PDF_QUERY,
 } from '../../finance/payroll/graphql/payroll.operations';
-
-import { DetailSection } from './DetailSection';
-import {
-  DECIDE_BANK_CHANGE_MUTATION,
-  EMPLOYEE_BANK_CHANGE_REQUESTS_QUERY,
-} from '../graphql/employee.operations';
 import {
   EMPLOYEE_ADJUSTMENTS_QUERY,
   EMPLOYEE_BILLING_MEMBER_QUERY,
@@ -27,6 +23,13 @@ import {
   EMPLOYEE_SALARY_HISTORY_QUERY,
   FX_RATE_QUERY,
 } from '../graphql/employee-pay.operations';
+import {
+  DECIDE_BANK_CHANGE_MUTATION,
+  EMPLOYEE_BANK_CHANGE_REQUESTS_QUERY,
+} from '../graphql/employee.operations';
+
+import { DetailSection } from './DetailSection';
+
 
 type Props = {
   readonly employeeId: string;
@@ -263,6 +266,10 @@ export const EmployeeJobPayHub = ({
           )}
         </DetailSection>
       ) : null}
+
+      {canViewSalaryHistory ? <TaxProfileSection employeeId={employeeId} /> : null}
+
+      {canViewSalaryHistory ? <BenefitEnrollmentsSection employeeId={employeeId} /> : null}
 
       {canViewPayroll ? (
         <DetailSection title="Payslips">

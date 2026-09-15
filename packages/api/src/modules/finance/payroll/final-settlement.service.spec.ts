@@ -1,11 +1,12 @@
 import { toId, type EmployeeId, type OrganizationId } from '@hrms/shared';
+import type { DataSource } from 'typeorm';
 
 import { AuditService } from '../../../core/audit/audit.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repository';
-import { CompensationService } from '../compensation';
 import { EmployeeDirectoryService } from '../../employee';
 import { HolidayService, LeaveBalanceService } from '../../leave';
+import { CompensationService } from '../compensation';
 
 import type { FinalSettlement } from './entities/final-settlement.entity';
 import { FinalSettlementService } from './final-settlement.service';
@@ -93,6 +94,14 @@ const buildService = () => {
 
   const service = new FinalSettlementService(
     settlements,
+    {
+      transaction: jest.fn(async (work: (manager: unknown) => Promise<unknown>) =>
+        work({
+          findOne: jest.fn(async () => null),
+          save: jest.fn(async (value: unknown) => value),
+        }),
+      ),
+    } as unknown as DataSource,
     compensation as unknown as CompensationService,
     employeeDirectory as unknown as EmployeeDirectoryService,
     leaveBalances as unknown as LeaveBalanceService,
@@ -125,5 +134,14 @@ describe('FinalSettlementService.compute', () => {
     expect(attrs.taxableAmount).toBe('81428.57');
     expect(attrs.incomeTaxAmount).toBe('8142.86');
     expect(attrs.netPayableAmount).toBe('68285.71');
+  });
+});
+
+describe('FinalSettlementService.markPaid', () => {
+  it('rejects a regex-shaped but impossible settlement date before any read', async () => {
+    const { service } = buildService();
+    await expect(
+      service.markPaid({ employeeId: EMPLOYEE, settlementDate: '2026-02-31' }),
+    ).rejects.toThrow(/real calendar date/);
   });
 });

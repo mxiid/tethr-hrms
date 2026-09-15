@@ -32,6 +32,7 @@ A **modular HRMS** built as a **modular monolith**: one deployable system, inter
 - **Events for side effects** via an outbox (transactional publish) + idempotent consumers — never deep synchronous call chains.
 - **Tenancy scoped at the data layer** (`TenantScopedRepository`) so code cannot forget to scope.
 - **Design**: tokens only (from `@hrms/ui`), 4px spacing grid, Inter, indigo accent, Tabler icons, light/dark parity.
+- **PRs**: when opening a pull request, mention `@greptile-apps` in the description or a comment to trigger the Greptile review.
 
 ## Layout
 

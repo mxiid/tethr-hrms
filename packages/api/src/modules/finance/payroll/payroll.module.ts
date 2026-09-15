@@ -5,11 +5,13 @@ import { AuthModule } from '../../../core/auth/auth.module';
 import { AuthzModule } from '../../../core/authz/authz.module';
 import { PdfModule } from '../../../core/pdf/pdf.module';
 import { provideTenantScopedRepository } from '../../../core/tenancy/tenant-repository.provider';
-import { CompensationModule } from '../compensation';
+import { BenefitsModule } from '../../benefits';
 import { EmployeeModule } from '../../employee';
 import { EmployeeRecordsModule } from '../../employee-records';
 import { LeaveModule } from '../../leave';
+import { CompensationModule } from '../compensation';
 
+import { FinalSettlement } from './entities/final-settlement.entity';
 import { PayrollRunLineComponent } from './entities/payroll-run-line-component.entity';
 import { PayrollRunLine } from './entities/payroll-run-line.entity';
 import {
@@ -17,12 +19,15 @@ import {
 } from './entities/payroll-run.entity';
 import { PayslipLine } from './entities/payslip-line.entity';
 import { Payslip } from './entities/payslip.entity';
-import { FinalSettlement } from './entities/final-settlement.entity';
 import { TaxSlabGroup, TaxSlab } from './entities/tax-slab.entity';
 import { EmployeeTerminatedFinalSettlementConsumer } from './final-settlement.consumer';
 import { FinalSettlementService } from './final-settlement.service';
-import { SalaryRevisedPayrollConsumer } from './payroll.consumer';
 import { PayrollRunService } from './payroll-run.service';
+import {
+  BenefitsChangedPayrollConsumer,
+  SalaryRevisedPayrollConsumer,
+  TaxProfileChangedPayrollConsumer,
+} from './payroll.consumer';
 import { PayrollResolver } from './payroll.resolver';
 import {
   FINAL_SETTLEMENT_REPOSITORY,
@@ -34,6 +39,7 @@ import {
   TAX_SLAB_GROUP_REPOSITORY,
   TAX_SLAB_REPOSITORY,
 } from './payroll.tokens';
+import { PayslipLinesResolver } from './payslip.resolver';
 import { PayslipPdfService } from './pdf/payslip-pdf.service';
 import { TaxSlabService } from './tax-slab.service';
 
@@ -54,6 +60,7 @@ import { TaxSlabService } from './tax-slab.service';
     PdfModule,
     EmployeeModule,
     CompensationModule,
+    BenefitsModule,
     LeaveModule,
     EmployeeRecordsModule,
   ],
@@ -64,7 +71,10 @@ import { TaxSlabService } from './tax-slab.service';
     FinalSettlementService,
     EmployeeTerminatedFinalSettlementConsumer,
     PayrollResolver,
+    PayslipLinesResolver,
     SalaryRevisedPayrollConsumer,
+    TaxProfileChangedPayrollConsumer,
+    BenefitsChangedPayrollConsumer,
     provideTenantScopedRepository(PAYROLL_RUN_REPOSITORY, PayrollRun),
     provideTenantScopedRepository(PAYROLL_RUN_LINE_REPOSITORY, PayrollRunLine),
     provideTenantScopedRepository(PAYROLL_RUN_LINE_COMPONENT_REPOSITORY, PayrollRunLineComponent),

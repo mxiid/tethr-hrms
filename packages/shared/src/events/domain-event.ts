@@ -58,6 +58,8 @@ export const DOMAIN_EVENT_NAMES = [
   'timesheet.submitted',
   'timesheet.locked',
   'compensation.revised',
+  'compensation.taxProfileChanged',
+  'benefits.enrollmentChanged',
   'hiringRequest.submitted',
   'hiringRequest.updated',
   'form.submitted',
@@ -180,6 +182,21 @@ export type DomainEventPayloads = {
     readonly currency: string;
     readonly annualAmount: number;
   };
+  // A tax profile change inside a draft run's period makes its withholding
+  // stale the same way a raise does.
+  'compensation.taxProfileChanged': {
+    readonly taxProfileId: string;
+    readonly employeeId: EmployeeId;
+    readonly effectiveDate: string;
+  };
+  // Enrollment changes invalidate the benefits lines on open drafts. Plan edits
+  // are templates for future enrollments (existing enrollments carry snapshots),
+  // so they publish nothing.
+  'benefits.enrollmentChanged': {
+    readonly enrollmentId: string;
+    readonly employeeId: EmployeeId;
+    readonly effectiveDate: string;
+  };
   'hiringRequest.submitted': {
     readonly hiringRequestId: HiringRequestId;
     readonly positionTitle: string;
@@ -233,6 +250,11 @@ export type DomainEventPayloads = {
     readonly currency: string;
     readonly payslipCount: number;
     readonly totalNetPay: number;
+    // Cost facts the billing reconciliation consumes without reaching back into
+    // payroll tables: gross payable and gross + employer contributions.
+    readonly grossTotal: number;
+    readonly employerCostTotal: number;
+    readonly payDate: string;
   };
   'invoice.issued': {
     readonly invoiceId: InvoiceId;

@@ -64,6 +64,15 @@ Salary structures currently compose components; revisions carry one total. Exten
 
 Every money value printed on a payslip or invoice is snapshotted at issuance; later salary changes never rewrite history.
 
+**Published but intentionally unconsumed events** (integration seams, not dead code — kept so external systems and future phases bind without a contract change):
+
+| Event | Published by | Why nothing consumes it yet |
+|---|---|---|
+| `invoice.issued` | `InvoiceService.issueInvoice` | Accounting/ERP hand-off (Phase 3 export seam) and client notifications; no in-repo consumer by design. |
+| `bonus.awarded` | `CompensationService` when a bonus adjustment is recorded | Payroll reads adjustments through the compensation interface, not events; the event exists for future notifications/payroll-triggered flows. |
+
+(`payroll.finalized` is consumed in-repo by billing drafting and cost snapshotting.)
+
 ## 5. Lifecycle
 
 ```
@@ -112,3 +121,14 @@ Sample Invoify exports show: advance billing ~20th, Net 7 due, per-employee Sala
 | **F2 — Billing core** | Billing groups + memberships + client billing config; `payroll.finalized` consumer drafting Services invoices; numbering; approve/issue immutability; catch-up line suggestions |
 | **F3 — Delivery & payments** | PDF pipeline (worker) + downloads; expenses invoices with manual lines; mark-paid + outstanding list; client portal + employee payslip views |
 | **F4 — Emails** | Wire `NotificationService` channels (payslip + invoice emails) once SMTP/provider creds exist |
+
+## 11. Phase 2 — the employee money loop (agreed 2026-09-14)
+
+Phase 1 made the existing flow honest (employer cost, frozen cost snapshots, reconciliation, disbursement state). Phase 2 builds the three operational features the flow audit confirmed absent — with the ledger still intentionally deferred to a Phase 3 export seam.
+
+**M1 — Expense claims & reimbursements.** A new `modules/expenses` owns `ExpenseCategory` (receipts required, client-billable), `ExpenseClaim` (draft → submitted → approved/rejected → paid, per-org `EXP-` number, totals snapshotted server-side) and `ExpenseClaimLine` (category, date, amount, receipt). Approval rides the existing `WorkflowService` (`subjectType 'expenseClaim'`), so there is no second approval mechanism. Reimbursement is explicit: finance marks a claim paid either directly (reference) or via payroll — which creates a `PayAdjustment(kind 'reimbursement')` for a chosen period so the next run pays it with provenance back to the claim. Billable lines can be pushed to the client's draft **expenses invoice** through a new billing published method (find-or-open the month's draft, add `expense` lines), replacing today's entirely manual typing. *(Built 2026-09-14 — see STATUS.md.)*
+
+**M2 — Per-employee tax profile & withholding election.** Effective-dated `EmployeeTaxProfile`: filer status, tax credits, additional exemptions, fixed monthly withholding, prior-employer income. Payroll resolves the profile per employee per period through the compensation published interface and `calculateMonthlyWithholding` gains the options; the payslip records which profile facts it applied. The tenant slab ladder stays the default when no profile exists. *(Built 2026-09-14 — see STATUS.md.)*
+
+**M3 — Benefits enrollment & contributions.** `BenefitPlan` (employee and employer contribution amounts, taxable flags, effective window) and effective-dated `BenefitEnrollment`. Payroll materializes active enrollments as deduction lines plus employer-contribution lines — the latter feeding the employer-cost totals Phase 1 made first-class. Enrollment changes are effective-dated facts, never edits; each enrollment snapshots the plan's amounts so plan edits only shape future enrollments. *(Built 2026-09-14 — see STATUS.md. Phase 2 complete.)*
+

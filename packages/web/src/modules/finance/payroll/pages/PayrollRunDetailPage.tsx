@@ -16,6 +16,7 @@ import {
 import {
   BANK_ADVICE_CSV_QUERY,
   FINALIZE_PAYROLL_RUN_MUTATION,
+  MARK_PAYROLL_RUN_PAID_MUTATION,
   PAYROLL_READINESS_QUERY,
   PAYROLL_RUN_QUERY,
   REMOVE_PAYROLL_RUN_LINE_MUTATION,
@@ -67,7 +68,15 @@ type PayrollRunData = {
     readonly currency: string;
     readonly standardWorkingDays: number;
     readonly finalizedAt: string | null;
+    readonly payDate: string | null;
     readonly finalizeOverrideReason: string | null;
+    readonly grossTotal: number;
+    readonly deductionsTotal: number;
+    readonly netTotal: number;
+    readonly employerContributionTotal: number;
+    readonly employerCostTotal: number;
+    readonly paidAt: string | null;
+    readonly paymentReference: string | null;
     readonly isStale: boolean;
     readonly staleReason: string | null;
     readonly lines?: readonly RunLineRecord[];
@@ -122,6 +131,8 @@ export const PayrollRunDetailPage = () => {
   const [taxInputs, setTaxInputs] = useState<Record<string, string>>({});
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [finalizeReason, setFinalizeReason] = useState('');
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [payReference, setPayReference] = useState('');
 
   const { data, loading, error: loadError, refetch } = useQuery<PayrollRunData>(
     PAYROLL_RUN_QUERY,
@@ -151,6 +162,7 @@ export const PayrollRunDetailPage = () => {
   const [finalizeRun, { loading: finalizing }] = useMutation(FINALIZE_PAYROLL_RUN_MUTATION);
   const [updateLine] = useMutation(UPDATE_PAYROLL_RUN_LINE_MUTATION);
   const [removeLine] = useMutation(REMOVE_PAYROLL_RUN_LINE_MUTATION);
+  const [markRunPaid, { loading: markingPaid }] = useMutation(MARK_PAYROLL_RUN_PAID_MUTATION);
   const [loadBankAdvice] = useLazyQuery<{ readonly bankAdviceCsv: string }>(
     BANK_ADVICE_CSV_QUERY,
     { fetchPolicy: 'no-cache' },
@@ -182,6 +194,19 @@ export const PayrollRunDetailPage = () => {
     if (!ok) return;
     setFinalizeOpen(false);
     setFinalizeReason('');
+  };
+
+  const submitMarkPaid = async (): Promise<void> => {
+    const ok = await runAction(
+      () =>
+        markRunPaid({
+          variables: { runId, paymentReference: payReference.trim() || null },
+        }),
+      'Run marked as paid.',
+    );
+    if (ok) {
+      setPayModalOpen(false);
+    }
   };
 
   const requestFinalize = (): void => {
@@ -298,6 +323,26 @@ export const PayrollRunDetailPage = () => {
               <button className="button button-secondary" type="button" onClick={() => void onDownloadBankAdvice()}>
                 Download bank advice
               </button>
+            ) : null}
+            {isFinalized && !run?.paidAt ? (
+              <button
+                className="button button-primary"
+                disabled={markingPaid}
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setPayReference('');
+                  setPayModalOpen(true);
+                }}
+              >
+                {markingPaid ? 'Saving…' : 'Mark as paid'}
+              </button>
+            ) : null}
+            {isFinalized && run?.paidAt ? (
+              <StatusChip
+                color="green"
+                label={`Paid${run.paymentReference ? ` · ${run.paymentReference}` : ''}`}
+              />
             ) : null}
             <Link className="button button-secondary" to="/payroll">
               All runs
@@ -630,6 +675,44 @@ export const PayrollRunDetailPage = () => {
           </div>
         ) : null}
       </aside>
+
+      <Modal
+        isOpen={payModalOpen}
+        onClose={() => setPayModalOpen(false)}
+        title="Mark run as paid"
+        width="sm"
+      >
+        <p className="field-hint">
+          This records the disbursement on the run. The reference is optional.
+        </p>
+        {error ? <p className="auth-error" role="alert">{error}</p> : null}
+        <form
+          className="config-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitMarkPaid();
+          }}
+        >
+          <div className="field">
+            <label htmlFor="pay-reference">Payment reference</label>
+            <input
+              id="pay-reference"
+              autoFocus
+              maxLength={120}
+              placeholder="e.g. Bank transfer 20260930"
+              value={payReference}
+              onChange={(event) => setPayReference(event.target.value)}
+            />
+          </div>
+          <button
+            className="button button-primary button-full"
+            disabled={markingPaid}
+            type="submit"
+          >
+            {markingPaid ? 'Saving…' : 'Mark as paid'}
+          </button>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={finalizeOpen}

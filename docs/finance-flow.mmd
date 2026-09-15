@@ -1,0 +1,161 @@
+%% Finance / Employee-finance end-to-end flow — reverse-engineered from source.
+%% See docs/process-flows.md for the citation list and flagged ambiguities.
+%% HISTORICAL SNAPSHOT: this diagram records the pre-Phase-2 audit. Per-employee
+%% tax profiles, benefits enrollment, and employee expense claims were built and
+%% verified in Finance Phase 2 — see docs/STATUS.md. The "absent" nodes below
+%% describe the state when the audit was taken, not the current codebase.
+flowchart TD
+
+classDef automated fill:#eef0ff,stroke:#6666aa,stroke-dasharray: 3 3,color:#333;
+classDef flagged fill:#fff2e0,stroke:#cc8800,color:#663d00;
+classDef terminal fill:#f4f4f4,stroke:#999,color:#333;
+classDef absent fill:#ffe0e0,stroke:#cc4444,color:#661111,stroke-dasharray: 5 5;
+
+%% ===================== SETUP =====================
+subgraph PHASE_SETUP["Phase 1: Employee Financial Setup"]
+  NOTE(["HISTORICAL (pre-Phase 2 audit).\nTax profiles, benefits enrollment and\nexpense claims have since shipped."])
+  F_START(["HR/Finance sets up an\nemployee's compensation"])
+  F_STRUCT["Salary Structure defined\nPayComponent breakdown: earning / deduction /\nemployerContribution, percentOfGross or fixedMonthly.\ncompensation.service.ts"]
+  F_REVISE["reviseSalary creates a SalaryRevision\neffective-dated (TemporalEntity). This IS the\nemployee-to-structure link - no separate\n'assignment' entity exists.\ncompensationWrite: tethrHr or clientAdmin"]
+  F_BANK_ROUTE{"Bank details set how?"}
+  F_BANK_DIRECT["HR edits EmployeeHrRecord directly\nupdateEmployeeHrRecord, employeeWrite\n(tethrHr only) - no approval needed"]
+  F_BANK_REQUEST["Employee requests a change\nrequestMyBankDetailChange, employeeSelfWrite"]
+  F_BANK_APPROVAL{"WorkflowService approval\nBankDetailChangeRequest.status:\npending to approved/rejected"}
+  F_BANK_REJECTED(["Change Rejected\nHrRecord untouched (one-way, no re-open)"])
+  F_BANK_APPLIED["Bank fields copied to EmployeeHrRecord\n(only on approval)"]
+
+  F_START --> F_STRUCT --> F_REVISE --> F_BANK_ROUTE
+  F_BANK_ROUTE -- "HR direct" --> F_BANK_DIRECT --> F_BANK_APPLIED
+  F_BANK_ROUTE -- "employee self-service" --> F_BANK_REQUEST --> F_BANK_APPROVAL
+  F_BANK_APPROVAL -- "approved" --> F_BANK_APPLIED
+  F_BANK_APPROVAL -- "rejected" --> F_BANK_REJECTED
+end
+
+subgraph ABSENT_SETUP["Confirmed absent - not a guess"]
+  F_NOTAX(["No per-employee tax profile or\nwithholding election exists.\nTax is computed from one tenant-wide\nslab ladder only - see Phase 3."])
+  F_NOBENEFITS(["No benefits enrollment feature\nexists anywhere in the codebase."])
+  F_NOEXPENSE(["No employee expense-claim /\nreimbursement-with-approval feature exists.\n(The billing 'expenses' invoice kind is a\nclient-billing concept, not an employee claim.)"])
+end
+class F_NOTAX,F_NOBENEFITS,F_NOEXPENSE absent
+F_REVISE -.-> F_NOTAX
+F_REVISE -.-> F_NOBENEFITS
+
+%% ===================== PAY ADJUSTMENTS =====================
+subgraph PHASE_ADJ["Phase 2: Pay Adjustments"]
+  ADJ_CREATE["Tethr/clientAdmin creates a PayAdjustment\nkind: bonus / encashment / advanceRecovery /\narrear / correction / other.\ncompensationWrite"]
+  ADJ_CHECK{"kind in {bonus, encashment,\narrear, advanceRecovery}?"}
+  ADJ_PAIR{"kind matches the linked\ncomponent's earning/deduction category?"}
+  ADJ_REJECT(["Rejected - category mismatch"])
+  ADJ_UNCHECKED(["'correction' and 'other' kinds\nbypass this validation entirely -\ncan attach to any component category"])
+  ADJ_STORED["Adjustment stored, scoped to one\n(periodYear, periodMonth), or a\nrecurring window"]
+  ADJ_BONUS["awardBonus always creates a matching\nPayAdjustment(kind=bonus) - no separate\napproval gate on the award itself"]
+
+  ADJ_CREATE --> ADJ_CHECK
+  ADJ_CHECK -- "yes" --> ADJ_PAIR
+  ADJ_CHECK -- "no (correction/other)" --> ADJ_UNCHECKED --> ADJ_STORED
+  ADJ_PAIR -- "mismatch" --> ADJ_REJECT
+  ADJ_PAIR -- "matches" --> ADJ_STORED
+  ADJ_BONUS --> ADJ_STORED
+end
+class ADJ_UNCHECKED flagged
+
+%% ===================== PAYROLL RUN =====================
+subgraph PHASE_PAYROLL["Phase 3: Payroll Run"]
+  P_TRIGGER["Finance manually creates a run\ncreatePayrollRun - one per (year, month).\nNO scheduler/cron found anywhere.\npayrollWrite: tethrFinance only"]
+  P_DRAFT["Draft lines generated: persistDraft.\nPro-ration = min(1, payableDays/standardWorkingDays)\nper component; adjustments merged in;\novewritesStructureAmount replaces a\nstructure line rather than adding to it."]
+  P_ELIGIBLE{"Employee has an active salary\nrevision and earning components?"}
+  P_EXCLUDED(["Silently excluded from the run -\nsurfaced only via a separate\nreadiness report, not as a zero line"])
+  P_EDIT["Finance edits draft lines\nupdateRunLine / removeRunLine\n(only permitted while status = draft)"]
+  P_TAXCALC["Withholding computed per line from\nthe taxable-earning sum, via the active\nTaxSlabGroup ladder (calculateMonthlyWithholding)\n- or a finance-set taxOverrideAmount"]
+  P_FINALIZE_CHECK{"Misconfiguration guard:\nany unconfigured or\nzeroed-with-days line?"}
+  P_OVERRIDE{"Override reason supplied?"}
+  P_BLOCKED(["Finalize blocked - ValidationFailedError\nnames the affected employees"])
+  P_FINALIZE["finalizeRun: status = finalized.\nOne-way, terminal. NO approval step\nexists before this in code.\npayrollFinalize: tethrFinance only"]
+  P_PAYSLIP["Payslip + PayslipLine snapshot created\nper line - immutable by convention,\nnot by schema"]
+  P_LOCKED(["Run locked - updateRunLine/removeRunLine\nnow always reject. No reversal or\ncorrection-run mechanism exists;\nthe only fix is a future-dated\nPayAdjustment(kind=correction)"])
+
+  ADJ_STORED -.-> P_DRAFT
+  F_BANK_APPLIED -.-> P_TRIGGER
+  P_TRIGGER --> P_DRAFT --> P_ELIGIBLE
+  P_ELIGIBLE -- "no" --> P_EXCLUDED
+  P_ELIGIBLE -- "yes" --> P_EDIT
+  P_EDIT --> P_TAXCALC --> P_FINALIZE_CHECK
+  P_FINALIZE_CHECK -- "clean" --> P_FINALIZE
+  P_FINALIZE_CHECK -- "misconfigured" --> P_OVERRIDE
+  P_OVERRIDE -- "no" --> P_BLOCKED -.-> P_EDIT
+  P_OVERRIDE -- "yes (note: only the\nunconfigured reason is\nactually persisted)" --> P_FINALIZE
+  P_FINALIZE --> P_PAYSLIP --> P_LOCKED
+end
+class P_EXCLUDED,P_LOCKED flagged
+
+subgraph AUTO_PAYROLL["Automated"]
+  A_REVISED[["compensation.revised event ->\nrun marked isStale if a raise\nlands mid-draft"]]
+  A_FINALIZED[["payroll.finalized event published"]]
+end
+class A_REVISED,A_FINALIZED automated
+F_REVISE -.-> A_REVISED
+A_REVISED -.-> P_DRAFT
+P_FINALIZE -.-> A_FINALIZED
+
+%% ===================== TERMINATION / FINAL SETTLEMENT =====================
+subgraph PHASE_TERM["Phase 4: Termination and Final Settlement (Automated)"]
+  T_EVENT[["employee.terminated event"]]
+  T_SETTLE["FinalSettlement.compute:\npro-rated final month + leave encashment\n+ ALL adjustment kinds - recoveries,\nsame tax path as a normal run"]
+  T_RETRY[["On failure: rethrows so the\noutbox retries (max 5 attempts) -\ndoes not swallow the error"]]
+  T_STATUS(["status = computed.\n'paid' is a declared status value with\nNO code path anywhere that ever sets it."])
+  T_REVISION["Open salary revision closed\n(separate consumer, same event)"]
+  T_BILLING["Open BillingGroupMember membership\nclosed at the termination date\n(separate consumer, same event)"]
+
+  T_EVENT --> T_SETTLE
+  T_SETTLE -- "failure" --> T_RETRY -.-> T_SETTLE
+  T_SETTLE -- "success" --> T_STATUS
+  T_EVENT --> T_REVISION
+  T_EVENT --> T_BILLING
+end
+class T_EVENT,T_SETTLE,T_RETRY,T_REVISION,T_BILLING automated
+class T_STATUS flagged
+
+%% ===================== INVOICING =====================
+subgraph PHASE_BILLING["Phase 5: Client Invoicing"]
+  B_MEMBER["Employee added to a BillingGroup\nsetBillingMember: a contracted monthlyRate.\nEffective-dated, overlap-guarded\n(partial unique index + service check)"]
+  B_DRAFT_AUTO["draftInvoicesFromRun: Services invoice lines\n(salary / fee / catchup) built from the\nCONTRACTED monthlyRate and calendar working\ndays - NOT from the payslip's computed pay,\nLOP, or bonus amounts"]
+  B_DRAFT_MANUAL["openExpensesInvoice: Expenses invoice,\nfully manual - no connection to payroll at all"]
+  B_EDIT["Finance edits/adds/removes lines\naddInvoiceLine / updateInvoiceLine / removeInvoiceLine\n(only permitted while status = draft)"]
+  B_ISSUE_CHECK{"Finance issues the invoice?\nbillingWrite: tethrFinance/tethrAdmin only.\nNO approval step exists before this."}
+  B_NOISSUE(["Stays draft indefinitely"])
+  B_ISSUED["status = issued. Sequential number\nassigned. Every money-shaped fact on\nthe invoice is now frozen by construction."]
+  B_PAY_CHECK{"Client pays?"}
+  B_UNPAID(["Remains issued - no 'overdue' or\n'partiallyPaid' status exists"])
+  B_PAID["markInvoicePaid: status = paid.\nManual only - no amount field, no date field\n(paidAt is always server 'now'), no\npayment-provider integration or webhook."]
+
+  B_MEMBER --> B_DRAFT_AUTO
+  B_DRAFT_AUTO --> B_EDIT
+  B_DRAFT_MANUAL --> B_EDIT
+  B_EDIT --> B_ISSUE_CHECK
+  B_ISSUE_CHECK -- "not yet" --> B_NOISSUE -.-> B_EDIT
+  B_ISSUE_CHECK -- "yes" --> B_ISSUED --> B_PAY_CHECK
+  B_PAY_CHECK -- "not yet" --> B_UNPAID -.-> B_PAY_CHECK
+  B_PAY_CHECK -- "yes" --> B_PAID
+end
+class B_DRAFT_AUTO,B_UNPAID flagged
+
+A_FINALIZED -. "triggers only - carries just\nrunId/period, never actual\npayroll cost figures" .-> B_DRAFT_AUTO
+T_BILLING -.-> B_MEMBER
+
+subgraph AUTO_BILLING["Automated"]
+  A_ISSUED[["invoice.issued event published -\nNO REGISTERED CONSUMER anywhere\n(dead event - issuing sends no notification)"]]
+end
+class A_ISSUED automated
+class A_ISSUED flagged
+B_ISSUED -.-> A_ISSUED
+
+%% ===================== NO LEDGER =====================
+subgraph ABSENT_LEDGER["Confirmed absent - not a guess"]
+  NO_LEDGER(["No general ledger, chart of accounts,\nor journal-entry / double-entry\nbookkeeping concept exists anywhere in\nthis codebase. Invoicing terminates at\nInvoice.status - nothing further."])
+  NO_RECON(["No month-end/period-close step for\nbilling exists distinct from payroll's own\nfinalize. The closest thing is a client-facing\nspend summary, not a cost reconciliation."])
+  NO_REVERSAL(["No credit-note or invoice-reversal\nmechanism exists. Once issued, an invoice\nis immutable; the only stated correction\npath is 'bill it differently on a later invoice.'"])
+end
+class NO_LEDGER,NO_RECON,NO_REVERSAL absent
+B_PAID -.-> NO_LEDGER
+B_ISSUED -.-> NO_RECON
+B_ISSUED -.-> NO_REVERSAL

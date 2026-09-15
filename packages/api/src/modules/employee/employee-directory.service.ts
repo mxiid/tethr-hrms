@@ -1,6 +1,6 @@
 import type { EmployeeId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import type { FindOptionsWhere } from 'typeorm';
+import { In, type FindOptionsWhere } from 'typeorm';
 
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
@@ -19,6 +19,17 @@ export class EmployeeDirectoryService {
 
   getById(employeeId: EmployeeId): Promise<Employee | null> {
     return this.employees.findById(employeeId);
+  }
+
+  // Batch variant for list hydration (expense claims, client boards): one query
+  // for every id, terminated employees included.
+  getByIds(employeeIds: readonly EmployeeId[]): Promise<Employee[]> {
+    if (employeeIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    return this.employees.find({
+      where: { id: In([...employeeIds]) } as FindOptionsWhere<Employee>,
+    });
   }
 
   async exists(employeeId: EmployeeId): Promise<boolean> {

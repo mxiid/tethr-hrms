@@ -16,11 +16,12 @@ import type { EmployeeDirectoryService } from '../../employee';
 
 import { CompensationService } from './compensation.service';
 import type { BonusAward } from './entities/bonus-award.entity';
+import type { EmployeeTaxProfile } from './entities/employee-tax-profile.entity';
 import type { PayAdjustment } from './entities/pay-adjustment.entity';
 import type { PayComponent } from './entities/pay-component.entity';
 import type { SalaryRevision } from './entities/salary-revision.entity';
-import type { SalaryStructure } from './entities/salary-structure.entity';
 import type { SalaryStructureComponent } from './entities/salary-structure-component.entity';
+import type { SalaryStructure } from './entities/salary-structure.entity';
 
 const ORG = toId<OrganizationId>('org-1');
 const EMPLOYEE = toId<EmployeeId>('emp-1');
@@ -90,6 +91,13 @@ const buildService = (options: {
       Promise.resolve(value.id ? value : { id: 'revision-1', ...value }),
     ),
   } as unknown as EntityManager;
+  const taxProfiles = {
+    find: jest.fn(async () => []),
+    findOne: jest.fn(async () => null),
+    findById: jest.fn(async () => null),
+    create: jest.fn((value: unknown) => value),
+    save: jest.fn(async (value: unknown) => value),
+  } as unknown as TenantScopedRepository<EmployeeTaxProfile>;
   const dataSource = {
     transaction: jest.fn((callback: (m: EntityManager) => Promise<unknown>) => callback(manager)),
   } as unknown as DataSource;
@@ -106,19 +114,20 @@ const buildService = (options: {
     record: jest.fn().mockResolvedValue(undefined),
   } as unknown as AuditService;
 
-  const service = new CompensationService(
-    payComponents,
-    salaryStructures,
-    salaryStructureComponents,
-    salaryRevisions,
-    bonusAwards,
-    payAdjustments,
-    dataSource,
-    employeeDirectory,
-    publisher,
-    tenantContext,
-    audit,
-  );
+    const service = new CompensationService(
+      payComponents,
+      salaryStructures,
+      salaryStructureComponents,
+      salaryRevisions,
+      bonusAwards,
+      payAdjustments,
+      taxProfiles,
+      dataSource,
+      employeeDirectory,
+      publisher,
+      tenantContext,
+      audit,
+    );
 
   return { service, publisher, payComponents };
 };
@@ -251,5 +260,15 @@ describe('CompensationService.createAdjustment', () => {
     });
     const adjustment = await service.createAdjustment({ ...base, kind: 'bonus' });
     expect(adjustment.kind).toBe('bonus');
+  });
+
+  it('rejects source provenance with only one side of the pair', async () => {
+    const { service } = buildService({});
+    await expect(
+      service.createAdjustment({ ...base, kind: 'bonus', sourceId: 'claim-1' }),
+    ).rejects.toThrow(/provided together/);
+    await expect(
+      service.createAdjustment({ ...base, kind: 'bonus', sourceType: 'expenseClaim' }),
+    ).rejects.toThrow(/provided together/);
   });
 });

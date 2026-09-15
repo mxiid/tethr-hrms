@@ -1,5 +1,5 @@
 import { toId, type BillingGroupId, type EmployeeId, type InvoiceId, type OrganizationId } from '@hrms/shared';
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 
 import { ConflictError } from '../../../common/errors';
 import { AuditService } from '../../../core/audit/audit.service';
@@ -7,15 +7,18 @@ import { DomainEventPublisher } from '../../../core/events/domain-event-publishe
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repository';
 import { EmployeeDirectoryService } from '../../employee';
+import { FxService } from '../fx/fx.service';
 import { PayrollRunService } from '../payroll';
 
 import {
   BillingGroupMember,
 } from './entities/billing-group-member.entity';
 import { BillingGroup } from './entities/billing-group.entity';
+import { BillingPeriodClose } from './entities/billing-period-close.entity';
 import { ClientBillingConfig } from './entities/client-billing-config.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
 import { Invoice } from './entities/invoice.entity';
+import { PayrollCostSnapshot } from './entities/payroll-cost-snapshot.entity';
 import { InvoiceService } from './invoice.service';
 
 const ORG = toId<OrganizationId>('org-1');
@@ -78,7 +81,11 @@ const summaryFixture = () => ({
   periodYear: 2026,
   periodMonth: 8,
   standardWorkingDays: 21,
-  payslips: [{ employeeId: EMPLOYEE, paidDays: 14 }],
+  payslips: [{ employeeId: EMPLOYEE, paidDays: 14, grossAmount: 100000, employerCostAmount: 110000 }],
+  payrollCurrency: 'PKR',
+  grossTotal: 100000,
+  employerCostTotal: 110000,
+  payDate: '2026-08-28',
 });
 
 const buildService = () => {
@@ -107,7 +114,24 @@ const buildService = () => {
     save: jest.fn(async (v: unknown) => v),
     count: jest.fn(async () => 0),
   };
-  const lines = { find: jest.fn(async () => []) as jest.Mock, count: jest.fn(async () => 0), save: jest.fn(async (v: unknown) => v) };
+  const lines = {
+    find: jest.fn(async () => []) as jest.Mock,
+    count: jest.fn(async () => 0),
+    create: jest.fn((attrs: Record<string, unknown>) => ({ ...attrs })),
+    save: jest.fn(async (v: unknown) => v),
+  };
+  const costSnapshots = {
+    findOne: jest.fn(async () => null) as jest.Mock,
+    create: jest.fn((attrs: Record<string, unknown>) => ({ ...attrs })),
+    save: jest.fn(async (v: unknown) => v),
+  };
+  const periodCloses = {
+    find: jest.fn(async () => []) as jest.Mock,
+    findOne: jest.fn(async () => null) as jest.Mock,
+    create: jest.fn((attrs: Record<string, unknown>) => ({ ...attrs })),
+    save: jest.fn(async (v: unknown) => v),
+  };
+  const fx = { getRate: jest.fn(async () => 0.0036) as jest.Mock };
   const employeeDirectory = {
     getById: jest.fn(async () => employeeFixture()) as jest.Mock,
     exists: jest.fn(async () => true),
@@ -124,19 +148,22 @@ const buildService = () => {
     members as unknown as TenantScopedRepository<BillingGroupMember>,
     invoices as unknown as TenantScopedRepository<Invoice>,
     lines as unknown as TenantScopedRepository<InvoiceLine>,
+    costSnapshots as unknown as TenantScopedRepository<PayrollCostSnapshot>,
+    periodCloses as unknown as TenantScopedRepository<BillingPeriodClose>,
     dataSource as unknown as DataSource,
     tenantContext as unknown as TenantContextService,
     publisher as unknown as DomainEventPublisher,
     audit as unknown as AuditService,
     employeeDirectory as unknown as EmployeeDirectoryService,
     payrollRuns as unknown as PayrollRunService,
+    fx as unknown as FxService,
   );
   // Deterministic clock: drafted on the anchor day itself (Aug 20, 2026).
   service.nowProvider = () => new Date('2026-08-20T10:00:00Z');
 
   return {
     service,
-    mocks: { manager, configs, groups, members, invoices, lines, employeeDirectory, payrollRuns, publisher },
+    mocks: { manager, configs, groups, members, invoices, lines, costSnapshots, periodCloses, employeeDirectory, payrollRuns, publisher, fx, audit },
   };
 };
 
@@ -193,6 +220,112 @@ describe('InvoiceService.draftInvoicesFromRun', () => {
     // partial August catch-up, pro-rated through the termination date.
     expect(kinds).toEqual(['catchup']);
     expect((lineCalls[0][1] as Record<string, string>).total).toBe('300.00');
+  });
+
+  it('keeps a zero-invoiced close when a run has cost but nobody billable', async () => {
+    const { service, mocks } = buildService();
+    // No billing groups at all: the run still finalizes and carries cost.
+    mocks.groups.find.mockResolvedValue([]);
+
+    const created = await service.draftInvoicesFromRun('run-1');
+
+    expect(created).toHaveLength(0);
+    // 110000 PKR employer cost at 0.0036 → 396.00 USD, nothing invoiced.
+    expect(mocks.periodCloses.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serviceYear: 2026,
+        serviceMonth: 8,
+        invoiceCount: 0,
+        invoicedAmount: '0.00',
+        payrollCostAmount: '396.00',
+        varianceAmount: '-396.00',
+        status: 'variance',
+      }),
+    );
+  });
+
+  const winnerSnapshot = {
+    id: 'snapshot-winner',
+    payrollRunId: 'run-1',
+    periodYear: 2026,
+    periodMonth: 8,
+    payDate: '2026-08-28',
+    billingCurrency: 'USD',
+    fxRate: '0.0036',
+    convertedEmployerCost: '396.00',
+    employeeCosts: [],
+  };
+
+  it('recovers a concurrent snapshot insert and reuses the winner row', async () => {
+    const { service, mocks } = buildService();
+    mocks.groups.find.mockResolvedValue([]);
+    mocks.costSnapshots.save.mockRejectedValueOnce({ driverError: { code: '23505' } });
+    mocks.costSnapshots.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(winnerSnapshot);
+
+    const created = await service.draftInvoicesFromRun('run-1');
+
+    expect(created).toHaveLength(0);
+    expect(mocks.periodCloses.save).toHaveBeenCalledWith(
+      expect.objectContaining({ payrollCostAmount: '396.00', invoicedAmount: '0.00' }),
+    );
+  });
+
+  it('rethrows the unique violation when the winner row cannot be found', async () => {
+    const { service, mocks } = buildService();
+    mocks.groups.find.mockResolvedValue([]);
+    const violation = { driverError: { code: '23505' } };
+    mocks.costSnapshots.save.mockRejectedValueOnce(violation);
+
+    await expect(service.draftInvoicesFromRun('run-1')).rejects.toMatchObject(violation);
+  });
+
+  it('propagates snapshot insert errors that are not unique violations', async () => {
+    const { service, mocks } = buildService();
+    mocks.groups.find.mockResolvedValue([]);
+    mocks.costSnapshots.save.mockRejectedValueOnce(new Error('snapshot boom'));
+
+    await expect(service.draftInvoicesFromRun('run-1')).rejects.toThrow('snapshot boom');
+  });
+});
+
+describe('InvoiceService.listReconciliation', () => {
+  it('returns close-only months (cost, nothing invoiced) with zero amounts', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.find.mockResolvedValue([]);
+    mocks.periodCloses.find.mockResolvedValue([
+      {
+        id: 'close-1',
+        payrollRunId: 'run-1',
+        serviceYear: 2026,
+        serviceMonth: 8,
+        status: 'variance',
+        currency: 'USD',
+        invoiceCount: 0,
+        invoicedAmount: '0.00',
+        payrollCostAmount: '396.00',
+        varianceAmount: '-396.00',
+        payDate: '2026-08-28',
+      },
+    ]);
+
+    const periods = await service.listReconciliation();
+
+    expect(periods).toHaveLength(1);
+    expect(periods[0]).toMatchObject({
+      serviceYear: 2026,
+      serviceMonth: 8,
+      status: 'variance',
+      currency: 'USD',
+      invoiceCount: 0,
+      invoicedAmount: 0,
+      payrollCostAmount: 396,
+      varianceAmount: -396,
+      payrollRunId: 'run-1',
+      payDate: '2026-08-28',
+    });
+    expect(periods[0].invoices).toHaveLength(0);
   });
 });
 
@@ -258,14 +391,13 @@ describe('InvoiceService.issueInvoice', () => {
 });
 
 describe('InvoiceService.markInvoicePaid', () => {
-  it('records payment on an issued invoice with reference', async () => {
+  it('records payment on an issued invoice with reference inside the locked transaction', async () => {
     const { service, mocks } = buildService();
-    mocks.invoices.findById = jest.fn(async () => ({
+    mocks.manager.findOne = jest.fn(async () => ({
       id: INVOICE_ID,
       status: 'issued',
       number: 'SP0001',
       paymentReference: null,
-      save: undefined,
     }));
     const paid = await service.markInvoicePaid({
       invoiceId: INVOICE_ID,
@@ -274,13 +406,128 @@ describe('InvoiceService.markInvoicePaid', () => {
     expect(paid.status).toBe('paid');
     expect(paid.paymentReference).toBe('CHK-99');
     expect(paid.paidAt).not.toBeNull();
+    expect(mocks.manager.findOne).toHaveBeenCalledWith(
+      Invoice,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: INVOICE_ID, organizationId: ORG }),
+        lock: { mode: 'pessimistic_write' },
+      }),
+    );
+    // The audit commits with the payment facts, not after them.
+    expect(mocks.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'markPaid', resourceId: INVOICE_ID }),
+      mocks.manager,
+    );
+  });
+
+  it('records the settlement date and effective paidAt in the audit payload', async () => {
+    const { service, mocks } = buildService();
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'issued',
+      number: 'SP0001',
+      issueDate: '2026-09-01',
+      paymentReference: null,
+    }));
+    await service.markInvoicePaid({ invoiceId: INVOICE_ID, settlementDate: '2026-09-10' });
+    expect(mocks.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'markPaid',
+        after: expect.objectContaining({
+          settlementDate: '2026-09-10',
+          paidAt: '2026-09-10T00:00:00.000Z',
+        }),
+      }),
+      mocks.manager,
+    );
+  });
+
+  it('rejects a regex-shaped but impossible settlement date before any read', async () => {
+    const { service, mocks } = buildService();
+    await expect(
+      service.markInvoicePaid({ invoiceId: INVOICE_ID, settlementDate: '2026-02-31' }),
+    ).rejects.toThrow(/real calendar date/);
+    expect(mocks.manager.findOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects a settlement date before the invoice issue date', async () => {
+    const { service, mocks } = buildService();
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'issued',
+      number: 'SP0001',
+      issueDate: '2026-09-01',
+      paymentReference: null,
+    }));
+    await expect(
+      service.markInvoicePaid({ invoiceId: INVOICE_ID, settlementDate: '2026-08-31' }),
+    ).rejects.toThrow(/cannot precede the invoice issue date/);
   });
 
   it('rejects marking a draft invoice paid', async () => {
     const { service, mocks } = buildService();
-    mocks.invoices.findById = jest.fn(async () => ({ id: INVOICE_ID, status: 'draft' }));
+    mocks.manager.findOne = jest.fn(async () => ({ id: INVOICE_ID, status: 'draft' }));
     await expect(service.markInvoicePaid({ invoiceId: INVOICE_ID })).rejects.toThrow(
       /Only issued/,
+    );
+  });
+
+  it('refuses a second confirmation found paid inside the lock', async () => {
+    const { service, mocks } = buildService();
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'paid',
+      number: 'SP0001',
+    }));
+    await expect(service.markInvoicePaid({ invoiceId: INVOICE_ID })).rejects.toThrow(
+      /Only issued/,
+    );
+  });
+
+  it('refreshes the month close when a draft is voided', async () => {
+    const { service, mocks } = buildService();
+    // Advance-billed document: service month a month ahead of the covered lines.
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'draft',
+      serviceYear: 2026,
+      serviceMonth: 10,
+      type: 'services',
+    }));
+    mocks.lines.find.mockResolvedValue([
+      {
+        id: 'line-1',
+        invoiceId: INVOICE_ID,
+        kind: 'salary',
+        monthLabel: 'September 2026',
+      },
+    ]);
+    mocks.periodCloses.findOne = jest.fn(async () => ({
+      id: 'close-1',
+      payrollRunId: 'run-1',
+      serviceYear: 2026,
+      serviceMonth: 9,
+    }));
+    const voided = await service.voidInvoice(INVOICE_ID);
+    expect(voided.status).toBe('voided');
+    // The September close is refreshed even though the invoice says October.
+    expect(mocks.payrollRuns.getFinalizedRunSummary).toHaveBeenCalled();
+    expect(mocks.periodCloses.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ serviceYear: 2026, serviceMonth: 9 }),
+      }),
+    );
+    // The void and its audit committed together, inside the locked transaction.
+    expect(mocks.manager.findOne).toHaveBeenCalledWith(
+      Invoice,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: INVOICE_ID, organizationId: ORG }),
+        lock: { mode: 'pessimistic_write' },
+      }),
+    );
+    expect(mocks.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'void', resourceId: INVOICE_ID }),
+      mocks.manager,
     );
   });
 });
@@ -307,6 +554,89 @@ describe('InvoiceService.setMember', () => {
     await expect(
       service.setMember({ employeeId: EMPLOYEE, groupId: GROUP, monthlyRate: 1000 }),
     ).rejects.toThrow(/already covers this period/);
+  });
+});
+
+describe('InvoiceService.addExpenseClaimLines', () => {
+  const expensesInvoice = (status: string) => ({
+    id: 'invoice-exp',
+    organizationId: ORG,
+    groupId: GROUP,
+    type: 'expenses',
+    status,
+    currency: 'USD',
+    subTotal: '0',
+    totalAmount: '0',
+  });
+
+  const claimLines = {
+    employeeId: EMPLOYEE,
+    serviceYear: 2026,
+    serviceMonth: 9,
+    sourceLabel: 'EXP-0001',
+    lines: [{ description: 'Travel: taxi', amount: 500 }],
+  };
+
+  it('converts each line at its own expense date rate', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findOne.mockResolvedValue(expensesInvoice('draft'));
+    mocks.fx.getRate.mockImplementation(async (_base: string, _quote: string, date: string) =>
+      date === '2026-09-04' ? 0.0036 : 0.004,
+    );
+    const result = await service.addExpenseClaimLines({
+      ...claimLines,
+      sourceCurrency: 'PKR',
+      lines: [
+        { description: 'Older taxi', amount: 1000, asOf: '2026-09-04' },
+        { description: 'Newer taxi', amount: 1000, asOf: '2026-09-12' },
+      ],
+    });
+    expect(result.addedLines).toBe(2);
+    const created = mocks.manager.create.mock.calls
+      .map((call) => call[1] as Record<string, unknown>)
+      .filter((line) => line['kind'] === 'expense');
+    expect(created.map((line) => line['total'])).toEqual(['3.60', '4.00']);
+  });
+
+  it('refuses pass-through lines once the month has been issued', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findOne.mockResolvedValue(expensesInvoice('issued'));
+    await expect(service.addExpenseClaimLines(claimLines)).rejects.toThrow(/already issued/);
+  });
+
+  it('stamps the tenant on an invoice created through the transaction manager', async () => {
+    const { service, mocks } = buildService();
+    // No expenses invoice exists yet for the month.
+    const result = await service.addExpenseClaimLines(
+      claimLines,
+      mocks.manager as unknown as EntityManager,
+    );
+    expect(result.addedLines).toBe(1);
+    const invoiceAttrs = mocks.manager.create.mock.calls.find(
+      ([target]) => target === Invoice,
+    )?.[1] as Record<string, unknown> | undefined;
+    expect(invoiceAttrs).toBeDefined();
+    expect(invoiceAttrs?.organizationId).toBe(ORG);
+    expect(invoiceAttrs?.type).toBe('expenses');
+  });
+
+  it('appends marked lines to the month draft and skips a retry', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findOne.mockResolvedValue(expensesInvoice('draft'));
+
+    const first = await service.addExpenseClaimLines(claimLines);
+    expect(first.addedLines).toBe(1);
+    expect(mocks.manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ description: 'Travel: taxi [EXP-0001]' }),
+    );
+
+    // A retry finds its own marker and adds nothing.
+    mocks.lines.find.mockResolvedValue([
+      { id: 'line-1', invoiceId: 'invoice-exp', description: 'Travel: taxi [EXP-0001]' },
+    ]);
+    const retry = await service.addExpenseClaimLines(claimLines);
+    expect(retry.addedLines).toBe(0);
   });
 });
 

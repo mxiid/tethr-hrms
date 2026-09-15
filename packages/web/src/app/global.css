@@ -443,9 +443,10 @@ button {
 
 /* Persistent second-row tab strip for the group whose page is currently
    open — lets a user hop between a group's own pages (e.g. People's
-   Employees / Hiring requests / ...) without reopening its pill dropdown.
-   Same pill language as the top nav (white + strong border when active) but
-   a smaller, muted-bar tier so it reads as a sub-level, not a duplicate. */
+   Employees / Org chart / ... or Hiring's Requests / Candidates / ...)
+   without reopening its pill. Same pill language as the top nav (white +
+   strong border when active) but a smaller, muted-bar tier so it reads as a
+   sub-level, not a duplicate. */
 /* Hamburger + drawer: hidden entirely above the phone breakpoint, which is the
    only place they are used. */
 .mobile-nav-toggle {
@@ -798,31 +799,150 @@ button {
   text-transform: uppercase;
 }
 
-.color-swatch-grid {
+/* ---------------------------------------------------------------------------
+   Workspace color picker. The swatches wrap in short rows inside a narrow card:
+   a `repeat(8, 1fr)` grid across the full settings column gave each 20px dot a
+   ~200px cell, stranding them in whitespace over four ragged rows.
+   --------------------------------------------------------------------------- */
+.settings-section-narrow {
+  max-width: 640px;
+}
+
+/* Shows the two surfaces the hint names, painted with --chip-color exactly as
+   AppShell paints the real ones, so the preview cannot drift from the product. */
+.brand-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-3);
+  margin-top: var(--hrms-space-3);
+  padding: var(--hrms-space-3);
+  background: var(--hrms-color-background-secondary);
+  border: 1px solid var(--hrms-color-border-light);
+  border-radius: var(--hrms-radius-sm);
+}
+
+.brand-preview-mark {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--hrms-color-text-inverted);
+  background: var(--chip-color);
+  border-radius: var(--hrms-radius-sm);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-semi-bold);
+  line-height: var(--hrms-line-height-md);
+}
+
+.brand-preview-search {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  height: 32px;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  padding: 0 var(--hrms-space-3);
+  color: var(--hrms-color-text-tertiary);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-medium);
+  border-radius: var(--hrms-radius-sm);
+  outline: 1.5px solid var(--chip-color);
+  outline-offset: 1px;
+  font-size: var(--hrms-font-size-sm);
+}
+
+.color-swatch-groups {
+  display: grid;
+  gap: var(--hrms-space-4);
+  margin-top: var(--hrms-space-5);
+}
+
+.color-swatch-group-label {
+  margin: 0 0 var(--hrms-space-2);
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+  text-transform: uppercase;
+}
+
+.color-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--hrms-space-2);
 }
 
+/* 32px hit target around a 22px dot — the dot alone was a 20px target. */
 .color-swatch {
-  width: 20px;
-  height: 20px;
+  display: grid;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  background: var(--swatch-color);
-  border: 2px solid transparent;
+  place-items: center;
+  background: transparent;
+  border: 0;
   border-radius: var(--hrms-radius-rounded);
   cursor: pointer;
 }
 
 .color-swatch:disabled {
   cursor: default;
+}
+
+.color-swatch-dot {
+  width: 22px;
+  height: 22px;
+  background: var(--swatch-color);
+  border-radius: var(--hrms-radius-rounded);
+  /* Pale hues (yellow, lime, mint, sky) would otherwise vanish on the card. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hrms-color-text-primary) 12%, transparent);
+  transition: transform var(--hrms-animation-duration-instant) ease;
+}
+
+.color-swatch:hover:not(:disabled) .color-swatch-dot {
+  transform: scale(1.15);
+}
+
+.color-swatch:focus-visible {
+  outline: 3px solid var(--hrms-color-border-blue);
+  outline-offset: 1px;
+}
+
+/* Selection reads as a ring in the swatch's own color, held off the dot by the
+   card background — legible across all 25 hues in both themes, where the old
+   2px border with a -4px inset outline was nearly invisible. */
+.color-swatch.is-selected .color-swatch-dot {
+  box-shadow:
+    0 0 0 2px var(--hrms-color-background-primary),
+    0 0 0 4px var(--swatch-color);
+}
+
+.color-swatch.is-pending {
   opacity: 0.5;
 }
 
-.color-swatch.is-selected {
-  border-color: var(--hrms-color-text-primary);
-  outline: 2px solid var(--hrms-color-background-primary);
-  outline-offset: -4px;
+.color-swatch-readout {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-2);
+  margin: var(--hrms-space-5) 0 0;
+  color: var(--hrms-color-text-secondary);
+  font-size: var(--hrms-font-size-xs);
+}
+
+.color-swatch-readout-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  background: var(--chip-color);
+  border-radius: var(--hrms-radius-rounded);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hrms-color-text-primary) 12%, transparent);
+}
+
+.color-swatch-name {
+  color: var(--hrms-color-text-primary);
+  font-weight: var(--hrms-font-weight-medium);
+  text-transform: capitalize;
 }
 
 .account-dropdown-hint {

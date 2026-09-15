@@ -102,18 +102,42 @@ export class InvoicePdfService {
       },
     ];
 
+    // Issued documents render from the snapshot frozen at issue; drafts still
+    // render live config because they are editable working state. When a
+    // snapshot exists it is authoritative for every field — a value that was
+    // empty at issue stays empty, rather than picking up a later setup edit.
+    const frozen = invoice.issuedSnapshot;
+    const sender = frozen
+      ? {
+          name: frozen.senderName ?? 'Tethr Pvt. Ltd.',
+          address: frozen.senderAddress ?? '',
+          zipCode: frozen.senderZipCode ?? '',
+          city: frozen.senderCity ?? '',
+          country: frozen.senderCountry ?? '',
+          email: frozen.senderEmail ?? '',
+          phone: frozen.senderPhone ?? '',
+        }
+      : {
+          name: config.senderName ?? 'Tethr Pvt. Ltd.',
+          address: config.senderAddress ?? '',
+          zipCode: config.senderZipCode ?? '',
+          city: config.senderCity ?? '',
+          country: config.senderCountry ?? '',
+          email: config.senderEmail ?? '',
+          phone: config.senderPhone ?? '',
+        };
+    const bankSwift = frozen ? frozen.bankSwift : config.bankSwift;
+    const bankName = frozen ? frozen.bankName : config.bankName;
+    const bankAccountName = frozen ? frozen.bankAccountName : config.bankAccountName;
+    const bankAccountNumber = frozen ? frozen.bankAccountNumber : config.bankAccountNumber;
+    const paymentTermsNetDays = frozen
+      ? frozen.paymentTermsNetDays
+      : config.paymentTermsNetDays;
+
     return {
-      logoDataUrl: config.invoiceLogoDataUrl,
-      signatureDataUrl: config.signatureDataUrl,
-      sender: {
-        name: config.senderName ?? 'Tethr Pvt. Ltd.',
-        address: config.senderAddress ?? '',
-        zipCode: config.senderZipCode ?? '',
-        city: config.senderCity ?? '',
-        country: config.senderCountry ?? '',
-        email: config.senderEmail ?? '',
-        phone: config.senderPhone ?? '',
-      },
+      logoDataUrl: frozen ? frozen.logoDataUrl : config.invoiceLogoDataUrl,
+      signatureDataUrl: frozen ? frozen.signatureDataUrl : config.signatureDataUrl,
+      sender,
       receiver: {
         name: invoice.receiverName ?? groupName,
         address: invoice.receiverAddress ?? '',
@@ -134,14 +158,14 @@ export class InvoicePdfService {
         subTotal: Number(invoice.subTotal),
         totalAmount: Number(invoice.totalAmount),
         totalInWords: amountInWords(Number(invoice.totalAmount), invoice.currency),
-        additionalNotes: config.bankSwift ? `SWIFT/BIC: ${config.bankSwift}` : null,
-        paymentTerms: `Net ${config.paymentTermsNetDays}`,
+        additionalNotes: bankSwift ? `SWIFT/BIC: ${bankSwift}` : null,
+        paymentTerms: `Net ${paymentTermsNetDays}`,
         bank:
-          config.bankName || config.bankAccountName || config.bankAccountNumber
+          bankName || bankAccountName || bankAccountNumber
             ? {
-                name: config.bankName ?? '',
-                accountName: config.bankAccountName ?? '',
-                accountNumber: config.bankAccountNumber ?? '',
+                name: bankName ?? '',
+                accountName: bankAccountName ?? '',
+                accountNumber: bankAccountNumber ?? '',
               }
             : null,
       },

@@ -147,7 +147,42 @@ export const PayslipPdfTemplate = (data: PayslipPdfData): ReactNode => {
             <span className="ml-2">Taxable Salary {money(data.taxableSalary, data.currency)}</span>
             <span className="mx-2">•</span>
             <span>Net Pay {money(data.netPayable, data.currency)}</span>
+            {data.taxProfileSummary ? (
+              <>
+                <span className="mx-2">•</span>
+                <span>Tax facts {data.taxProfileSummary}</span>
+              </>
+            ) : null}
           </div>
+
+          {data.employerContributions.length > 0 ? (
+            <div className="mt-6 border border-gray-200 rounded-lg overflow-hidden">
+              <div className="flex justify-between px-5 py-3 border-b border-gray-200">
+                <p className="text-xs font-bold text-gray-800 tracking-wider uppercase">
+                  Employer Contributions (not deducted from pay)
+                </p>
+                <p className="text-xs font-bold text-gray-800 tracking-wider uppercase">Amount</p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {data.employerContributions.map((row) => (
+                  <div className="flex justify-between px-5 py-3" key={row.name}>
+                    <p className="text-sm text-gray-800">{row.name}</p>
+                    <p className="text-sm font-semibold text-gray-800 tabular-nums whitespace-nowrap">
+                      {money(row.amount, data.currency)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between px-5 py-3 bg-gray-50 border-t border-gray-200">
+                <p className="text-sm font-bold text-gray-800">
+                  Employer Cost (Gross + Contributions)
+                </p>
+                <p className="text-sm font-bold text-gray-800 tabular-nums whitespace-nowrap">
+                  {money(data.employerCost, data.currency)}
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 border border-gray-200 rounded-lg overflow-hidden">
             <div className="flex justify-between items-center">

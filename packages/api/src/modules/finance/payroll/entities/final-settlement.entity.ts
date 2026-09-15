@@ -69,6 +69,12 @@ export class FinalSettlement extends TenantScopedEntity {
   @Column({ type: 'varchar', length: 16, default: 'computed' })
   status!: FinalSettlementStatus;
 
+  @Column({ type: 'timestamptz', nullable: true, default: null })
+  paidAt!: Date | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true, default: null })
+  paymentReference!: string | null;
+
   @Column({ type: 'timestamptz' })
   computedAt!: Date;
 

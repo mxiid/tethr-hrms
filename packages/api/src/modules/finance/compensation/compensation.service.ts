@@ -4,6 +4,7 @@ import {
   isIsoDate,
   isoMonthRange,
   rangeContains,
+  rangesOverlap,
   toId,
   type BonusAwardId,
   type BonusReason,
@@ -17,11 +18,12 @@ import {
   type SalaryRevisionId,
   type SalaryStructureId,
   type StructureComponentCalcType,
+  type TaxFilerStatus,
   type UserId,
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull, type EntityManager, type FindOptionsWhere } from 'typeorm';
+import { DataSource, In, IsNull, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../../common/errors';
 import { AuditService } from '../../../core/audit/audit.service';
@@ -33,12 +35,14 @@ import { EmployeeDirectoryService } from '../../employee';
 import {
   PAY_COMPONENT_REPOSITORY,
   BONUS_AWARD_REPOSITORY,
+  EMPLOYEE_TAX_PROFILE_REPOSITORY,
   PAY_ADJUSTMENT_REPOSITORY,
   SALARY_REVISION_REPOSITORY,
   SALARY_STRUCTURE_COMPONENT_REPOSITORY,
   SALARY_STRUCTURE_REPOSITORY,
 } from './compensation.tokens';
 import { BonusAward } from './entities/bonus-award.entity';
+import { EmployeeTaxProfile } from './entities/employee-tax-profile.entity';
 import { PayAdjustment, type PayAdjustmentKind } from './entities/pay-adjustment.entity';
 import { PayComponent } from './entities/pay-component.entity';
 import { SalaryRevision } from './entities/salary-revision.entity';
@@ -95,6 +99,20 @@ type ReviseSalaryData = {
   readonly note?: string | null;
 };
 
+// A tax profile set replaces the employee's open-ended facts from
+// `effectiveDate` onward (defaults to today; the first profile starts at hire so
+// the facts are in force from day one). Absent amounts are zero / no override.
+export type SetTaxProfileData = {
+  readonly employeeId: EmployeeId;
+  readonly effectiveDate?: IsoDate;
+  readonly filerStatus?: TaxFilerStatus;
+  readonly monthlyExemptionAmount?: number;
+  readonly annualTaxCreditAmount?: number;
+  readonly priorAnnualIncome?: number;
+  readonly fixedMonthlyWithholding?: number | null;
+  readonly note?: string | null;
+};
+
 type CreatePayAdjustmentData = {
   readonly employeeId: EmployeeId;
   readonly componentId: PayComponentId;
@@ -115,6 +133,7 @@ type CreatePayAdjustmentData = {
 // A period adjustment resolved to the display facts payroll snapshots onto a run
 // line component (and thus a payslip), carrying its provenance.
 type ResolvedAdjustment = {
+  readonly adjustmentId: string;
   readonly componentId: PayComponentId;
   readonly componentCode: string;
   readonly componentName: string;
@@ -141,6 +160,7 @@ type AwardBonusData = {
 };
 
 const toAmount = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
+const todayIso = (): IsoDate => new Date().toISOString().slice(0, 10);
 
 const normalizeCurrency = (value: string): string => {
   const currency = value.trim().toUpperCase();
@@ -170,6 +190,8 @@ export class CompensationService {
     private readonly bonusAwards: TenantScopedRepository<BonusAward>,
     @Inject(PAY_ADJUSTMENT_REPOSITORY)
     private readonly payAdjustments: TenantScopedRepository<PayAdjustment>,
+    @Inject(EMPLOYEE_TAX_PROFILE_REPOSITORY)
+    private readonly taxProfiles: TenantScopedRepository<EmployeeTaxProfile>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly employeeDirectory: EmployeeDirectoryService,
     private readonly publisher: DomainEventPublisher,
@@ -260,8 +282,34 @@ export class CompensationService {
       throw new NotFoundError('Salary structure not found', { id: structureId });
     }
 
+    // Employer-side components are cost on top of gross, not part of the split,
+    // so only employee-side percentages count against the 100% cap.
+    const componentRows = await this.payComponents.find({
+      where: {
+        id: In(components.map((component) => component.componentId)),
+      } as FindOptionsWhere<PayComponent>,
+    });
+    const categoryById = new Map(componentRows.map((row) => [row.id, row.category]));
+
     let percentTotal = 0;
     for (const component of components) {
+      const category = categoryById.get(component.componentId);
+      if (category === 'employerContribution') {
+        if (
+          component.calcType === 'percentOfGross' &&
+          (component.value <= 0 || component.value > 100)
+        ) {
+          throw new ValidationFailedError('percentOfGross value must be within (0, 100]', {
+            value: component.value,
+          });
+        }
+        if (component.calcType !== 'percentOfGross' && component.value < 0) {
+          throw new ValidationFailedError('fixedMonthly value must be zero or greater', {
+            value: component.value,
+          });
+        }
+        continue;
+      }
       if (component.calcType === 'percentOfGross') {
         if (component.value <= 0 || component.value > 100) {
           throw new ValidationFailedError('percentOfGross value must be within (0, 100]', {
@@ -508,9 +556,135 @@ export class CompensationService {
     });
   }
 
+  // --- Employee tax profiles ---
+
+  listTaxProfiles(employeeId: EmployeeId): Promise<EmployeeTaxProfile[]> {
+    return this.taxProfiles.find({
+      where: { employeeId } as FindOptionsWhere<EmployeeTaxProfile>,
+      order: { validFrom: 'DESC' },
+    });
+  }
+
+  // The published read payroll consumes: the profile in force on `asOf`.
+  async getTaxProfile(employeeId: EmployeeId, asOf: IsoDate): Promise<EmployeeTaxProfile | null> {
+    if (!isIsoDate(asOf)) {
+      throw new ValidationFailedError('asOf must be a valid ISO date');
+    }
+    const profiles = await this.listTaxProfiles(employeeId);
+    return profiles.find((profile) => rangeContains(profile, asOf)) ?? null;
+  }
+
+  // Sets the employee's tax facts from `effectiveDate` onward: the open profile
+  // is closed the day the new one starts, and the new one carries the facts. A
+  // first profile starts at hire so the facts are in force from day one.
+  async setTaxProfile(input: SetTaxProfileData): Promise<EmployeeTaxProfile> {
+    const employee = await this.employeeDirectory.getById(input.employeeId);
+    if (!employee) {
+      throw new NotFoundError('Employee not found', { id: input.employeeId });
+    }
+    const effectiveDate = input.effectiveDate ?? todayIso();
+    if (!isIsoDate(effectiveDate)) {
+      throw new ValidationFailedError('effectiveDate must be a valid ISO date');
+    }
+    const amounts: readonly [string, number | null | undefined][] = [
+      ['monthlyExemptionAmount', input.monthlyExemptionAmount],
+      ['annualTaxCreditAmount', input.annualTaxCreditAmount],
+      ['priorAnnualIncome', input.priorAnnualIncome],
+      ['fixedMonthlyWithholding', input.fixedMonthlyWithholding],
+    ];
+    for (const [field, value] of amounts) {
+      if (value != null && value < 0) {
+        throw new ValidationFailedError(`${field} must be zero or greater`, { field, value });
+      }
+    }
+
+    const organizationId = this.tenantContext.getOrganizationId();
+    const open = await this.taxProfiles.findOne({
+      where: { employeeId: input.employeeId, validTo: IsNull() } as FindOptionsWhere<EmployeeTaxProfile>,
+      order: { validFrom: 'DESC' },
+    });
+    const anyExisting = await this.taxProfiles.findOne({
+      where: { employeeId: input.employeeId } as FindOptionsWhere<EmployeeTaxProfile>,
+      order: { validFrom: 'ASC' },
+    });
+    const validFrom = anyExisting ? effectiveDate : employee.hireDate;
+    // Closing the open profile at a backdated effective date would invert its
+    // half-open range (validTo before validFrom); reject it like reviseSalary.
+    if (open && compareIsoDate(validFrom, open.validFrom) < 0) {
+      throw new ConflictError('Cannot backdate a tax profile before the open profile starts', {
+        effectiveDate: validFrom,
+        openValidFrom: open.validFrom,
+      });
+    }
+    const history = await this.taxProfiles.find({
+      where: { employeeId: input.employeeId } as FindOptionsWhere<EmployeeTaxProfile>,
+    });
+    const conflict = history.find(
+      (profile) =>
+        profile.id !== open?.id &&
+        rangesOverlap(
+          { validFrom: profile.validFrom, validTo: profile.validTo },
+          { validFrom, validTo: null },
+        ),
+    );
+    if (conflict) {
+      throw new ConflictError('A tax profile already covers this period', {
+        employeeId: input.employeeId,
+        conflictingProfileId: conflict.id,
+      });
+    }
+
+    const payload = {
+      organizationId,
+      employeeId: input.employeeId,
+      filerStatus: input.filerStatus ?? 'filer',
+      monthlyExemptionAmount: toAmount(input.monthlyExemptionAmount ?? 0),
+      annualTaxCreditAmount: toAmount(input.annualTaxCreditAmount ?? 0),
+      priorAnnualIncome: toAmount(input.priorAnnualIncome ?? 0),
+      fixedMonthlyWithholding:
+        input.fixedMonthlyWithholding == null ? null : toAmount(input.fixedMonthlyWithholding),
+      note: input.note?.slice(0, 300) ?? null,
+      validFrom,
+      validTo: null,
+    };
+    const saved = await this.dataSource.transaction(async (manager) => {
+      if (open) {
+        // Half-open ranges: the old profile ends the moment the new one begins.
+        open.validTo = validFrom;
+        await manager.save(open);
+      }
+      const persisted = await manager.save(manager.create(EmployeeTaxProfile, payload));
+      await this.publisher.publishWithin(manager, {
+        name: 'compensation.taxProfileChanged',
+        payload: {
+          taxProfileId: persisted.id,
+          employeeId: input.employeeId,
+          effectiveDate: validFrom,
+        },
+      });
+      return persisted;
+    });
+    await this.audit.record({
+      action: 'setTaxProfile',
+      resourceType: 'employee_tax_profile',
+      resourceId: saved.id,
+      after: {
+        employeeId: saved.employeeId,
+        validFrom: saved.validFrom,
+        filerStatus: saved.filerStatus,
+        fixedMonthlyWithholding:
+          saved.fixedMonthlyWithholding === null ? null : Number(saved.fixedMonthlyWithholding),
+      },
+    });
+    return saved;
+  }
+
   // --- Pay adjustments: the one choke point for period-scoped money changes ---
 
-  async createAdjustment(input: CreatePayAdjustmentData): Promise<PayAdjustment> {
+  async createAdjustment(
+    input: CreatePayAdjustmentData,
+    manager?: EntityManager,
+  ): Promise<PayAdjustment> {
     if (!(await this.employeeDirectory.exists(input.employeeId))) {
       throw new NotFoundError('Employee not found', { id: input.employeeId });
     }
@@ -523,15 +697,41 @@ export class CompensationService {
     if (input.amount <= 0) {
       throw new ValidationFailedError('amount must be greater than zero');
     }
+    // Source provenance is a pair or nothing: a lone sourceId would defeat the
+    // partial unique index (Postgres treats the null sourceType as distinct), so
+    // both-or-neither is enforced here and by a database CHECK.
+    const hasSourceType =
+      input.sourceType !== undefined && input.sourceType !== null && input.sourceType !== '';
+    const hasSourceId =
+      input.sourceId !== undefined && input.sourceId !== null && input.sourceId !== '';
+    if (hasSourceType !== hasSourceId) {
+      throw new ValidationFailedError('sourceType and sourceId must be provided together', {
+        sourceType: input.sourceType ?? null,
+        sourceId: input.sourceId ?? null,
+      });
+    }
     const component = await this.payComponents.findById(input.componentId);
     if (!component) {
       throw new NotFoundError('Pay component not found', { id: input.componentId });
     }
     // The component's category decides the money direction, so a mispaired kind
     // would silently add where it should subtract (e.g. an advance recovery on
-    // an earning component). Enforce the pairing up front.
-    const earningKinds: readonly PayAdjustmentKind[] = ['bonus', 'encashment', 'arrear'];
+    // an earning component). Enforce the pairing up front. `correction` and
+    // `other` take their direction from the component itself; employer-side
+    // components are never employee adjustments.
+    const earningKinds: readonly PayAdjustmentKind[] = [
+      'bonus',
+      'encashment',
+      'arrear',
+      'reimbursement',
+    ];
     const deductionKinds: readonly PayAdjustmentKind[] = ['advanceRecovery'];
+    if (component.category === 'employerContribution') {
+      throw new ValidationFailedError(
+        'Pay adjustments cannot target an employer-contribution component',
+        { componentId: input.componentId, category: component.category },
+      );
+    }
     if (earningKinds.includes(input.kind) && component.category !== 'earning') {
       throw new ValidationFailedError(
         `A ${input.kind} adjustment must use an earning component`,
@@ -544,35 +744,59 @@ export class CompensationService {
         { componentId: input.componentId, category: component.category },
       );
     }
-    const adjustment = this.payAdjustments.create({
-      employeeId: input.employeeId,
-      componentId: input.componentId,
-      amount: toAmount(input.amount),
-      currency: normalizeCurrency(input.currency),
-      periodYear: input.periodYear,
-      periodMonth: input.periodMonth,
-      kind: input.kind,
-      sourceType: input.sourceType ?? null,
-      sourceId: input.sourceId ?? null,
-      overwritesStructureAmount: input.overwritesStructureAmount ?? false,
-      isRecurring: input.isRecurring ?? false,
-      recurringFrom: input.recurringFrom ?? null,
-      recurringTo: input.recurringTo ?? null,
-      note: input.note ?? null,
+    const persist = async (target: EntityManager): Promise<PayAdjustment> => {
+      const saved = await target.save(
+        target.create(PayAdjustment, {
+          // Explicit because a raw manager create bypasses the tenant-scoped
+          // repository's automatic organization stamping.
+          organizationId: this.tenantContext.getOrganizationId(),
+          employeeId: input.employeeId,
+          componentId: input.componentId,
+          amount: toAmount(input.amount),
+          currency: normalizeCurrency(input.currency),
+          periodYear: input.periodYear,
+          periodMonth: input.periodMonth,
+          kind: input.kind,
+          sourceType: input.sourceType ?? null,
+          sourceId: input.sourceId ?? null,
+          overwritesStructureAmount: input.overwritesStructureAmount ?? false,
+          isRecurring: input.isRecurring ?? false,
+          recurringFrom: input.recurringFrom ?? null,
+          recurringTo: input.recurringTo ?? null,
+          note: input.note ?? null,
+        }),
+      );
+      await this.audit.record(
+        {
+          action: 'create',
+          resourceType: 'pay_adjustment',
+          resourceId: saved.id,
+          after: {
+            employeeId: saved.employeeId,
+            kind: saved.kind,
+            amount: Number(saved.amount),
+            period: `${saved.periodYear}-${String(saved.periodMonth).padStart(2, '0')}`,
+          },
+        },
+        target,
+      );
+      return saved;
+    };
+    // Callers inside a larger unit of work (expense reimbursement) pass their
+    // manager so the adjustment and its audit commit or roll back together.
+    if (manager) {
+      return persist(manager);
+    }
+    return this.dataSource.transaction((target) => persist(target));
+  }
+
+  // The published lookup behind idempotent expense reimbursement: the unique
+  // (organizationId, sourceType, sourceId) index guarantees at most one
+  // adjustment per source fact, so a retry can recover it by source alone.
+  findAdjustmentBySource(sourceType: string, sourceId: string): Promise<PayAdjustment | null> {
+    return this.payAdjustments.findOne({
+      where: { sourceType, sourceId } as FindOptionsWhere<PayAdjustment>,
     });
-    const saved = await this.payAdjustments.save(adjustment);
-    await this.audit.record({
-      action: 'create',
-      resourceType: 'pay_adjustment',
-      resourceId: saved.id,
-      after: {
-        employeeId: saved.employeeId,
-        kind: saved.kind,
-        amount: Number(saved.amount),
-        period: `${saved.periodYear}-${String(saved.periodMonth).padStart(2, '0')}`,
-      },
-    });
-    return saved;
   }
 
   listAdjustmentsFor(employeeId: EmployeeId): Promise<PayAdjustment[]> {
@@ -615,6 +839,7 @@ export class CompensationService {
       }
       return [
         {
+          adjustmentId: adjustment.id,
           componentId: adjustment.componentId,
           componentCode: component.code,
           componentName: component.name,

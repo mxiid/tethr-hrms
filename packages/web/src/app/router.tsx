@@ -14,6 +14,7 @@ import { EmployeeProfilePage } from '../modules/employees/pages/EmployeeProfileP
 import { EmployeesListPage } from '../modules/employees/pages/EmployeesListPage';
 import { AnnouncementsPage } from '../modules/engagement/pages/AnnouncementsPage';
 import { FeedbackInboxPage } from '../modules/engagement/pages/FeedbackInboxPage';
+import { ExpensesPage } from '../modules/expenses/pages/ExpensesPage';
 import { BillingPage } from '../modules/finance/billing/pages/BillingPage';
 import { InvoiceDetailPage } from '../modules/finance/billing/pages/InvoiceDetailPage';
 import { CompensationPage } from '../modules/finance/compensation/pages/CompensationPage';
@@ -136,6 +137,16 @@ export const AppRouter = () => (
             }
           >
             <Route path="/compensation" element={<CompensationPage />} />
+          </Route>
+          <Route
+            element={
+              <RequirePortal
+                portals={['tethr', 'client']}
+                roleKeys={['tethrAdmin', 'tethrHr', 'tethrFinance', 'clientAdmin', 'clientMember']}
+              />
+            }
+          >
+            <Route path="/expenses" element={<ExpensesPage />} />
           </Route>
           <Route element={<RequirePortal portals={['client']} />}>
             <Route path="/client" element={<ClientWorkspacePage />} />

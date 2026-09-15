@@ -20,6 +20,15 @@ describe('isIsoDate', () => {
     expect(isIsoDate('2026-6-18')).toBe(false);
     expect(isIsoDate('not-a-date')).toBe(false);
     expect(isIsoDate('2026-13-01')).toBe(false);
+    // Date.parse would normalize these instead of failing.
+    expect(isIsoDate('2026-02-31')).toBe(false);
+    expect(isIsoDate('2026-04-31')).toBe(false);
+    expect(isIsoDate('2026-00-10')).toBe(false);
+  });
+
+  it('accepts leap days only in leap years', () => {
+    expect(isIsoDate('2024-02-29')).toBe(true);
+    expect(isIsoDate('2023-02-29')).toBe(false);
   });
 });
 

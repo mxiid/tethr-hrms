@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -273,6 +274,12 @@ export class MarkInvoicePaidArgs {
   @IsString()
   @MaxLength(120)
   paymentReference?: string;
+
+  // The value date of the payment, when it differs from the recording day.
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'settlementDate must be an ISO date (YYYY-MM-DD)' })
+  settlementDate?: string;
 }
 
 

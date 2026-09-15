@@ -1,4 +1,11 @@
-﻿import { toId, type BillingGroupId, type EmployeeId, type InvoiceId } from '@hrms/shared';
+﻿import {
+  toId,
+  type BillingGroupId,
+  type EmployeeId,
+  type InvoiceId,
+  type InvoiceLineKind,
+  type IsoDate,
+} from '@hrms/shared';
 import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
@@ -23,11 +30,15 @@ import {
   UpdateInvoiceLineInput,
 } from './dto/billing.inputs';
 import { ClientCostBreakdownView, InvoiceView } from './dto/invoice.view';
+import {
+  BillingReconciliationPeriodView,
+  InvoiceReconciliationLineView,
+} from './dto/reconciliation.view';
 import type { BillingGroupMember } from './entities/billing-group-member.entity';
 import type { BillingGroup } from './entities/billing-group.entity';
 import type { ClientBillingConfig } from './entities/client-billing-config.entity';
 import type { Invoice } from './entities/invoice.entity';
-import type { InvoiceDetail } from './invoice.service';
+import type { InvoiceDetail, ReconciliationPeriod } from './invoice.service';
 import { InvoiceService } from './invoice.service';
 import { InvoicePdfService } from './pdf/invoice-pdf.service';
 
@@ -94,8 +105,42 @@ const toInvoiceView = (invoice: Invoice, groupName?: string | null): InvoiceView
   receiverName: invoice.receiverName,
   subTotal: Number(invoice.subTotal),
   totalAmount: Number(invoice.totalAmount),
-  paidAt: invoice.paidAt,
+  paidAt: invoice.paidAt ? invoice.paidAt.toISOString() : null,
   paymentReference: invoice.paymentReference,
+  reconciliationStatus: invoice.reconciliationStatus,
+  payrollCostAmount:
+    invoice.payrollCostAmount === null ? null : Number(invoice.payrollCostAmount),
+  reconciledAt: invoice.reconciledAt,
+  isStale: invoice.isStale,
+  staleReason: invoice.staleReason,
+});
+
+const toReconciliationView = (
+  period: ReconciliationPeriod,
+): BillingReconciliationPeriodView => ({
+  serviceYear: period.serviceYear,
+  serviceMonth: period.serviceMonth,
+  status: period.status,
+  currency: period.currency,
+  invoiceCount: period.invoiceCount,
+  invoicedAmount: period.invoicedAmount,
+  payrollCostAmount: period.payrollCostAmount,
+  varianceAmount: period.varianceAmount,
+  payrollRunId: period.payrollRunId,
+  payDate: period.payDate,
+  invoices: period.invoices.map(
+    (row): InvoiceReconciliationLineView => ({
+      invoiceId: row.invoice.id,
+      number: row.invoice.number,
+      groupId: row.invoice.groupId,
+      status: row.invoice.status,
+      reconciliationStatus: row.invoice.reconciliationStatus,
+      invoicedAmount: row.invoicedAmount,
+      payrollCostAmount:
+        row.invoice.payrollCostAmount === null ? null : Number(row.invoice.payrollCostAmount),
+      reconciledAt: row.invoice.reconciledAt,
+    }),
+  ),
 });
 
 @Resolver(() => InvoiceView)
@@ -260,6 +305,15 @@ export class BillingResolver {
     };
   }
 
+  // Month-by-month view of invoiced salary vs actual payroll cost (finance).
+  @Query(() => [BillingReconciliationPeriodView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.billingRead)
+  async billingReconciliation(): Promise<BillingReconciliationPeriodView[]> {
+    const periods = await this.invoicesService.listReconciliation();
+    return periods.map(toReconciliationView);
+  }
+
   // Manual re-trigger of the auto-drafter for a finalized run (the event
   // consumer normally does this; useful for retries and backfills).
   @Mutation(() => [InvoiceView])
@@ -296,6 +350,9 @@ export class BillingResolver {
       description: input.description,
       quantity: input.quantity,
       unitPrice: input.unitPrice,
+      kind: input.kind as InvoiceLineKind | undefined,
+      employeeId: input.employeeId ? toId<EmployeeId>(input.employeeId) : null,
+      monthLabel: input.monthLabel ?? null,
     });
     return this.refreshed(input.invoiceId);
   }
@@ -341,8 +398,19 @@ export class BillingResolver {
     await this.invoicesService.markInvoicePaid({
       invoiceId: toId<InvoiceId>(args.invoiceId),
       paymentReference: args.paymentReference ?? null,
+      settlementDate: args.settlementDate ? (args.settlementDate as IsoDate) : null,
     });
     return this.refreshed(args.invoiceId);
+  }
+
+  @Mutation(() => InvoiceView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.billingWrite)
+  async voidInvoice(
+    @Args('invoiceId', { type: () => ID }) invoiceId: string,
+  ): Promise<InvoiceView> {
+    await this.invoicesService.voidInvoice(toId<InvoiceId>(invoiceId));
+    return this.refreshed(invoiceId);
   }
 
   // --- PDF documents ---

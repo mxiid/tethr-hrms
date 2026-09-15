@@ -13,6 +13,10 @@ export type DerivedLineTotals = {
   readonly totalEarnings: number;
   readonly taxableAmount: number;
   readonly deductions: number;
+  // Employer-side components (PF, EOBI, insurance…) are cost on top of gross:
+  // they never touch the employee's gross, taxable or net figures.
+  readonly employerContributions: number;
+  readonly employerCost: number;
   readonly netPayAmount: number;
 };
 
@@ -63,6 +67,7 @@ export const deriveLineTotals = (
   let totalEarnings = 0;
   let taxableAmount = 0;
   let deductions = 0;
+  let employerContributions = 0;
   for (const component of components) {
     if (component.category === 'earning') {
       totalEarnings += component.amount;
@@ -71,12 +76,18 @@ export const deriveLineTotals = (
       }
     } else if (component.category === 'deduction') {
       deductions += component.amount;
+    } else if (component.category === 'employerContribution') {
+      employerContributions += component.amount;
     }
   }
+  const earnings = toMoney(totalEarnings);
+  const contributions = toMoney(employerContributions);
   return {
-    totalEarnings: toMoney(totalEarnings),
+    totalEarnings: earnings,
     taxableAmount: toMoney(taxableAmount),
     deductions: toMoney(deductions),
-    netPayAmount: toMoney(toMoney(totalEarnings) - toMoney(deductions) - toMoney(incomeTax)),
+    employerContributions: contributions,
+    employerCost: toMoney(earnings + contributions),
+    netPayAmount: toMoney(earnings - toMoney(deductions) - toMoney(incomeTax)),
   };
 };

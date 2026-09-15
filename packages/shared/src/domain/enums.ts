@@ -153,13 +153,31 @@ export type StructureComponentCalcType = 'percentOfGross' | 'fixedMonthly';
 
 // Client invoice lifecycle. Drafts are freely editable finance working state;
 // issuing freezes the document (number assigned, immutable); paid closes it.
-export type InvoiceStatus = 'draft' | 'issued' | 'paid';
+export type InvoiceStatus = 'draft' | 'issued' | 'paid' | 'voided';
 
 // Services invoices carry salaries + management fees; expenses invoices carry
 // pass-through reimbursements. Each billing group issues its own pair.
 export type InvoiceType = 'services' | 'expenses';
 
 export type InvoiceLineKind = 'salary' | 'fee' | 'expense' | 'catchup';
+
+// Employee expense claim lifecycle: the employee (or HR on their behalf) builds
+// a draft, submitting routes it through the workflow engine, approval makes it
+// payable, and paid means the reimbursement was committed (directly or by being
+// scheduled into a payroll run).
+export type ExpenseClaimStatus =
+  | 'draft'
+  | 'submitted'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'paid';
+
+export type ExpenseReimbursementMethod = 'direct' | 'payroll';
+
+// Per-employee tax facts' filer status. Tenant rules decide the consequence;
+// the profile records the fact so payroll's withholding trail is complete.
+export type TaxFilerStatus = 'filer' | 'nonFiler';
 
 export type Salutation = 'Mr' | 'Ms' | 'Mrs' | 'Mx' | 'Dr' | 'Prof';
 
