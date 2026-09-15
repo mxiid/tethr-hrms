@@ -1,6 +1,7 @@
 import { type ShortlistDecision, type ShortlistStatus } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { In } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { type DataSource, type EntityManager, In, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
@@ -59,6 +60,7 @@ export class ShortlistService {
     @Inject(JOB_POSTING_REPOSITORY) private readonly postings: TenantScopedRepository<JobPosting>,
     private readonly platformScope: PlatformScopeService,
     private readonly tenantContext: TenantContextService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async createShortlist(input: CreateShortlistData): Promise<ShortlistRecord> {
@@ -275,17 +277,23 @@ export class ShortlistService {
         entry.clientDecision = input.decision;
         entry.clientNote = input.note ?? null;
         entry.decidedAt = input.decision === 'pending' ? null : new Date();
-        const saved = await this.entries.save(entry);
-        // A client "not interested" is a terminal fact for the application: the
-        // operator no longer has to remember a second update. Changing the
-        // verdict back does not resurrect it — the decision is one-way here.
-        if (input.decision === 'rejected') {
-          await this.rejectApplication(entry.applicationId);
-        }
-        if (shortlist.status === 'presented') {
-          shortlist.status = 'feedbackReceived';
-          await this.shortlists.save(shortlist);
-        }
+        // The verdict, the shortlist state and the application cascade commit
+        // together, so a failed save can never leave a recorded rejection with
+        // a still-active application.
+        const saved = await this.dataSource.transaction(async (manager) => {
+          const persisted = await manager.save(entry);
+          // A client "not interested" is a terminal fact for the application:
+          // the operator no longer has to remember a second update. Changing
+          // the verdict back does not resurrect it — the decision is one-way.
+          if (input.decision === 'rejected') {
+            await this.rejectApplication(manager, entry.applicationId);
+          }
+          if (shortlist.status === 'presented') {
+            shortlist.status = 'feedbackReceived';
+            await manager.save(shortlist);
+          }
+          return persisted;
+        });
         return saved;
       },
     );
@@ -293,11 +301,16 @@ export class ShortlistService {
 
   // Terminal sub-stage facts end the application once: only an active, un-hired
   // application is touched, so a repeated decision is a no-op.
-  private async rejectApplication(applicationId: string): Promise<void> {
-    const application = await this.applications.findById(applicationId);
+  private async rejectApplication(manager: EntityManager, applicationId: string): Promise<void> {
+    const application = await manager.findOne(Application, {
+      where: {
+        id: applicationId,
+        organizationId: this.tenantContext.getOrganizationId(),
+      } as FindOptionsWhere<Application>,
+    });
     if (application && application.outcome === 'active' && application.stage !== 'hired') {
       application.outcome = 'rejected';
-      await this.applications.save(application);
+      await manager.save(application);
     }
   }
 

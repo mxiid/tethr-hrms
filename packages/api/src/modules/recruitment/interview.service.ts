@@ -1,6 +1,7 @@
 import { toId, type InterviewOutcome, type InterviewStatus, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { In } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { type DataSource, type EntityManager, In, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
@@ -103,6 +104,7 @@ export class InterviewService {
     private readonly auth: AuthService,
     private readonly platformScope: PlatformScopeService,
     private readonly tenantContext: TenantContextService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   // --- Round templates ----------------------------------------------------------
@@ -228,23 +230,33 @@ export class InterviewService {
     if (input.status !== undefined) interview.status = input.status;
     if (input.outcome !== undefined) interview.outcome = input.outcome;
     if (input.notes !== undefined) interview.notes = input.notes;
-    const saved = await this.interviews.save(interview);
-    // A failed or no-show interview is a terminal fact for the application; the
-    // operator no longer has to remember a second update. Passing an interview
-    // does not resurrect a rejected application (rounds differ by candidate).
-    if (saved.outcome === 'failed' || saved.outcome === 'noShow') {
-      await this.rejectApplication(saved.applicationId);
-    }
-    return saved;
+    // The interview write and the application cascade commit together, so a
+    // retry can never find a failed interview with a still-active application.
+    return this.dataSource.transaction(async (manager) => {
+      const saved = await manager.save(interview);
+      // A failed or no-show interview is a terminal fact for the application;
+      // the operator no longer has to remember a second update. Passing an
+      // interview does not resurrect a rejected application (rounds differ by
+      // candidate).
+      if (saved.outcome === 'failed' || saved.outcome === 'noShow') {
+        await this.rejectApplication(manager, saved.applicationId);
+      }
+      return saved;
+    });
   }
 
   // Terminal sub-stage facts end the application once: only an active, un-hired
   // application is touched, so a repeated outcome update is a no-op.
-  private async rejectApplication(applicationId: string): Promise<void> {
-    const application = await this.applications.findById(applicationId);
+  private async rejectApplication(manager: EntityManager, applicationId: string): Promise<void> {
+    const application = await manager.findOne(Application, {
+      where: {
+        id: applicationId,
+        organizationId: this.tenantContext.getOrganizationId(),
+      } as FindOptionsWhere<Application>,
+    });
     if (application && application.outcome === 'active' && application.stage !== 'hired') {
       application.outcome = 'rejected';
-      await this.applications.save(application);
+      await manager.save(application);
     }
   }
 

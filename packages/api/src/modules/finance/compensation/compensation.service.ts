@@ -450,11 +450,12 @@ export class CompensationService {
     return saved;
   }
 
-  // Hire handoff: the offer's salary becomes the employee's first revision when
-  // the client workspace has an active structure in the offered currency. Runs
-  // in the caller's transaction (offer acceptance) so the hire and its salary
-  // commit together. Returns null when no matching structure exists — finance
-  // still has to configure payroll, and readiness flags the missing assignment.
+  // The hire handoff, driven by the offer.accepted event's consumer: the
+  // offer's salary becomes the employee's first revision when the client
+  // workspace has an active structure in the offered currency. Returns null
+  // when no matching structure exists — finance still has to configure payroll,
+  // and readiness flags the missing assignment. Idempotent per employee and
+  // effective date so outbox redelivery is safe.
   async recordHireSalary(
     input: {
       readonly employeeId: EmployeeId;
@@ -463,7 +464,7 @@ export class CompensationService {
       readonly effectiveDate: string;
       readonly approvedByUserId?: UserId | null;
     },
-    manager: EntityManager,
+    manager?: EntityManager,
   ): Promise<SalaryRevision | null> {
     const normalized = input.currency.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(normalized)) {
@@ -471,41 +472,59 @@ export class CompensationService {
       // rather than let a legacy offer's bad code block the hire itself.
       return null;
     }
-    const structures = await this.salaryStructures.find({ order: { code: 'ASC' } });
-    const structure = structures.find(
-      (candidate) => candidate.isActive && candidate.currency === normalized,
-    );
-    if (!structure) {
-      return null;
-    }
-    const revision = await this.persistRevision(
-      manager,
-      {
-        employeeId: input.employeeId,
-        salaryStructureId: toId<SalaryStructureId>(structure.id),
-        annualAmount: input.annualAmount,
-        effectiveDate: input.effectiveDate,
-        reason: 'hire',
-        approvedByUserId: input.approvedByUserId ?? null,
-        note: 'Hired from offer',
-      },
-      structure,
-    );
-    await this.audit.record(
-      {
-        action: 'revise',
-        resourceType: 'salary_revision',
-        resourceId: revision.id,
-        after: {
-          employeeId: revision.employeeId,
-          validFrom: revision.validFrom,
-          annualAmount: Number(revision.annualAmount),
-          source: 'offer acceptance',
+    const organizationId = this.tenantContext.getOrganizationId();
+    const run = async (target: EntityManager): Promise<SalaryRevision | null> => {
+      const structures = await this.salaryStructures.find({ order: { code: 'ASC' } });
+      const structure = structures.find(
+        (candidate) => candidate.isActive && candidate.currency === normalized,
+      );
+      if (!structure) {
+        return null;
+      }
+      // Idempotent for the outbox: the accepted event may be redelivered, and an
+      // attempt that committed before a failure must be reported as done.
+      const existing = await target.findOne(SalaryRevision, {
+        where: {
+          organizationId,
+          employeeId: input.employeeId,
+          validFrom: input.effectiveDate,
+        } as FindOptionsWhere<SalaryRevision>,
+      });
+      if (existing) {
+        return existing;
+      }
+      const revision = await this.persistRevision(
+        target,
+        {
+          employeeId: input.employeeId,
+          salaryStructureId: toId<SalaryStructureId>(structure.id),
+          annualAmount: input.annualAmount,
+          effectiveDate: input.effectiveDate,
+          reason: 'hire',
+          approvedByUserId: input.approvedByUserId ?? null,
+          note: 'Hired from offer',
         },
-      },
-      manager,
-    );
-    return revision;
+        structure,
+      );
+      await this.audit.record(
+        {
+          action: 'revise',
+          resourceType: 'salary_revision',
+          resourceId: revision.id,
+          after: {
+            employeeId: revision.employeeId,
+            validFrom: revision.validFrom,
+            annualAmount: Number(revision.annualAmount),
+            source: 'offer acceptance',
+          },
+        },
+        target,
+      );
+      return revision;
+    };
+    // Callers inside a unit of work (or the offer.accepted consumer) may pass a
+    // manager; otherwise the write opens its own transaction.
+    return manager ? run(manager) : this.dataSource.transaction((target) => run(target));
   }
 
   // The one place revisions are written: closes the open range and inserts the

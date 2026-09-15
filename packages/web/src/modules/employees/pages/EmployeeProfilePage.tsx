@@ -1125,7 +1125,14 @@ export const EmployeeProfilePage = () => {
           },
         },
       });
-      await Promise.all([refetchHrRecord(), refetchDetail(), refetchDetail()]);
+      // Bank details feed the derived onboarding task and the aggregate, so
+      // both onboarding reads refresh alongside the record itself.
+      await Promise.all([
+        refetchHrRecord(),
+        refetchDetail(),
+        refetchOnboardingTasks(),
+        refetchOnboardingProgress(),
+      ]);
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not save HR record');
     }

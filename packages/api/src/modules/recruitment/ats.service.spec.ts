@@ -386,6 +386,28 @@ describe('AtsService intake integrity', () => {
       'You already have an active application for this role',
     );
   });
+
+  it('translates a reactivation that loses the unique-index race into a conflict', async () => {
+    const { service, applications } = buildService();
+    (applications.findById as jest.Mock).mockResolvedValue({
+      id: 'application-1',
+      candidateId: 'candidate-1',
+      jobPostingId: 'posting-1',
+      stage: 'screening',
+      outcome: 'rejected',
+    });
+    (applications.findOne as jest.Mock).mockResolvedValue(null);
+    (applications.save as jest.Mock).mockRejectedValueOnce({
+      driverError: {
+        code: '23505',
+        constraint: 'applications_org_candidate_posting_active_unique',
+      },
+    });
+
+    await expect(
+      service.updateApplication({ applicationId: 'application-1', outcome: 'active' }),
+    ).rejects.toThrow('Another active application already exists');
+  });
 });
 
 describe('AtsService posting lifecycle', () => {

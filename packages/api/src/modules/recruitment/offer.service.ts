@@ -5,11 +5,11 @@ import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { PERMISSIONS } from '../../core/authz/permissions';
+import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 import { EmployeeService } from '../employee/employee.service';
-import { CompensationService } from '../finance/compensation/compensation.service';
 import { PositionService } from '../position/position.service';
 
 import { APPLICATION_REPOSITORY, CANDIDATE_REPOSITORY, JOB_POSTING_REPOSITORY, OFFER_REPOSITORY } from './ats.tokens';
@@ -52,7 +52,7 @@ export class OfferService {
     @Inject(JOB_POSTING_REPOSITORY) private readonly postings: TenantScopedRepository<JobPosting>,
     private readonly employees: EmployeeService,
     private readonly positions: PositionService,
-    private readonly compensation: CompensationService,
+    private readonly publisher: DomainEventPublisher,
     private readonly recruitment: RecruitmentService,
     private readonly platformScope: PlatformScopeService,
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -91,67 +91,117 @@ export class OfferService {
   }
 
   async send(offerId: string): Promise<OfferRecord> {
-    const offer = await this.getById(offerId);
-    if (offer.status !== 'draft') {
-      throw new ConflictError('Only a draft offer can be sent');
-    }
-    offer.status = 'sent';
-    offer.sentAt = new Date();
-    const saved = await this.offers.save(offer);
-    // Sending is the moment the pipeline reaches the offer stage; a draft was
-    // internal. The stage is never rolled back — decline/withdraw only end the
-    // outcome, leaving the reached stage as history.
-    await this.moveApplicationStage(saved.applicationId, 'offer');
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const offer = await manager.findOne(Offer, {
+        where: {
+          id: offerId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<Offer>,
+      });
+      if (!offer) {
+        throw new NotFoundError('Offer not found', { id: offerId });
+      }
+      if (offer.status !== 'draft') {
+        throw new ConflictError('Only a draft offer can be sent');
+      }
+      offer.status = 'sent';
+      offer.sentAt = new Date();
+      const persisted = await manager.save(offer);
+      // Sending is the moment the pipeline reaches the offer stage; a draft was
+      // internal. The stage is never rolled back — decline/withdraw only end the
+      // outcome, leaving the reached stage as history.
+      await this.moveApplicationStage(manager, persisted.applicationId, 'offer');
+      return persisted;
+    });
     return this.compose(saved);
   }
 
   async withdraw(offerId: string): Promise<OfferRecord> {
-    const offer = await this.getById(offerId);
-    if (offer.status !== 'draft' && offer.status !== 'sent') {
-      throw new ConflictError('Only a draft or sent offer can be withdrawn');
-    }
-    offer.status = 'withdrawn';
-    offer.respondedAt = new Date();
-    const saved = await this.offers.save(offer);
-    // The company pulled the offer: the application ends rejected.
-    await this.closeApplication(saved.applicationId, 'rejected');
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const offer = await manager.findOne(Offer, {
+        where: {
+          id: offerId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<Offer>,
+      });
+      if (!offer) {
+        throw new NotFoundError('Offer not found', { id: offerId });
+      }
+      if (offer.status !== 'draft' && offer.status !== 'sent') {
+        throw new ConflictError('Only a draft or sent offer can be withdrawn');
+      }
+      offer.status = 'withdrawn';
+      offer.respondedAt = new Date();
+      const persisted = await manager.save(offer);
+      // The company pulled the offer: the application ends rejected.
+      await this.closeApplication(manager, persisted.applicationId, 'rejected');
+      return persisted;
+    });
     return this.compose(saved);
   }
 
   async decline(offerId: string, note?: string | null): Promise<OfferRecord> {
-    const offer = await this.getById(offerId);
-    if (offer.status !== 'sent') {
-      throw new ConflictError('Only a sent offer can be declined');
-    }
-    offer.status = 'declined';
-    offer.respondedAt = new Date();
-    if (note) offer.notes = note;
-    const saved = await this.offers.save(offer);
-    // The candidate said no: the application ends withdrawn, not rejected.
-    await this.closeApplication(saved.applicationId, 'withdrawn');
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const offer = await manager.findOne(Offer, {
+        where: {
+          id: offerId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<Offer>,
+      });
+      if (!offer) {
+        throw new NotFoundError('Offer not found', { id: offerId });
+      }
+      if (offer.status !== 'sent') {
+        throw new ConflictError('Only a sent offer can be declined');
+      }
+      offer.status = 'declined';
+      offer.respondedAt = new Date();
+      if (note) offer.notes = note;
+      const persisted = await manager.save(offer);
+      // The candidate said no: the application ends withdrawn, not rejected.
+      await this.closeApplication(manager, persisted.applicationId, 'withdrawn');
+      return persisted;
+    });
     return this.compose(saved);
   }
 
   // Stage moves follow the offer facts, so the pipeline is never left claiming
-  // an application is interviewing after it has reached the offer.
-  private async moveApplicationStage(applicationId: string, stage: 'offer'): Promise<void> {
-    const application = await this.applications.findById(applicationId);
+  // an application is interviewing after it has reached the offer. Runs in the
+  // caller's transaction: the offer write and the application write commit
+  // together, so a retry can never find one without the other.
+  private async moveApplicationStage(
+    manager: EntityManager,
+    applicationId: string,
+    stage: 'offer',
+  ): Promise<void> {
+    const application = await manager.findOne(Application, {
+      where: {
+        id: applicationId,
+        organizationId: this.tenantContext.getOrganizationId(),
+      } as FindOptionsWhere<Application>,
+    });
     if (application && application.stage !== 'hired' && application.stage !== stage) {
       application.stage = stage;
-      await this.applications.save(application);
+      await manager.save(application);
     }
   }
 
   // Terminal sub-stage facts end the application once: only an active, un-hired
   // application is touched, so a later retry or a second decline is a no-op.
   private async closeApplication(
+    manager: EntityManager,
     applicationId: string,
     outcome: 'withdrawn' | 'rejected',
   ): Promise<void> {
-    const application = await this.applications.findById(applicationId);
+    const application = await manager.findOne(Application, {
+      where: {
+        id: applicationId,
+        organizationId: this.tenantContext.getOrganizationId(),
+      } as FindOptionsWhere<Application>,
+    });
     if (application && application.outcome === 'active' && application.stage !== 'hired') {
       application.outcome = outcome;
-      await this.applications.save(application);
+      await manager.save(application);
     }
   }
 
@@ -204,20 +254,21 @@ export class OfferService {
         },
         async () => {
           const hired = await this.hireEmployee(candidate, posting.title, offer, manager);
-          // The offer's salary becomes the first revision (when the client
-          // workspace has a structure in the offered currency) in the same
-          // transaction; otherwise payroll readiness flags the missing
-          // assignment.
-          await this.compensation.recordHireSalary(
-            {
+          // The salary handoff travels as an outbox event in this transaction:
+          // compensation's consumer records the first revision idempotently,
+          // so recruitment never calls finance synchronously.
+          await this.publisher.publishWithin(manager, {
+            name: 'offer.accepted',
+            payload: {
+              offerId: offer.id,
+              applicationId: application.id,
               employeeId: toId<EmployeeId>(hired.id),
               annualAmount: Number(offer.baseSalary),
               currency: offer.salaryCurrency,
               effectiveDate: offer.startDate,
-              approvedByUserId: hiredByUserId,
+              acceptedByUserId: hiredByUserId,
             },
-            manager,
-          );
+          });
           return hired;
         },
         manager,
@@ -285,14 +336,6 @@ export class OfferService {
       records.push(await this.compose(offer));
     }
     return records;
-  }
-
-  private async getById(offerId: string): Promise<Offer> {
-    const offer = await this.offers.findById(offerId);
-    if (!offer) {
-      throw new NotFoundError('Offer not found', { id: offerId });
-    }
-    return offer;
   }
 
   // Employee numbers are unique per workspace; the timestamp suffix can repeat,

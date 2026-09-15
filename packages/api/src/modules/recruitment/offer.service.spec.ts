@@ -1,10 +1,10 @@
 import { toId, type OrganizationId, type UserId } from '@hrms/shared';
 
+import type { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import type { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
 import type { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 import type { EmployeeService } from '../employee/employee.service';
-import type { CompensationService } from '../finance/compensation/compensation.service';
 import type { PositionService } from '../position/position.service';
 
 import { Application } from './entities/application.entity';
@@ -108,9 +108,9 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
     ensureByTitle: jest.fn().mockResolvedValue({ id: 'position-1', status: 'open' }),
     setStatus: jest.fn().mockResolvedValue(undefined),
   } as unknown as PositionService;
-  const compensation = {
-    recordHireSalary: jest.fn().mockResolvedValue({ id: 'revision-1' }),
-  } as unknown as CompensationService;
+  const publisher = {
+    publishWithin: jest.fn().mockResolvedValue(undefined),
+  } as unknown as DomainEventPublisher;
   const recruitment = {
     updateHiringRequest: jest.fn().mockResolvedValue(undefined),
   } as unknown as RecruitmentService;
@@ -130,7 +130,7 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
       postings,
       employees,
       positions,
-      compensation,
+      publisher,
       recruitment,
       platformScope,
       dataSource as never,
@@ -143,7 +143,7 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
     postings,
     employees,
     positions,
-    compensation,
+    publisher,
     recruitment,
     platformScope,
   };
@@ -170,51 +170,79 @@ describe('OfferService', () => {
   });
 
   it('moves the application to the offer stage when the offer is sent', async () => {
-    const { service, applications } = buildService({ offer: { status: 'draft' } });
-    (applications.findById as jest.Mock).mockResolvedValueOnce({
-      id: 'application-1',
-      stage: 'interviewing',
-      outcome: 'active',
-    });
+    const { service, manager } = buildService({ offer: { status: 'draft' } });
+    (manager.findOne as jest.Mock).mockImplementation((entity: unknown, options: unknown) =>
+      Promise.resolve(
+        entity === Offer
+          ? { id: OFFER_ID, applicationId: 'application-1', status: 'draft' }
+          : entity === Application
+            ? { id: 'application-1', stage: 'interviewing', outcome: 'active' }
+            : options,
+      ),
+    );
 
     await service.send(OFFER_ID);
 
-    expect(applications.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'application-1', stage: 'offer' }),
     );
   });
 
-  it('declining ends the application as withdrawn', async () => {
-    const { service, applications } = buildService();
+  it('declining ends the application as withdrawn in the same transaction', async () => {
+    const { service, manager } = buildService();
+    (manager.findOne as jest.Mock).mockImplementation((entity: unknown) =>
+      Promise.resolve(
+        entity === Offer
+          ? { id: OFFER_ID, applicationId: 'application-1', status: 'sent' }
+          : entity === Application
+            ? { id: 'application-1', stage: 'offer', outcome: 'active' }
+            : null,
+      ),
+    );
 
     await service.decline(OFFER_ID, 'Accepted another role');
 
-    expect(applications.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'application-1', outcome: 'withdrawn' }),
     );
   });
 
-  it('withdrawing ends the application as rejected', async () => {
-    const { service, applications } = buildService();
+  it('withdrawing ends the application as rejected in the same transaction', async () => {
+    const { service, manager } = buildService();
+    (manager.findOne as jest.Mock).mockImplementation((entity: unknown) =>
+      Promise.resolve(
+        entity === Offer
+          ? { id: OFFER_ID, applicationId: 'application-1', status: 'sent' }
+          : entity === Application
+            ? { id: 'application-1', stage: 'offer', outcome: 'active' }
+            : null,
+      ),
+    );
 
     await service.withdraw(OFFER_ID);
 
-    expect(applications.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'application-1', outcome: 'rejected' }),
     );
   });
 
   it('never rewrites an application that already hired', async () => {
-    const { service, applications } = buildService();
-    (applications.findById as jest.Mock).mockResolvedValueOnce({
-      id: 'application-1',
-      stage: 'hired',
-      outcome: 'hired',
-    });
+    const { service, manager } = buildService();
+    (manager.findOne as jest.Mock).mockImplementation((entity: unknown) =>
+      Promise.resolve(
+        entity === Offer
+          ? { id: OFFER_ID, applicationId: 'application-1', status: 'sent' }
+          : entity === Application
+            ? { id: 'application-1', stage: 'hired', outcome: 'hired' }
+            : null,
+      ),
+    );
 
     await service.withdraw(OFFER_ID);
 
-    expect(applications.save).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'rejected' }),
+    );
   });
 
   it('acceptance locks the offer, hires into the client workspace, and closes the loop in one transaction', async () => {
@@ -223,12 +251,27 @@ describe('OfferService', () => {
       manager,
       employees,
       positions,
-      compensation,
+      publisher,
       recruitment,
       platformScope,
     } = buildService();
 
     const accepted = await service.accept(OFFER_ID, USER);
+
+    expect(publisher.publishWithin).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        name: 'offer.accepted',
+        payload: expect.objectContaining({
+          offerId: OFFER_ID,
+          employeeId: 'employee-1',
+          annualAmount: 100000,
+          currency: 'USD',
+          effectiveDate: '2026-10-01',
+          acceptedByUserId: USER,
+        }),
+      }),
+    );
 
     expect(platformScope.assertOperator).toHaveBeenCalled();
     expect(manager.findOne).toHaveBeenCalledWith(
@@ -245,16 +288,6 @@ describe('OfferService', () => {
         // Offer probationDays 90 from a 2026-10-01 start.
         probationEndDate: '2026-12-30',
         workerType: 'permanent',
-      }),
-      expect.anything(),
-    );
-    expect(compensation.recordHireSalary).toHaveBeenCalledWith(
-      expect.objectContaining({
-        employeeId: 'employee-1',
-        annualAmount: 100000,
-        currency: 'USD',
-        effectiveDate: '2026-10-01',
-        approvedByUserId: USER,
       }),
       expect.anything(),
     );
@@ -277,15 +310,5 @@ describe('OfferService', () => {
     const { service } = buildService({ offer: { status: 'draft' } });
 
     await expect(service.accept(OFFER_ID, USER)).rejects.toThrow('Only a sent offer can be accepted');
-  });
-
-  it('still hires when the workspace has no matching salary structure', async () => {
-    const { service, compensation } = buildService();
-    (compensation.recordHireSalary as jest.Mock).mockResolvedValue(null);
-
-    const accepted = await service.accept(OFFER_ID, USER);
-
-    expect(accepted.employeeId).toBe('employee-1');
-    expect(compensation.recordHireSalary).toHaveBeenCalled();
   });
 });

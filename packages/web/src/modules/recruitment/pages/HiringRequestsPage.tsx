@@ -1079,7 +1079,7 @@ export const HiringRequestsPage = () => {
                 </p>
               ) : null}
               {renderUpdateTrail(selected)}
-              {selected.status === 'open' ? (
+              {selected.status === 'open' || selected.status === 'onHold' ? (
                 <section className="request-note">
                   <div className="field-label">Public application</div>
                   {livePosting?.isPublished ? (

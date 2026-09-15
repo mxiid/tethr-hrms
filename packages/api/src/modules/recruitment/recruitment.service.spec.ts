@@ -12,7 +12,6 @@ import type { PositionService } from '../position/position.service';
 
 import type { HiringRequestUpdate } from './entities/hiring-request-update.entity';
 import { HiringRequest } from './entities/hiring-request.entity';
-import type { JobPosting } from './entities/job-posting.entity';
 import { RecruitmentService } from './recruitment.service';
 
 const ORGANIZATION = toId<OrganizationId>('org-1');
@@ -49,6 +48,7 @@ const makeRequest = (overrides: Partial<HiringRequest> = {}): HiringRequest =>
   }) as HiringRequest;
 
 const buildService = (existing: HiringRequest | null = null) => {
+  let currentOrganization: string = ORGANIZATION;
   const repository = {
     find: jest.fn().mockResolvedValue([]),
     save: jest.fn((value: HiringRequest) => Promise.resolve(value)),
@@ -62,6 +62,7 @@ const buildService = (existing: HiringRequest | null = null) => {
       Promise.resolve({ id: REQUEST, createdAt: new Date(), updatedAt: new Date(), ...value }),
     ),
     findOne: jest.fn().mockResolvedValue(existing),
+    find: jest.fn().mockResolvedValue([]),
   } as unknown as EntityManager;
   const dataSource = {
     transaction: jest.fn((callback: (transactionManager: EntityManager) => Promise<unknown>) =>
@@ -71,8 +72,11 @@ const buildService = (existing: HiringRequest | null = null) => {
   const publisher = {
     publishWithin: jest.fn().mockResolvedValue(undefined),
   } as unknown as DomainEventPublisher;
+  // The mock tenant tracks the real switch semantics: the callback runs under
+  // the target workspace and the previous one is restored afterwards, so a
+  // client-tenant read cannot see operator-owned rows.
   const tenantContext = {
-    getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
+    getOrganizationId: jest.fn(() => currentOrganization),
   } as unknown as TenantContextService;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
   const platformScope = {
@@ -82,7 +86,17 @@ const buildService = (existing: HiringRequest | null = null) => {
       access: { roleKeys: ['tethrHr'], permissions: [], portal: 'tethr' },
     }),
     listClientOrganizationIds: jest.fn().mockResolvedValue([CLIENT_ORGANIZATION]),
-    switchTo: jest.fn((_input: unknown, work: () => Promise<unknown>) => work()),
+    switchTo: jest.fn(
+      async (input: { organizationId: string }, work: () => Promise<unknown>) => {
+        const previous = currentOrganization;
+        currentOrganization = input.organizationId;
+        try {
+          return await work();
+        } finally {
+          currentOrganization = previous;
+        }
+      },
+    ),
   } as unknown as PlatformScopeService;
   const organizations = {
     getById: jest.fn((id: string) =>
@@ -91,19 +105,15 @@ const buildService = (existing: HiringRequest | null = null) => {
   } as unknown as OrganizationService;
   const positions = {
     ensureByTitle: jest.fn().mockResolvedValue({ id: 'position-1', status: 'open' }),
+    getById: jest.fn().mockResolvedValue({ id: 'position-1', status: 'open' }),
     setStatus: jest.fn().mockResolvedValue(undefined),
   } as unknown as PositionService;
-  const postings = {
-    find: jest.fn().mockResolvedValue([]),
-    save: jest.fn((value: unknown) => Promise.resolve(value)),
-  } as unknown as TenantScopedRepository<JobPosting>;
 
   return {
     service: new RecruitmentService(
       repository,
       updates,
       dataSource,
-      postings,
       publisher,
       tenantContext,
       audit,
@@ -118,7 +128,7 @@ const buildService = (existing: HiringRequest | null = null) => {
     platformScope,
     organizations,
     positions,
-    postings,
+    tenantContext,
   };
 };
 
@@ -236,7 +246,6 @@ describe('RecruitmentService', () => {
     const { service, positions } = buildService(
       makeRequest({ status: 'open', positionId: 'position-1' }),
     );
-    (positions.ensureByTitle as jest.Mock).mockResolvedValue({ id: 'position-1', status: 'open' });
 
     await service.updateHiringRequest({
       hiringRequestId: REQUEST,
@@ -245,14 +254,38 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
+    // By id, never by title: titles are not unique and may have been renamed.
+    expect(positions.getById).toHaveBeenCalledWith('position-1');
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'frozen');
   });
 
-  it('unpublishes the linked posting when a request is cancelled', async () => {
-    const { service, postings } = buildService(
+  it('repairs a missed position transition when the same status is replayed', async () => {
+    const { service, positions } = buildService(
       makeRequest({ status: 'open', positionId: 'position-1' }),
     );
-    (postings.find as jest.Mock).mockResolvedValue([
+    // The request is open but its position is frozen: a previous attempt
+    // committed the status without the reconciliation. Replaying the same
+    // status must still bring the position back, not skip the transition.
+    (positions.ensureByTitle as jest.Mock).mockResolvedValue({
+      id: 'position-1',
+      status: 'frozen',
+    });
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'open');
+  });
+
+  it('unpublishes the linked posting when a request is cancelled', async () => {
+    const { service, manager } = buildService(
+      makeRequest({ status: 'open', positionId: 'position-1' }),
+    );
+    (manager.find as jest.Mock).mockResolvedValue([
       { id: 'posting-1', sourceHiringRequestId: REQUEST, isPublished: true },
     ]);
 
@@ -263,7 +296,7 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(postings.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'posting-1', isPublished: false }),
     );
   });
@@ -340,12 +373,19 @@ describe('RecruitmentService', () => {
   });
 
   it('unpublishes the posting when the board cancels a client request', async () => {
-    const { service, postings } = buildService(
+    const { service, manager, tenantContext } = buildService(
       makeRequest({ organizationId: CLIENT_ORGANIZATION, status: 'open', positionId: 'position-1' }),
     );
-    (postings.find as jest.Mock).mockResolvedValue([
-      { id: 'posting-1', sourceHiringRequestId: REQUEST, isPublished: true },
-    ]);
+    // The posting row exists only in the operator workspace: the recursive
+    // client-tenant call must not see it, so this test proves the unpublish
+    // runs after the switch unwinds.
+    (manager.find as jest.Mock).mockImplementation(() =>
+      Promise.resolve(
+        tenantContext.getOrganizationId() === ORGANIZATION
+          ? [{ id: 'posting-1', sourceHiringRequestId: REQUEST, isPublished: true }]
+          : [],
+      ),
+    );
 
     await service.updateHiringRequest({
       hiringRequestId: REQUEST,
@@ -355,7 +395,7 @@ describe('RecruitmentService', () => {
       sourceOrganizationId: CLIENT_ORGANIZATION,
     });
 
-    expect(postings.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'posting-1', isPublished: false }),
     );
   });

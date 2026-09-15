@@ -351,4 +351,44 @@ describe('CompensationService.recordHireSalary', () => {
     expect(revision).toBeNull();
     expect(manager.save).not.toHaveBeenCalled();
   });
+
+  it('is idempotent when the hire revision for that date already exists', async () => {
+    const { service, salaryStructures, manager } = buildService({});
+    (salaryStructures.find as jest.Mock).mockResolvedValue([
+      { id: 'structure-1', code: 'STD', currency: 'USD', isActive: true },
+    ]);
+    (manager.findOne as jest.Mock).mockResolvedValue({
+      id: 'revision-existing',
+      validFrom: '2026-10-01',
+    });
+
+    const revision = await service.recordHireSalary(
+      {
+        employeeId: EMPLOYEE,
+        annualAmount: 120000,
+        currency: 'USD',
+        effectiveDate: '2026-10-01',
+      },
+      manager,
+    );
+
+    expect(revision).toEqual({ id: 'revision-existing', validFrom: '2026-10-01' });
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('opens its own transaction when the consumer calls it without a manager', async () => {
+    const { service, salaryStructures } = buildService({});
+    (salaryStructures.find as jest.Mock).mockResolvedValue([
+      { id: 'structure-1', code: 'STD', currency: 'USD', isActive: true },
+    ]);
+
+    const revision = await service.recordHireSalary({
+      employeeId: EMPLOYEE,
+      annualAmount: 120000,
+      currency: 'USD',
+      effectiveDate: '2026-10-01',
+    });
+
+    expect(revision).not.toBeNull();
+  });
 });

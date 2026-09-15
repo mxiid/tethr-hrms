@@ -74,8 +74,10 @@ export type SubmissionProjection = {
 
 const FIELD_KEY_PATTERN = /^[a-z][a-zA-Z0-9_]{0,63}$/;
 // Same shape the intake projection enforces; catching it here turns a silent
-// orphaned submission into a field error the applicant can fix.
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// orphaned submission into a field error the applicant can fix. The lookahead
+// keeps the match linear on malformed dotted domains while accepting the same
+// values as the former pattern.
+const EMAIL_PATTERN = /^[^\s@]+@(?=[^\s@][^\s@]*\.[^\s@])[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 3;

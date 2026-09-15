@@ -95,13 +95,29 @@ const currencyCode = (value: string | undefined): string | null => {
   return /^[A-Z]{3}$/.test(code) ? code : null;
 };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@(?=[^\s@][^\s@]*\.[^\s@])[^\s@]+$/;
 
 // Postgres unique-violation, as surfaced by the pg driver (same check the
 // finance services use).
 const isUniqueViolation = (cause: unknown): boolean => {
   const driverError = (cause as { readonly driverError?: { readonly code?: string } }).driverError;
   return driverError?.code === '23505';
+};
+
+// The partial index behind one-open-application-per-role. Matching the
+// constraint name keeps unrelated 23505s (e.g. the primary key) from being
+// mislabelled as a domain conflict.
+const isActiveApplicationViolation = (cause: unknown): boolean => {
+  const driverError = (
+    cause as {
+      readonly driverError?: { readonly code?: string; readonly constraint?: string };
+    }
+  ).driverError;
+  return (
+    driverError?.code === '23505' &&
+    (driverError.constraint === undefined ||
+      driverError.constraint === 'applications_org_candidate_posting_active_unique')
+  );
 };
 
 // The ATS core: postings, the candidate pool, applications and CV documents.
@@ -166,15 +182,26 @@ export class AtsService {
   }
 
   private async createOrReopenPosting(request: HiringRequest): Promise<JobPosting> {
-    const existing = await this.postings.findOne({
-      where: { sourceHiringRequestId: request.id },
-    });
     const organizationId = this.tenantContext.getOrganizationId();
-    const posting = existing
+    // One posting per request is the intent; if legacy duplicates exist, the
+    // earliest is the canonical document and the rest are taken down so the
+    // read path and this publish can never disagree about what is live.
+    const existing = await this.postings.find({
+      where: { sourceHiringRequestId: request.id } as FindOptionsWhere<JobPosting>,
+      order: { createdAt: 'ASC' },
+    });
+    const [posting, ...duplicates] = existing;
+    for (const duplicate of duplicates) {
+      if (duplicate.isPublished) {
+        duplicate.isPublished = false;
+        await this.postings.save(duplicate);
+      }
+    }
+    const saved = posting
       ? await (async () => {
-          existing.isPublished = true;
-          existing.postedAt = existing.postedAt ?? new Date();
-          return this.postings.save(existing);
+          posting.isPublished = true;
+          posting.postedAt = posting.postedAt ?? new Date();
+          return this.postings.save(posting);
         })()
       : await this.postings.save(
           this.postings.create({
@@ -193,7 +220,7 @@ export class AtsService {
             closesOn: request.targetFillDate,
           }),
         );
-    return posting;
+    return saved;
   }
 
   listPostings(): Promise<JobPosting[]> {
@@ -209,10 +236,12 @@ export class AtsService {
   }
 
   // The posting born from a request, so the operator panel can show live state
-  // after a reload (the publish response carries the id only in-session).
+  // after a reload (the publish response carries the id only in-session). The
+  // oldest row is canonical if legacy duplicates exist.
   getPostingForRequest(hiringRequestId: HiringRequestId): Promise<JobPosting | null> {
     return this.postings.findOne({
       where: { sourceHiringRequestId: hiringRequestId } as FindOptionsWhere<JobPosting>,
+      order: { createdAt: 'ASC' },
     });
   }
 
@@ -356,7 +385,19 @@ export class AtsService {
     if (input.notes !== undefined) {
       application.notes = input.notes;
     }
-    return this.applications.save(application);
+    try {
+      return await this.applications.save(application);
+    } catch (cause) {
+      // Two reactivations can pass the pre-check concurrently; translate the
+      // index violation into the same domain conflict the pre-check raises.
+      if (isActiveApplicationViolation(cause)) {
+        throw new ConflictError(
+          'Another active application already exists for this candidate and role',
+          { applicationId: application.id },
+        );
+      }
+      throw cause;
+    }
   }
 
   // --- Projection: a form submission becomes a candidate + application --------
@@ -481,6 +522,9 @@ export class AtsService {
       if (!isUniqueViolation(cause)) {
         throw cause;
       }
+      // The pre-check lost a race with another submission: still record the CV
+      // (the person applied, and the document is theirs), then reject.
+      await this.ensureResumeRecorded(candidate.id, submission);
       await this.forms.markSubmissionRejected(
         submissionId,
         'You already have an active application for this role',

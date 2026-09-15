@@ -1,4 +1,5 @@
 import { toId, type OrganizationId, type UserId } from '@hrms/shared';
+import type { DataSource } from 'typeorm';
 
 import type { AuthService } from '../../core/auth/auth.service';
 import type { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
@@ -109,6 +110,21 @@ const buildService = (options: Options = {}) => {
   const tenantContext = {
     getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
   } as unknown as TenantContextService;
+  const manager = {
+    findOne: jest.fn().mockResolvedValue({
+      id: 'application-1',
+      stage: 'shortlisted',
+      outcome: 'active',
+      candidateId: 'candidate-1',
+      jobPostingId: 'posting-1',
+    }),
+    save: jest.fn((value: unknown) => Promise.resolve(value)),
+  };
+  const dataSource = {
+    transaction: jest.fn((callback: (transactionManager: typeof manager) => Promise<unknown>) =>
+      callback(manager),
+    ),
+  } as unknown as DataSource;
 
   return {
     service: new InterviewService(
@@ -122,6 +138,7 @@ const buildService = (options: Options = {}) => {
       auth,
       platformScope,
       tenantContext,
+      dataSource,
     ),
     rounds,
     interviews,
@@ -129,6 +146,7 @@ const buildService = (options: Options = {}) => {
     feedbacks,
     feedbackSkills,
     applications,
+    manager,
   };
 };
 
@@ -169,8 +187,8 @@ describe('InterviewService', () => {
   });
 
   it('a failed interview ends the application rejected', async () => {
-    const { service, applications, interviews } = buildService();
-    (applications.findById as jest.Mock).mockResolvedValue({
+    const { service, manager } = buildService();
+    (manager.findOne as jest.Mock).mockResolvedValue({
       id: 'application-1',
       stage: 'interviewing',
       outcome: 'active',
@@ -182,10 +200,10 @@ describe('InterviewService', () => {
       outcome: 'failed',
     });
 
-    expect(interviews.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: 'failed' }),
     );
-    expect(applications.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'application-1', outcome: 'rejected' }),
     );
   });
