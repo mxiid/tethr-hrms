@@ -10,6 +10,8 @@ The fifth pass flagged one migration-locking suggestion and a settlement-date in
 
 **Migration locking.** `Phase2AdjustmentSourceGuard` now adds the provenance CHECK as `NOT VALID` and then `VALIDATE CONSTRAINT`, so the constraint ends fully validated while the table-altering step holds `ACCESS EXCLUSIVE` only briefly; the validation scan runs under `SHARE UPDATE EXCLUSIVE`.
 
+**Workspace color picker (Greptile P2 follow-up).** The new palette's failed brand-color mutation now shows an inline error and clears its pending state instead of surfacing as an unhandled rejection; verified in the browser by forcing the mutation to fail (4/4 checks).
+
 **Verification.** Gates **232 API / 21 shared / 5 UI tests**, lint 0 errors, typecheck/build clean. Battery: API Phase 1 **15/15**, M1 **20/20**, M2 **14/14**, M3 **16/16**; UI billing **7/7**, expenses **11/11**, tax **5/5**, benefits **5/5**; round-three live checks **5/5**, round-five live checks **3/3** (impossible date rejected before any read, pre-issue date rejected, invoice untouched). Scratch migration test: one-sided row normalized, constraint validated (`convalidated = true`), mismatched insert rejected `23514`. Schema parity **1145 columns, 0 differences**.
 
 ## PR #2 fourth review round: migration safety and transition atomicity (2026-09-15)
