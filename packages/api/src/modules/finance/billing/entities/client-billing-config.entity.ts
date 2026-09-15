@@ -10,7 +10,7 @@ import { TenantScopedEntity } from '../../../../core/database/entities/tenant-sc
 @Index('client_billing_configs_org_unique', ['organizationId'], { unique: true })
 export class ClientBillingConfig extends TenantScopedEntity {
   // Flat per-employee-per-month management fee.
-  @Column({ type: 'numeric', precision: 14, scale: 2, default: '300.00' })
+  @Column({ type: 'numeric', precision: 14, scale: 2, default: 300 })
   feeAmount!: string;
 
   @Column({ type: 'varchar', length: 3, default: 'USD' })

@@ -1,7 +1,7 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
 
 @ObjectType('PayslipLine')
-class PayslipLineView {
+export class PayslipLineView {
   @Field(() => ID)
   id!: string;
 
@@ -19,6 +19,10 @@ class PayslipLineView {
 
   @Field()
   dependsOnPaymentDays!: boolean;
+
+  // A pre-tax deduction reduces the taxable base before withholding.
+  @Field()
+  preTax!: boolean;
 
   @Field(() => Number)
   defaultAmount!: number;
@@ -84,6 +88,9 @@ export class PayslipView {
   grossAmount!: number;
 
   @Field(() => Number)
+  deductionsAmount!: number;
+
+  @Field(() => Number)
   taxableAmount!: number;
 
   @Field(() => Number)
@@ -91,6 +98,21 @@ export class PayslipView {
 
   @Field(() => Number)
   netPayAmount!: number;
+
+  // Employer-side cost facts (never part of net pay).
+  @Field(() => Number)
+  employerContributionAmount!: number;
+
+  @Field(() => Number)
+  employerCostAmount!: number;
+
+  // The withholding trail: `source` names what won (lineOverride/fixed/profile/
+  // computed); the summary lists the profile facts that were applied.
+  @Field(() => String, { nullable: true })
+  taxProfileSource!: string | null;
+
+  @Field(() => String, { nullable: true })
+  taxProfileSummary!: string | null;
 
   @Field(() => String, { nullable: true })
   notes!: string | null;

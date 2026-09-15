@@ -20,7 +20,10 @@ export type PayAdjustmentKind =
   | 'advanceRecovery'
   | 'arrear'
   | 'correction'
-  | 'other';
+  | 'other'
+  // Expense reimbursement: an earning on the payslip with the claim id carried
+  // as provenance, so the money reaches the employee through the normal run.
+  | 'reimbursement';
 
 @Entity('pay_adjustments')
 @Index(['organizationId', 'employeeId', 'periodYear', 'periodMonth'])

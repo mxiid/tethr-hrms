@@ -19,9 +19,16 @@ export type PayslipPdfData = {
   readonly lopDays: number;
   readonly earnings: readonly { readonly name: string; readonly amount: number }[];
   readonly deductions: readonly { readonly name: string; readonly amount: number }[];
+  // Employer-side cost on top of gross; rendered as a separate section and never
+  // mixed into the employee's earnings/deductions.
+  readonly employerContributions: readonly { readonly name: string; readonly amount: number }[];
+  readonly employerCost: number;
   readonly grossEarnings: number;
   readonly totalDeductions: number;
   readonly taxableSalary: number;
   readonly netPayable: number;
+  // The profile facts applied to withholding, when any (rendered on the
+  // computed line so the trail travels with the document).
+  readonly taxProfileSummary: string | null;
   readonly notes: string | null;
 };

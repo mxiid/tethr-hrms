@@ -85,10 +85,27 @@ export class InvoiceView {
   totalAmount!: number;
 
   @Field(() => String, { nullable: true })
-  paidAt!: Date | null;
+  paidAt!: string | null;
 
   @Field(() => String, { nullable: true })
   paymentReference!: string | null;
+
+  // Reconciliation against the covering payroll run: `pending` on fresh drafts.
+  @Field()
+  reconciliationStatus!: string;
+
+  @Field(() => Number, { nullable: true })
+  payrollCostAmount!: number | null;
+
+  @Field(() => Date, { nullable: true })
+  reconciledAt!: Date | null;
+
+  // A rate/membership edit made the draft's amounts outdated.
+  @Field()
+  isStale!: boolean;
+
+  @Field(() => String, { nullable: true })
+  staleReason!: string | null;
 
   @Field(() => [InvoiceLineView], { nullable: true })
   lines?: InvoiceLineView[];

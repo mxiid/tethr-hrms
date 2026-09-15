@@ -443,9 +443,10 @@ button {
 
 /* Persistent second-row tab strip for the group whose page is currently
    open — lets a user hop between a group's own pages (e.g. People's
-   Employees / Hiring requests / ...) without reopening its pill dropdown.
-   Same pill language as the top nav (white + strong border when active) but
-   a smaller, muted-bar tier so it reads as a sub-level, not a duplicate. */
+   Employees / Org chart / ... or Hiring's Requests / Candidates / ...)
+   without reopening its pill. Same pill language as the top nav (white +
+   strong border when active) but a smaller, muted-bar tier so it reads as a
+   sub-level, not a duplicate. */
 /* Hamburger + drawer: hidden entirely above the phone breakpoint, which is the
    only place they are used. */
 .mobile-nav-toggle {

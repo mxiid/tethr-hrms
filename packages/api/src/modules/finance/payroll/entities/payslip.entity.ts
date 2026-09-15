@@ -3,6 +3,19 @@ import { Column, Entity, Index } from 'typeorm';
 
 import { TenantScopedEntity } from '../../../../core/database/entities/tenant-scoped.entity';
 
+// What finalization applied when it computed this payslip's withholding: the
+// resolved profile facts and which source won (`lineOverride` beats a fixed
+// amount, which beats the profile, which beats the plain tenant ladder).
+export type TaxProfileSnapshot = {
+  readonly source: 'lineOverride' | 'fixed' | 'profile' | 'computed';
+  readonly profileId: string | null;
+  readonly filerStatus: string | null;
+  readonly monthlyExemptionAmount: number;
+  readonly annualTaxCreditAmount: number;
+  readonly priorAnnualIncome: number;
+  readonly fixedMonthlyWithholding: number | null;
+};
+
 // The immutable record of what an employee was paid for a period. Created only at
 // finalization; every displayed fact is a snapshot (identity, amounts, days) so a
 // later rename or salary change can never rewrite history (non-negotiable #3).
@@ -10,6 +23,7 @@ import { TenantScopedEntity } from '../../../../core/database/entities/tenant-sc
 @Entity('payslips')
 @Index(['organizationId', 'runId'])
 @Index(['organizationId', 'employeeId', 'periodYear', 'periodMonth'], { unique: true })
+@Index('payslips_org_number_unique', ['organizationId', 'payslipNumber'], { unique: true })
 export class Payslip extends TenantScopedEntity {
   @Column({ type: 'uuid' })
   runId!: PayrollRunId;
@@ -61,6 +75,10 @@ export class Payslip extends TenantScopedEntity {
   @Column({ type: 'numeric', precision: 14, scale: 2 })
   grossAmount!: string;
 
+  // Employee-side deductions (excluding income tax, which has its own column).
+  @Column({ type: 'numeric', precision: 14, scale: 2, default: '0' })
+  deductionsAmount!: string;
+
   @Column({ type: 'numeric', precision: 14, scale: 2 })
   taxableAmount!: string;
 
@@ -69,6 +87,19 @@ export class Payslip extends TenantScopedEntity {
 
   @Column({ type: 'numeric', precision: 14, scale: 2 })
   netPayAmount!: string;
+
+  // Employer-side contributions and the total cost of this employee for the
+  // period (gross + employer contributions). Never part of net pay.
+  @Column({ type: 'numeric', precision: 14, scale: 2, default: '0' })
+  employerContributionAmount!: string;
+
+  @Column({ type: 'numeric', precision: 14, scale: 2, default: '0' })
+  employerCostAmount!: string;
+
+  // The withholding trail: which tax facts were applied (profile, fixed amount,
+  // or a finance override). Null on payslips finalized before profiles existed.
+  @Column({ type: 'jsonb', nullable: true, default: null })
+  taxProfileSnapshot!: TaxProfileSnapshot | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   notes!: string | null;

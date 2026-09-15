@@ -31,6 +31,10 @@ export class PayrollRunLineComponent extends TenantScopedEntity {
   @Column({ type: 'boolean', default: true })
   dependsOnPaymentDays!: boolean;
 
+  // True when a deduction reduces the taxable base (a pre-tax benefit share).
+  @Column({ type: 'boolean', default: false })
+  preTax!: boolean;
+
   // The un-prorated component amount for a full period. Null only on rows
   // written before pro-rating existed; readers fall back to `amount`.
   @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })

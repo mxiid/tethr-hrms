@@ -85,3 +85,40 @@ export const REVISE_SALARY_MUTATION = gql`
     }
   }
 `;
+
+const TAX_PROFILE_FIELDS = `
+  id
+  employeeId
+  filerStatus
+  monthlyExemptionAmount
+  annualTaxCreditAmount
+  priorAnnualIncome
+  fixedMonthlyWithholding
+  note
+  validFrom
+  validTo
+`;
+
+export const EMPLOYEE_TAX_PROFILES_QUERY = gql`
+  query EmployeeTaxProfiles($employeeId: ID!) {
+    employeeTaxProfiles(employeeId: $employeeId) {
+      ${TAX_PROFILE_FIELDS}
+    }
+  }
+`;
+
+export const EMPLOYEE_TAX_PROFILE_QUERY = gql`
+  query EmployeeTaxProfile($employeeId: ID!) {
+    employeeTaxProfile(employeeId: $employeeId) {
+      ${TAX_PROFILE_FIELDS}
+    }
+  }
+`;
+
+export const SET_EMPLOYEE_TAX_PROFILE_MUTATION = gql`
+  mutation SetEmployeeTaxProfile($input: SetEmployeeTaxProfileInput!) {
+    setEmployeeTaxProfile(input: $input) {
+      ${TAX_PROFILE_FIELDS}
+    }
+  }
+`;

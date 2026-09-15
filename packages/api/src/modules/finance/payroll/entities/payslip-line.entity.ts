@@ -27,6 +27,10 @@ export class PayslipLine extends TenantScopedEntity {
   @Column({ type: 'boolean', default: true })
   dependsOnPaymentDays!: boolean;
 
+  // True when a deduction reduces the taxable base (a pre-tax benefit share).
+  @Column({ type: 'boolean', default: false })
+  preTax!: boolean;
+
   // Frozen pair: what the component would have paid for a full period, and what
   // it actually paid after pro-rating. Null defaultAmount only on legacy rows.
   @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })

@@ -55,6 +55,9 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.announcementWrite,
       PERMISSIONS.feedbackRead,
       PERMISSIONS.feedbackManage,
+      PERMISSIONS.expenseRead,
+      PERMISSIONS.expenseWrite,
+      PERMISSIONS.expenseApprove,
     ],
   },
   tethrFinance: {
@@ -74,6 +77,9 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.leaveTeamRead,
       PERMISSIONS.attendanceTeamRead,
       PERMISSIONS.holidayRead,
+      PERMISSIONS.expenseRead,
+      PERMISSIONS.expensePay,
+      PERMISSIONS.platformReadAll,
     ],
   },
   clientAdmin: {
@@ -101,6 +107,8 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.holidayRead,
       PERMISSIONS.announcementRead,
       PERMISSIONS.billingOwnRead,
+      PERMISSIONS.expenseRead,
+      PERMISSIONS.expenseApprove,
     ],
   },
   clientMember: {
@@ -122,6 +130,7 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.holidayRead,
       PERMISSIONS.announcementRead,
       PERMISSIONS.billingOwnRead,
+      PERMISSIONS.expenseRead,
     ],
   },
   employee: {
@@ -141,6 +150,8 @@ export const SYSTEM_ROLES: Readonly<Record<SystemRoleKey, SystemRoleDefinition>>
       PERMISSIONS.holidayRead,
       PERMISSIONS.announcementRead,
       PERMISSIONS.feedbackWrite,
+      PERMISSIONS.expenseOwnRead,
+      PERMISSIONS.expenseOwnWrite,
     ],
   },
 };

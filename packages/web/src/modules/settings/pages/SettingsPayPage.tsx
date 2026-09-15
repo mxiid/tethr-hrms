@@ -1,3 +1,4 @@
+import { BenefitPlansPanel } from '../../benefits/components/BenefitPlansPanel';
 import { PaySetupPanel } from '../../finance/compensation/components/PaySetupPanel';
 
 export const SettingsPayPage = () => (
@@ -12,6 +13,7 @@ export const SettingsPayPage = () => (
         </div>
       </header>
       <PaySetupPanel />
+      <BenefitPlansPanel />
     </div>
   </main>
 );

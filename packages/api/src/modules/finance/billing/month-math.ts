@@ -21,6 +21,20 @@ export const monthLabel = (year: number, month: number): string => {
   return `${names[month - 1]} ${year}`;
 };
 
+// Inverse of `monthLabel`; null when the label isn't a recognized month.
+export const parseMonthLabel = (label: string): { year: number; month: number } | null => {
+  const names = [
+    'january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december',
+  ];
+  const match = /^([A-Za-z]+)\s+(\d{4})$/.exec(label.trim());
+  if (!match) {
+    return null;
+  }
+  const month = names.indexOf(match[1].toLowerCase()) + 1;
+  return month === 0 ? null : { year: Number(match[2]), month };
+};
+
 export const addMonths = (year: number, month: number, delta: number): { year: number; month: number } => {
   const total = year * 12 + (month - 1) + delta;
   return { year: Math.floor(total / 12), month: (total % 12) + 1 };

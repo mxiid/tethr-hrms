@@ -16,6 +16,7 @@ import {
   IconMessageCircle,
   IconMoon,
   IconPlaneDeparture,
+  IconReceipt,
   IconReportMoney,
   IconSearch,
   IconSettings,
@@ -87,11 +88,18 @@ const tethrNavigation: readonly NavigationEntry[] = [
       { label: 'Employees', to: '/employees', icon: IconUsersGroup },
       { label: 'Org chart', to: '/employees/org-chart', icon: IconSitemap },
       { label: 'Time & attendance', to: '/attendance', icon: IconClock },
-      { label: 'Hiring requests', to: '/hiring', icon: IconBriefcase },
+      { label: 'Leave triage', to: '/leave', icon: IconPlaneDeparture },
+    ],
+  },
+  {
+    kind: 'group',
+    label: 'Hiring',
+    icon: IconBriefcase,
+    items: [
+      { label: 'Requests', to: '/hiring', icon: IconBriefcase },
       { label: 'Candidates', to: '/hiring/candidates', icon: IconUsers },
       { label: 'Shortlists', to: '/hiring/shortlists', icon: IconListCheck },
       { label: 'Interviews', to: '/hiring/interviews', icon: IconCalendarEvent },
-      { label: 'Leave triage', to: '/leave', icon: IconPlaneDeparture },
     ],
   },
   {
@@ -102,6 +110,7 @@ const tethrNavigation: readonly NavigationEntry[] = [
       { label: 'Pay', to: '/compensation', icon: IconCurrencyDollar },
       { label: 'Payroll', to: '/payroll', icon: IconReportMoney },
       { label: 'Billing', to: '/billing', icon: IconFileInvoice },
+      { label: 'Expenses', to: '/expenses', icon: IconReceipt },
     ],
   },
   {
@@ -125,11 +134,14 @@ const clientNavigation: readonly NavigationEntry[] = [
       { label: 'Employees', to: '/employees', icon: IconUsersGroup },
       { label: 'Org chart', to: '/employees/org-chart', icon: IconSitemap },
       { label: 'Time & attendance', to: '/attendance', icon: IconClock },
-      { label: 'Hiring requests', to: '/hiring', icon: IconBriefcase },
       { label: 'Leave requests', to: '/leave', icon: IconPlaneDeparture },
     ],
   },
+  // Clients only have the requests page — no ATS tabs — so it is a plain pill
+  // rather than a one-item group.
+  { kind: 'link', label: 'Hiring', to: '/hiring', icon: IconBriefcase },
   { kind: 'link', label: 'Pay', to: '/compensation', icon: IconCurrencyDollar },
+  { kind: 'link', label: 'Expenses', to: '/expenses', icon: IconReceipt },
   { kind: 'link', label: 'Announcements', to: '/announcements', icon: IconSpeakerphone },
 ];
 
@@ -304,6 +316,17 @@ export const AppShell = () => {
   const isVisibleItem = (item: NavigationItem): boolean => {
     if (item.to === '/compensation') return canViewCompensation;
     if (item.to === '/payroll' || item.to === '/billing') return canManagePayroll;
+    // Expense claims: Tethr's HR/Finance review and pay; client roles approve
+    // their own workspace's claims. The route gate carries the same list.
+    if (item.to === '/expenses') {
+      return Boolean(
+        user?.roleKeys.includes('tethrAdmin') ||
+          user?.roleKeys.includes('tethrHr') ||
+          user?.roleKeys.includes('tethrFinance') ||
+          user?.roleKeys.includes('clientAdmin') ||
+          user?.roleKeys.includes('clientMember'),
+      );
+    }
     // The candidate pool, shortlists and interviews are Tethr-only data.
     if (
       item.to === '/hiring/candidates' ||

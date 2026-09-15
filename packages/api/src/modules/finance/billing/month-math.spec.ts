@@ -2,6 +2,7 @@ import {
   addMonths,
   monthLabel,
   monthsFromHireThrough,
+  parseMonthLabel,
   proratedAmount,
   prorationShare,
 } from './month-math';
@@ -10,6 +11,13 @@ describe('billing month math', () => {
   it('formats month labels like the finance sheet', () => {
     expect(monthLabel(2026, 9)).toBe('September 2026');
     expect(monthLabel(2026, 12)).toBe('December 2026');
+  });
+
+  it('round-trips month labels', () => {
+    expect(parseMonthLabel('September 2026')).toEqual({ year: 2026, month: 9 });
+    expect(parseMonthLabel(' december 2026 ')).toEqual({ year: 2026, month: 12 });
+    expect(parseMonthLabel('NotAMonth 2026')).toBeNull();
+    expect(parseMonthLabel('September')).toBeNull();
   });
 
   it('crosses year boundaries when adding months', () => {

@@ -9,13 +9,13 @@ import {
 import { Inject, Injectable } from '@nestjs/common';
 import type { FindOptionsWhere } from 'typeorm';
 
-import { NotFoundError } from '../../../common/errors';
+import { ConflictError, NotFoundError } from '../../../common/errors';
 import { AuditService } from '../../../core/audit/audit.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repository';
-import { CompensationService } from '../compensation';
 import { EmployeeDirectoryService } from '../../employee';
 import { HolidayService, LeaveBalanceService } from '../../leave';
+import { CompensationService } from '../compensation';
 
 import { FinalSettlement } from './entities/final-settlement.entity';
 import { prorateComponent, sumEarnings } from './line-math';
@@ -203,5 +203,40 @@ export class FinalSettlementService {
       order: { computedAt: 'DESC' },
     });
     return rows[0] ?? null;
+  }
+
+  // A computed settlement is outstanding until finance confirms the payout; the
+  // record keeps the value date and bank reference for the audit trail.
+  async markPaid(input: {
+    readonly employeeId: EmployeeId;
+    readonly paymentReference?: string | null;
+    readonly settlementDate?: IsoDate | null;
+  }): Promise<FinalSettlement> {
+    const settlement = await this.getForEmployee(input.employeeId);
+    if (!settlement) {
+      throw new NotFoundError('Final settlement not found', { employeeId: input.employeeId });
+    }
+    if (settlement.status !== 'computed') {
+      throw new ConflictError(`Settlement is already ${settlement.status}`, {
+        employeeId: input.employeeId,
+      });
+    }
+    settlement.status = 'paid';
+    settlement.paidAt = input.settlementDate
+      ? new Date(`${input.settlementDate}T00:00:00.000Z`)
+      : new Date();
+    settlement.paymentReference = input.paymentReference ?? null;
+    const saved = await this.settlements.save(settlement);
+    await this.audit.record({
+      action: 'markPaid',
+      resourceType: 'final_settlement',
+      resourceId: saved.id,
+      after: {
+        employeeId: input.employeeId,
+        netPayableAmount: Number(saved.netPayableAmount),
+        paymentReference: saved.paymentReference,
+      },
+    });
+    return saved;
   }
 }

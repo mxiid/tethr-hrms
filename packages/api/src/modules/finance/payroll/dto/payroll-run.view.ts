@@ -20,6 +20,10 @@ export class PayrollRunLineComponentView {
   @Field()
   dependsOnPaymentDays!: boolean;
 
+  // A pre-tax deduction reduces the taxable base before withholding.
+  @Field()
+  preTax!: boolean;
+
   // Full-period entitlement; `amount` is what was actually paid after pro-rating.
   @Field(() => Number)
   defaultAmount!: number;
@@ -89,6 +93,13 @@ class PayrollRunLineView {
   @Field(() => Number)
   netPayAmount!: number;
 
+  // Employer-side cost facts: contributions never touch net pay.
+  @Field(() => Number)
+  employerContributions!: number;
+
+  @Field(() => Number)
+  employerCost!: number;
+
   @Field(() => [PayrollRunLineComponentView])
   components!: PayrollRunLineComponentView[];
 }
@@ -120,7 +131,35 @@ export class PayrollRunView {
   finalizedAt!: Date | null;
 
   @Field(() => String, { nullable: true })
+  payDate!: string | null;
+
+  @Field(() => String, { nullable: true })
   finalizeOverrideReason!: string | null;
+
+  @Field(() => [String])
+  finalizeOverrideGuards!: string[];
+
+  // Snapshotted at finalization; zero while draft.
+  @Field(() => Number)
+  grossTotal!: number;
+
+  @Field(() => Number)
+  deductionsTotal!: number;
+
+  @Field(() => Number)
+  netTotal!: number;
+
+  @Field(() => Number)
+  employerContributionTotal!: number;
+
+  @Field(() => Number)
+  employerCostTotal!: number;
+
+  @Field(() => Date, { nullable: true })
+  paidAt!: Date | null;
+
+  @Field(() => String, { nullable: true })
+  paymentReference!: string | null;
 
   @Field()
   isStale!: boolean;

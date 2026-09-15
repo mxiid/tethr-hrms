@@ -56,6 +56,12 @@ export class FinalSettlementView {
   @Field()
   status!: string;
 
+  @Field(() => Date, { nullable: true })
+  paidAt!: Date | null;
+
+  @Field(() => String, { nullable: true })
+  paymentReference!: string | null;
+
   @Field()
   computedAt!: Date;
 

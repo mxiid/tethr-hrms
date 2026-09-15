@@ -4,6 +4,7 @@ import {
   type CompensationChangeReason,
   type EmployeeId,
   type GradeId,
+  type IsoDate,
   type PayComponentCategory,
   type PayComponentId,
   type PayFrequency,
@@ -23,19 +24,22 @@ import { RequirePermissions } from '../../../core/authz/require-permissions.deco
 import { CompensationService } from './compensation.service';
 import { AwardBonusInput } from './dto/award-bonus.input';
 import { BonusAwardView } from './dto/bonus-award.output';
-import { CreatePayComponentInput } from './dto/create-pay-component.input';
 import { CreatePayAdjustmentInput } from './dto/create-pay-adjustment.input';
+import { CreatePayComponentInput } from './dto/create-pay-component.input';
 import { CreateSalaryStructureInput } from './dto/create-salary-structure.input';
+import { EmployeeTaxProfileView } from './dto/employee-tax-profile.output';
 import { PayAdjustmentView } from './dto/pay-adjustment.output';
 import { PayComponentView } from './dto/pay-component.output';
 import { ReviseSalaryInput } from './dto/revise-salary.input';
 import { SalaryRevisionView } from './dto/salary-revision.output';
 import { SalaryStructureView } from './dto/salary-structure.output';
+import { SetEmployeeTaxProfileInput } from './dto/set-employee-tax-profile.input';
 import {
   StructureComponentInput,
 } from './dto/structure-component.input';
 import { SalaryStructureComponentView } from './dto/structure-component.output';
 import { BonusAward } from './entities/bonus-award.entity';
+import { EmployeeTaxProfile } from './entities/employee-tax-profile.entity';
 import { PayAdjustment, type PayAdjustmentKind } from './entities/pay-adjustment.entity';
 import { PayComponent } from './entities/pay-component.entity';
 import { SalaryRevision } from './entities/salary-revision.entity';
@@ -50,6 +54,20 @@ const toPayComponentView = (component: PayComponent): PayComponentView => ({
   taxable: component.taxable,
   recurring: component.recurring,
   dependsOnPaymentDays: component.dependsOnPaymentDays,
+});
+
+const toTaxProfileView = (profile: EmployeeTaxProfile): EmployeeTaxProfileView => ({
+  id: profile.id,
+  employeeId: profile.employeeId,
+  filerStatus: profile.filerStatus,
+  monthlyExemptionAmount: Number(profile.monthlyExemptionAmount),
+  annualTaxCreditAmount: Number(profile.annualTaxCreditAmount),
+  priorAnnualIncome: Number(profile.priorAnnualIncome),
+  fixedMonthlyWithholding:
+    profile.fixedMonthlyWithholding === null ? null : Number(profile.fixedMonthlyWithholding),
+  note: profile.note,
+  validFrom: profile.validFrom,
+  validTo: profile.validTo,
 });
 
 const toSalaryStructureView = (structure: SalaryStructure): SalaryStructureView => ({
@@ -213,6 +231,53 @@ export class CompensationResolver {
       toId<EmployeeId>(employeeId),
     );
     return revisions.map(toSalaryRevisionView);
+  }
+
+  // --- Employee tax profiles ---
+
+  @Query(() => [EmployeeTaxProfileView])
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.compensationRead)
+  async employeeTaxProfiles(
+    @Args('employeeId', { type: () => ID }) employeeId: string,
+  ): Promise<EmployeeTaxProfileView[]> {
+    const profiles = await this.compensationService.listTaxProfiles(
+      toId<EmployeeId>(employeeId),
+    );
+    return profiles.map(toTaxProfileView);
+  }
+
+  // The profile in force today; null when payroll falls back to the ladder.
+  @Query(() => EmployeeTaxProfileView, { nullable: true })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.compensationRead)
+  async employeeTaxProfile(
+    @Args('employeeId', { type: () => ID }) employeeId: string,
+  ): Promise<EmployeeTaxProfileView | null> {
+    const profile = await this.compensationService.getTaxProfile(
+      toId<EmployeeId>(employeeId),
+      new Date().toISOString().slice(0, 10),
+    );
+    return profile ? toTaxProfileView(profile) : null;
+  }
+
+  @Mutation(() => EmployeeTaxProfileView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.compensationWrite)
+  async setEmployeeTaxProfile(
+    @Args('input') input: SetEmployeeTaxProfileInput,
+  ): Promise<EmployeeTaxProfileView> {
+    const profile = await this.compensationService.setTaxProfile({
+      employeeId: toId<EmployeeId>(input.employeeId),
+      effectiveDate: input.effectiveDate as IsoDate | undefined,
+      filerStatus: input.filerStatus,
+      monthlyExemptionAmount: input.monthlyExemptionAmount,
+      annualTaxCreditAmount: input.annualTaxCreditAmount,
+      priorAnnualIncome: input.priorAnnualIncome,
+      fixedMonthlyWithholding: input.fixedMonthlyWithholding ?? null,
+      note: input.note ?? null,
+    });
+    return toTaxProfileView(profile);
   }
 
   // Self-service read: the caller's own salary history ("your last raise,

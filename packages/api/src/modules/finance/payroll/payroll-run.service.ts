@@ -19,19 +19,20 @@ import { AuditService } from '../../../core/audit/audit.service';
 import { DomainEventPublisher } from '../../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repository';
+import { BenefitService } from '../../benefits';
+import { EmployeeDirectoryService } from '../../employee';
+import { EmployeeRecordsService } from '../../employee-records';
+import { HolidayService, LeaveRequestService } from '../../leave';
 import {
   CompensationService,
   type StructureBreakdownLine,
 } from '../compensation';
-import { EmployeeDirectoryService } from '../../employee';
-import { EmployeeRecordsService } from '../../employee-records';
-import { HolidayService, LeaveRequestService } from '../../leave';
 
 import { PayrollRunLineComponent } from './entities/payroll-run-line-component.entity';
 import { PayrollRunLine } from './entities/payroll-run-line.entity';
 import { PayrollRun } from './entities/payroll-run.entity';
 import { PayslipLine } from './entities/payslip-line.entity';
-import { Payslip } from './entities/payslip.entity';
+import { Payslip, type TaxProfileSnapshot } from './entities/payslip.entity';
 import {
   deriveLineTotals,
   prorateComponent,
@@ -45,7 +46,10 @@ import {
   PAYROLL_RUN_LINE_REPOSITORY,
   PAYROLL_RUN_REPOSITORY,
 } from './payroll.tokens';
-import { calculateMonthlyWithholding } from './tax/calculator';
+import {
+  calculateMonthlyWithholding,
+  type MonthlyWithholdingOptions,
+} from './tax/calculator';
 import { TaxSlabService } from './tax-slab.service';
 
 type CreatePayrollRunData = {
@@ -76,7 +80,18 @@ export type RunBillingSummary = {
   readonly periodYear: number;
   readonly periodMonth: number;
   readonly standardWorkingDays: number;
-  readonly payslips: readonly { readonly employeeId: EmployeeId; readonly paidDays: number }[];
+  readonly payslips: readonly {
+    readonly employeeId: EmployeeId;
+    readonly paidDays: number;
+    readonly grossAmount: number;
+    readonly employerCostAmount: number;
+  }[];
+  // Cost facts snapshotted at finalization, so billing never re-reads payroll
+  // tables (and legacy runs finalized before snapshots simply read zero).
+  readonly payrollCurrency: string;
+  readonly grossTotal: number;
+  readonly employerCostTotal: number;
+  readonly payDate: IsoDate;
 };
 
 // A run line joined with everything the UI needs: its snapshotted component
@@ -134,6 +149,8 @@ type DraftComponent = {
   readonly category: StructureBreakdownLine['category'];
   readonly taxable: boolean;
   readonly dependsOnPaymentDays: boolean;
+  // Pre-tax deductions (benefit shares) reduce the taxable base.
+  readonly preTax: boolean;
   readonly defaultAmount: number;
   readonly amount: number;
   // Provenance for adjustment-derived lines (e.g. 'bonusAward'); null for
@@ -152,12 +169,22 @@ type LineDraft = {
   note: string | null;
 };
 
+// What finalization applied when it computed a payslip's withholding: the
+// resolved profile facts and which source won (`lineOverride` beats a fixed
+// amount, which beats the profile, which beats the plain tenant ladder).
+export type { TaxProfileSnapshot } from './entities/payslip.entity';
+
 type PreparedFinalization = {
   readonly line: PayrollRunLine;
   readonly components: readonly PayrollRunLineComponent[];
+  readonly totalEarnings: number;
   readonly taxableAmount: number;
+  readonly deductions: number;
+  readonly employerContributions: number;
+  readonly employerCost: number;
   readonly incomeTax: number;
   readonly netPayAmount: number;
+  readonly taxProfileSnapshot: TaxProfileSnapshot;
 };
 
 // The single computed basis for one employee in a period, shared by the
@@ -180,6 +207,26 @@ type DirectoryEmployee = Awaited<ReturnType<EmployeeDirectoryService['listActive
 
 const toMoneyString = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
 const toDaysString = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
+
+// The base withholding is computed on: taxable earnings minus pre-tax
+// deductions (benefit shares flagged `preTax`), floored at zero.
+const taxableBase = (
+  components: readonly {
+    readonly category: string;
+    readonly taxable: boolean;
+    readonly preTax: boolean;
+    readonly amount: number;
+  }[],
+): number => {
+  const earnings = components
+    .filter((component) => component.category === 'earning' && component.taxable)
+    .reduce((sum, component) => sum + component.amount, 0);
+  const preTaxDeductions = components
+    .filter((component) => component.category === 'deduction' && component.preTax)
+    .reduce((sum, component) => sum + component.amount, 0);
+  const base = earnings - preTaxDeductions;
+  return base > 0 ? Math.round(base * 100) / 100 : 0;
+};
 
 const escapeCsvField = (value: string): string =>
   /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -210,6 +257,7 @@ export class PayrollRunService {
     private readonly audit: AuditService,
     private readonly employeeDirectory: EmployeeDirectoryService,
     private readonly compensation: CompensationService,
+    private readonly benefits: BenefitService,
     private readonly leaveRequests: LeaveRequestService,
     private readonly holidays: HolidayService,
     private readonly taxSlabs: TaxSlabService,
@@ -359,6 +407,9 @@ export class PayrollRunService {
     }
 
     const ladder = await this.taxSlabs.getActiveLadder();
+    // Tax facts are effective-dated to the period being paid, not to the day
+    // finalize happens to run.
+    const periodEnd = addIsoDays(isoMonthRange(run.periodYear, run.periodMonth).endExclusive, -1);
     const prepared: PreparedFinalization[] = [];
     for (const line of allLines) {
       const components = await this.lineComponents.find({
@@ -368,20 +419,66 @@ export class PayrollRunService {
       const categorized = components.map((component) => ({
         category: component.category,
         taxable: component.taxable,
+        preTax: component.preTax,
         amount: Number(component.amount),
       }));
-      const taxableAmount = categorized
-        .filter((component) => component.category === 'earning' && component.taxable)
-        .reduce((sum, component) => sum + component.amount, 0);
-      const incomeTax =
-        line.taxOverrideAmount !== null
-          ? Number(line.taxOverrideAmount)
-          : calculateMonthlyWithholding(taxableAmount, ladder ?? []);
+      const taxableAmount = taxableBase(categorized);
+      // The employee's effective-dated tax profile (if any) layers exemptions,
+      // credits, prior income and a possible fixed amount onto the tenant ladder.
+      const profile = await this.compensation.getTaxProfile(line.employeeId, periodEnd);
+      const options = profile
+        ? {
+            monthlyExemptionAmount: Number(profile.monthlyExemptionAmount),
+            priorAnnualIncome: Number(profile.priorAnnualIncome),
+            annualTaxCreditAmount: Number(profile.annualTaxCreditAmount),
+            fixedMonthlyWithholding:
+              profile.fixedMonthlyWithholding === null
+                ? null
+                : Number(profile.fixedMonthlyWithholding),
+          }
+        : {};
+      const useLineOverride = line.taxOverrideAmount !== null;
+      const incomeTax = useLineOverride
+        ? Number(line.taxOverrideAmount)
+        : calculateMonthlyWithholding(taxableAmount, ladder ?? [], options);
+      const taxProfileSnapshot: TaxProfileSnapshot = {
+        source: useLineOverride
+          ? 'lineOverride'
+          : profile?.fixedMonthlyWithholding != null
+            ? 'fixed'
+            : profile
+              ? 'profile'
+              : 'computed',
+        profileId: profile?.id ?? null,
+        filerStatus: profile?.filerStatus ?? null,
+        monthlyExemptionAmount: profile ? Number(profile.monthlyExemptionAmount) : 0,
+        annualTaxCreditAmount: profile ? Number(profile.annualTaxCreditAmount) : 0,
+        priorAnnualIncome: profile ? Number(profile.priorAnnualIncome) : 0,
+        fixedMonthlyWithholding:
+          profile?.fixedMonthlyWithholding != null ? Number(profile.fixedMonthlyWithholding) : null,
+      };
       const totals = deriveLineTotals(categorized, incomeTax);
-      prepared.push({ line, components, taxableAmount, incomeTax, netPayAmount: totals.netPayAmount });
+      prepared.push({
+        line,
+        components,
+        totalEarnings: totals.totalEarnings,
+        taxableAmount,
+        deductions: totals.deductions,
+        employerContributions: totals.employerContributions,
+        employerCost: totals.employerCost,
+        incomeTax,
+        netPayAmount: totals.netPayAmount,
+        taxProfileSnapshot,
+      });
     }
-    const totalNetPay =
-      Math.round(prepared.reduce((sum, item) => sum + item.netPayAmount, 0) * 100) / 100;
+    const round2 = (value: number): number => Math.round(value * 100) / 100;
+    const sum = (pick: (item: PreparedFinalization) => number): number =>
+      round2(prepared.reduce((total, item) => total + pick(item), 0));
+    const totalNetPay = sum((item) => item.netPayAmount);
+    const totalGross = sum((item) => item.totalEarnings);
+    const totalDeductions = sum((item) => item.deductions);
+    const totalEmployerContributions = sum((item) => item.employerContributions);
+    const totalEmployerCost = sum((item) => item.employerCost);
     const payDate = input.payDate ?? todayIso();
 
     // Guard 0.3: a line with no earning component means a misconfigured salary
@@ -425,7 +522,11 @@ export class PayrollRunService {
         },
       );
     }
-    const overrideReason = unconfigured.length > 0 ? (input.overrideReason ?? null) : null;
+    const overrideGuards: string[] = [];
+    if (unconfigured.length > 0) overrideGuards.push('unconfigured');
+    if (zeroedWithDays.length > 0) overrideGuards.push('zeroedWithDays');
+    const overrideReason =
+      overrideGuards.length > 0 ? (input.overrideReason ?? null) : null;
 
     let sequence = await this.payslips.count();
 
@@ -462,9 +563,13 @@ export class PayrollRunService {
               ? item.line.standardWorkingDays
               : run.standardWorkingDays,
           grossAmount: item.line.grossAmount,
+          deductionsAmount: toMoneyString(item.deductions),
           taxableAmount: toMoneyString(item.taxableAmount),
           incomeTaxAmount: toMoneyString(item.incomeTax),
           netPayAmount: toMoneyString(item.netPayAmount),
+          employerContributionAmount: toMoneyString(item.employerContributions),
+          employerCostAmount: toMoneyString(item.employerCost),
+          taxProfileSnapshot: item.taxProfileSnapshot,
           notes: item.line.note,
         });
         const savedPayslip = await manager.save(payslip);
@@ -479,6 +584,7 @@ export class PayrollRunService {
               category: component.category,
               taxable: component.taxable,
               dependsOnPaymentDays: component.dependsOnPaymentDays,
+              preTax: component.preTax,
               defaultAmount: component.defaultAmount,
               amount: component.amount,
               sourceType: component.sourceType,
@@ -495,8 +601,15 @@ export class PayrollRunService {
       }
       savedRun.status = 'finalized';
       savedRun.finalizedAt = new Date();
+      savedRun.payDate = payDate;
       savedRun.finalizedByUserId = input.finalizedByUserId;
       savedRun.finalizeOverrideReason = overrideReason;
+      savedRun.finalizeOverrideGuards = overrideGuards;
+      savedRun.grossTotal = toMoneyString(totalGross);
+      savedRun.deductionsTotal = toMoneyString(totalDeductions);
+      savedRun.netTotal = toMoneyString(totalNetPay);
+      savedRun.employerContributionTotal = toMoneyString(totalEmployerContributions);
+      savedRun.employerCostTotal = toMoneyString(totalEmployerCost);
       const persistedRun = await manager.save(savedRun);
 
       await this.publisher.publishWithin(manager, {
@@ -508,6 +621,9 @@ export class PayrollRunService {
           currency: persistedRun.currency,
           payslipCount: prepared.length,
           totalNetPay,
+          grossTotal: totalGross,
+          employerCostTotal: totalEmployerCost,
+          payDate,
         },
       });
       return persistedRun;
@@ -540,6 +656,32 @@ export class PayrollRunService {
   // flag any DRAFT run whose period is on/after the raise so finance regenerates
   // before finalizing. Finalized runs are never touched — their history is frozen.
   async markDraftsStaleForSalaryRevision(effectiveDate: IsoDate): Promise<number> {
+    return this.markDraftsStaleForChange(
+      effectiveDate,
+      `Salary revised effective ${effectiveDate}`,
+    );
+  }
+
+  async markDraftsStaleForTaxProfile(effectiveDate: IsoDate): Promise<number> {
+    return this.markDraftsStaleForChange(
+      effectiveDate,
+      `Tax profile changed effective ${effectiveDate}`,
+    );
+  }
+
+  async markDraftsStaleForBenefitsChange(effectiveDate: IsoDate): Promise<number> {
+    return this.markDraftsStaleForChange(
+      effectiveDate,
+      `Benefits changed effective ${effectiveDate}`,
+    );
+  }
+
+  // A change effective on or before a draft's period end means the draft's
+  // snapshotted amounts are out of date; flag it so finance regenerates.
+  private async markDraftsStaleForChange(
+    effectiveDate: IsoDate,
+    reason: string,
+  ): Promise<number> {
     const drafts = await this.runs.find({
       where: { status: 'draft' } as FindOptionsWhere<PayrollRun>,
     });
@@ -554,7 +696,7 @@ export class PayrollRunService {
         continue;
       }
       run.isStale = true;
-      run.staleReason = `Salary revised effective ${effectiveDate}`;
+      run.staleReason = reason;
       await this.runs.save(run);
       marked += 1;
     }
@@ -576,8 +718,49 @@ export class PayrollRunService {
       payslips: payslips.map((payslip) => ({
         employeeId: toId<EmployeeId>(payslip.employeeId),
         paidDays: Number(payslip.paidDays),
+        grossAmount: Number(payslip.grossAmount),
+        employerCostAmount: Number(payslip.employerCostAmount),
       })),
+      payrollCurrency: run.currency,
+      grossTotal: Number(run.grossTotal),
+      employerCostTotal: Number(run.employerCostTotal),
+      // Legacy runs predate the column; the payslip date (or finalization day)
+      // is the best available anchor for the frozen FX lookup.
+      payDate:
+        run.payDate ??
+        payslips[0]?.payDate ??
+        (run.finalizedAt ? run.finalizedAt.toISOString().slice(0, 10) : todayIso()),
     };
+  }
+
+  // Disbursement bookkeeping: a finalized run stays outstanding (paidAt null)
+  // until finance confirms the bank paid out. Statutory totals are not touched.
+  async markRunPaid(input: {
+    readonly runId: PayrollRunId;
+    readonly paymentReference?: string | null;
+    readonly settlementDate?: IsoDate | null;
+  }): Promise<PayrollRun> {
+    const run = await this.getRun(input.runId);
+    if (run.status !== 'finalized') {
+      throw new ConflictError('Only finalized runs can be marked paid', { status: run.status });
+    }
+    run.paidAt = input.settlementDate
+      ? new Date(`${input.settlementDate}T00:00:00.000Z`)
+      : new Date();
+    run.paymentReference = input.paymentReference ?? null;
+    const saved = await this.runs.save(run);
+    await this.audit.record({
+      action: 'markPaid',
+      resourceType: 'payroll_run',
+      resourceId: saved.id,
+      after: {
+        periodYear: saved.periodYear,
+        periodMonth: saved.periodMonth,
+        netTotal: Number(saved.netTotal),
+        paymentReference: saved.paymentReference,
+      },
+    });
+    return saved;
   }
 
   // Everything the run screen renders in one read: run, per-line snapshot
@@ -596,10 +779,26 @@ export class PayrollRunService {
       order: { sortOrder: 'ASC' },
     });
     const ladder = await this.taxSlabs.getActiveLadder();
+    const periodEnd = addIsoDays(isoMonthRange(run.periodYear, run.periodMonth).endExclusive, -1);
     const items: RunLineDetail[] = [];
     for (const line of lines) {
       const lineComponents = components.filter((component) => component.lineId === line.id);
       const employee = await this.employeeDirectory.getById(line.employeeId);
+      // The preview must apply the same effective-dated tax facts finalization
+      // will, so finance never sees one number on the draft and another on the
+      // payslip.
+      const profile = await this.compensation.getTaxProfile(line.employeeId, periodEnd);
+      const options = profile
+        ? {
+            monthlyExemptionAmount: Number(profile.monthlyExemptionAmount),
+            priorAnnualIncome: Number(profile.priorAnnualIncome),
+            annualTaxCreditAmount: Number(profile.annualTaxCreditAmount),
+            fixedMonthlyWithholding:
+              profile.fixedMonthlyWithholding === null
+                ? null
+                : Number(profile.fixedMonthlyWithholding),
+          }
+        : {};
       items.push({
         line,
         components: lineComponents,
@@ -607,7 +806,7 @@ export class PayrollRunService {
         roleTitle: employee?.roleTitle ?? null,
         hireDate: employee?.hireDate ?? null,
         employmentStatus: employee?.employmentStatus ?? null,
-        derived: this.deriveLine(line, lineComponents, ladder),
+        derived: this.deriveLine(line, lineComponents, ladder, options),
       });
     }
     return { run, items };
@@ -801,21 +1000,24 @@ export class PayrollRunService {
     line: PayrollRunLine,
     components: readonly PayrollRunLineComponent[],
     ladder: Awaited<ReturnType<TaxSlabService['getActiveLadder']>>,
+    options: MonthlyWithholdingOptions = {},
   ): RunLineDetail['derived'] {
     const categorized = components.map((component) => ({
       category: component.category,
       taxable: component.taxable,
+      preTax: component.preTax,
       amount: Number(component.amount),
     }));
-    const taxableAmount = categorized
-      .filter((component) => component.category === 'earning' && component.taxable)
-      .reduce((sum, component) => sum + component.amount, 0);
+    const taxableAmount = taxableBase(categorized);
     const incomeTax =
       line.taxOverrideAmount !== null
         ? Number(line.taxOverrideAmount)
-        : calculateMonthlyWithholding(taxableAmount, ladder ?? []);
+        : calculateMonthlyWithholding(taxableAmount, ladder ?? [], options);
     return {
       ...deriveLineTotals(categorized, incomeTax),
+      // Report the base withholding was computed on (pre-tax deductions
+      // removed), matching what finalization will snapshot on the payslip.
+      taxableAmount,
       incomeTax,
     };
   }
@@ -971,6 +1173,14 @@ export class PayrollRunService {
       context.periodYear,
       context.periodMonth,
     );
+    // Active benefit enrollments become a deduction (employee share, pre-tax
+    // when the plan says so) plus an employer-contribution line that feeds the
+    // employer-cost totals.
+    const benefitCharges = await this.benefits.getEnrollmentCharges(
+      employeeId,
+      context.periodYear,
+      context.periodMonth,
+    );
     let earnings = [...breakdown];
     for (const adjustment of adjustments) {
       if (adjustment.overwritesStructureAmount) {
@@ -986,6 +1196,7 @@ export class PayrollRunService {
         category: component.category,
         taxable: component.taxable,
         dependsOnPaymentDays: component.dependsOnPaymentDays,
+        preTax: false,
         defaultAmount: component.amount,
         amount: component.amount,
         sourceType: null,
@@ -997,11 +1208,44 @@ export class PayrollRunService {
         category: adjustment.category,
         taxable: adjustment.taxable,
         dependsOnPaymentDays: adjustment.dependsOnPaymentDays,
+        preTax: false,
         defaultAmount: adjustment.amount,
         amount: adjustment.amount,
         sourceType: adjustment.sourceType ?? adjustment.kind,
         sourceId: adjustment.sourceId,
       })),
+      ...benefitCharges.flatMap((charge) => {
+        const rows: DraftComponent[] = [];
+        if (charge.employeeShare > 0) {
+          rows.push({
+            componentCode: `BENEFIT-${charge.planCode}`,
+            componentName: `${charge.planName} (employee)`,
+            category: 'deduction',
+            taxable: false,
+            dependsOnPaymentDays: false,
+            preTax: charge.reducesTaxable,
+            defaultAmount: charge.employeeShare,
+            amount: charge.employeeShare,
+            sourceType: 'benefitEnrollment',
+            sourceId: charge.enrollmentId,
+          });
+        }
+        if (charge.employerShare > 0) {
+          rows.push({
+            componentCode: `BENEFIT-${charge.planCode}-ER`,
+            componentName: `${charge.planName} (employer)`,
+            category: 'employerContribution',
+            taxable: false,
+            dependsOnPaymentDays: false,
+            preTax: false,
+            defaultAmount: charge.employerShare,
+            amount: charge.employerShare,
+            sourceType: 'benefitEnrollment',
+            sourceId: charge.enrollmentId,
+          });
+        }
+        return rows;
+      }),
     ].map((component) => {
       const resolved = prorateComponent(
         component.defaultAmount,
@@ -1138,6 +1382,7 @@ export class PayrollRunService {
               category: component.category,
               taxable: component.taxable,
               dependsOnPaymentDays: component.dependsOnPaymentDays,
+              preTax: component.preTax,
               defaultAmount: toMoneyString(component.defaultAmount),
               amount: toMoneyString(component.amount),
               sourceType: component.sourceType,

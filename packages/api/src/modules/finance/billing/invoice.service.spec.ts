@@ -7,15 +7,18 @@ import { DomainEventPublisher } from '../../../core/events/domain-event-publishe
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repository';
 import { EmployeeDirectoryService } from '../../employee';
+import { FxService } from '../fx/fx.service';
 import { PayrollRunService } from '../payroll';
 
 import {
   BillingGroupMember,
 } from './entities/billing-group-member.entity';
 import { BillingGroup } from './entities/billing-group.entity';
+import { BillingPeriodClose } from './entities/billing-period-close.entity';
 import { ClientBillingConfig } from './entities/client-billing-config.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
 import { Invoice } from './entities/invoice.entity';
+import { PayrollCostSnapshot } from './entities/payroll-cost-snapshot.entity';
 import { InvoiceService } from './invoice.service';
 
 const ORG = toId<OrganizationId>('org-1');
@@ -78,7 +81,11 @@ const summaryFixture = () => ({
   periodYear: 2026,
   periodMonth: 8,
   standardWorkingDays: 21,
-  payslips: [{ employeeId: EMPLOYEE, paidDays: 14 }],
+  payslips: [{ employeeId: EMPLOYEE, paidDays: 14, grossAmount: 100000, employerCostAmount: 110000 }],
+  payrollCurrency: 'PKR',
+  grossTotal: 100000,
+  employerCostTotal: 110000,
+  payDate: '2026-08-28',
 });
 
 const buildService = () => {
@@ -107,7 +114,24 @@ const buildService = () => {
     save: jest.fn(async (v: unknown) => v),
     count: jest.fn(async () => 0),
   };
-  const lines = { find: jest.fn(async () => []) as jest.Mock, count: jest.fn(async () => 0), save: jest.fn(async (v: unknown) => v) };
+  const lines = {
+    find: jest.fn(async () => []) as jest.Mock,
+    count: jest.fn(async () => 0),
+    create: jest.fn((attrs: Record<string, unknown>) => ({ ...attrs })),
+    save: jest.fn(async (v: unknown) => v),
+  };
+  const costSnapshots = {
+    findOne: jest.fn(async () => null) as jest.Mock,
+    create: jest.fn((attrs: Record<string, unknown>) => ({ ...attrs })),
+    save: jest.fn(async (v: unknown) => v),
+  };
+  const periodCloses = {
+    find: jest.fn(async () => []) as jest.Mock,
+    findOne: jest.fn(async () => null) as jest.Mock,
+    create: jest.fn((attrs: Record<string, unknown>) => ({ ...attrs })),
+    save: jest.fn(async (v: unknown) => v),
+  };
+  const fx = { getRate: jest.fn(async () => 0.0036) };
   const employeeDirectory = {
     getById: jest.fn(async () => employeeFixture()) as jest.Mock,
     exists: jest.fn(async () => true),
@@ -124,19 +148,22 @@ const buildService = () => {
     members as unknown as TenantScopedRepository<BillingGroupMember>,
     invoices as unknown as TenantScopedRepository<Invoice>,
     lines as unknown as TenantScopedRepository<InvoiceLine>,
+    costSnapshots as unknown as TenantScopedRepository<PayrollCostSnapshot>,
+    periodCloses as unknown as TenantScopedRepository<BillingPeriodClose>,
     dataSource as unknown as DataSource,
     tenantContext as unknown as TenantContextService,
     publisher as unknown as DomainEventPublisher,
     audit as unknown as AuditService,
     employeeDirectory as unknown as EmployeeDirectoryService,
     payrollRuns as unknown as PayrollRunService,
+    fx as unknown as FxService,
   );
   // Deterministic clock: drafted on the anchor day itself (Aug 20, 2026).
   service.nowProvider = () => new Date('2026-08-20T10:00:00Z');
 
   return {
     service,
-    mocks: { manager, configs, groups, members, invoices, lines, employeeDirectory, payrollRuns, publisher },
+    mocks: { manager, configs, groups, members, invoices, lines, costSnapshots, periodCloses, employeeDirectory, payrollRuns, publisher },
   };
 };
 
@@ -283,6 +310,26 @@ describe('InvoiceService.markInvoicePaid', () => {
       /Only issued/,
     );
   });
+
+  it('refreshes the month close when a draft is voided', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findById = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'draft',
+      serviceYear: 2026,
+      serviceMonth: 9,
+      type: 'services',
+    }));
+    mocks.periodCloses.findOne = jest.fn(async () => ({
+      id: 'close-1',
+      payrollRunId: 'run-1',
+      serviceYear: 2026,
+      serviceMonth: 9,
+    }));
+    const voided = await service.voidInvoice(INVOICE_ID);
+    expect(voided.status).toBe('voided');
+    expect(mocks.payrollRuns.getFinalizedRunSummary).toHaveBeenCalled();
+  });
 });
 
 describe('InvoiceService.setMember', () => {
@@ -307,6 +354,51 @@ describe('InvoiceService.setMember', () => {
     await expect(
       service.setMember({ employeeId: EMPLOYEE, groupId: GROUP, monthlyRate: 1000 }),
     ).rejects.toThrow(/already covers this period/);
+  });
+});
+
+describe('InvoiceService.addExpenseClaimLines', () => {
+  const expensesInvoice = (status: string) => ({
+    id: 'invoice-exp',
+    organizationId: ORG,
+    groupId: GROUP,
+    type: 'expenses',
+    status,
+    currency: 'USD',
+    subTotal: '0',
+    totalAmount: '0',
+  });
+
+  const claimLines = {
+    employeeId: EMPLOYEE,
+    serviceYear: 2026,
+    serviceMonth: 9,
+    sourceLabel: 'EXP-0001',
+    lines: [{ description: 'Travel: taxi', amount: 500 }],
+  };
+
+  it('refuses pass-through lines once the month has been issued', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findOne.mockResolvedValue(expensesInvoice('issued'));
+    await expect(service.addExpenseClaimLines(claimLines)).rejects.toThrow(/already issued/);
+  });
+
+  it('appends marked lines to the month draft and skips a retry', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findOne.mockResolvedValue(expensesInvoice('draft'));
+
+    const first = await service.addExpenseClaimLines(claimLines);
+    expect(first.addedLines).toBe(1);
+    expect(mocks.lines.save).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Travel: taxi [EXP-0001]' }),
+    );
+
+    // A retry finds its own marker and adds nothing.
+    mocks.lines.find.mockResolvedValue([
+      { id: 'line-1', invoiceId: 'invoice-exp', description: 'Travel: taxi [EXP-0001]' },
+    ]);
+    const retry = await service.addExpenseClaimLines(claimLines);
+    expect(retry.addedLines).toBe(0);
   });
 });
 
