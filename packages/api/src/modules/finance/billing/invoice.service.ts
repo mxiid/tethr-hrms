@@ -129,7 +129,7 @@ export type ReconciliationPeriod = {
   }[];
 };
 
-// A line pending persistence during auto-drafting � plain data, no base-entity
+// A line pending persistence during auto-drafting — plain data, no base-entity
 // noise.
 type PendingLine = {
   readonly kind: InvoiceLineKind;
@@ -145,7 +145,7 @@ const round2 = (value: number): number => Math.round(value * 100) / 100;
 const pad2 = (value: number): string => String(value).padStart(2, '0');
 const pad4 = (value: number): string => String(value).padStart(4, '0');
 
-// Billing and payroll prorate differently by design (billing counts Mon�Fri,
+// Billing and payroll prorate differently by design (billing counts Mon–Fri,
 // payroll holidays-aware), so a small delta is expected. Beyond 2% of cost (or
 // $1, whichever is greater) the invoice is flagged for finance review.
 const RECONCILIATION_TOLERANCE_PERCENT = 0.02;
@@ -161,8 +161,8 @@ const isUniqueViolation = (cause: unknown): boolean => {
 
 const todayIso = (): IsoDate => new Date().toISOString().slice(0, 10);
 
-// [anchor day of `year-month`, anchor day of the next month) � the billing
-// window printed on documents, mirroring the sheet's 20th ? 19th convention.
+// [anchor day of `year-month`, anchor day of the next month) — the billing
+// window printed on documents, mirroring the sheet's 20th → 19th convention.
 const anchoredWindow = (
   year: number,
   month: number,
@@ -175,10 +175,10 @@ const anchoredWindow = (
   };
 };
 
-// Owns the Tethr ? client billing domain. Services invoices are drafted
+// Owns the Tethr → client billing domain. Services invoices are drafted
 // automatically from a finalized payroll run (the event consumer calls into
 // this service); expenses invoices are opened manually. Everything money-shaped
-// on an issued invoice is frozen � corrections ride later documents.
+// on an issued invoice is frozen — corrections ride later documents.
 @Injectable()
 export class InvoiceService {
   constructor(
@@ -466,7 +466,7 @@ export class InvoiceService {
   }
 
   // Client-portal aggregate (plan Phase 4 #28): per-employee cost and a spend
-  // trend across issued/paid invoices � the data that previously existed only
+  // trend across issued/paid invoices — the data that previously existed only
   // inside the downloadable addendum PDF.
   async getClientCostBreakdown(): Promise<ClientCostBreakdown> {
     const invoices = await this.listVisibleInvoices();
@@ -566,7 +566,10 @@ export class InvoiceService {
   // Compare what was billed for the run's own month against the month's actual
   // cost, then record the period close. Lines are matched by their month label,
   // not their invoice's service month, because a catch-up line for August can
-  // ride September's document � the cost of August belongs to August's close.
+  // ride September's document — the cost of August belongs to August's close.
+  // A month with cost but nothing (left) billed keeps a close with zero invoiced
+  // so the board can still show the cost-only variance; the close is never
+  // deleted, only rewritten.
   private async reconcileServiceMonth(
     summary: RunBillingSummary,
     snapshot: PayrollCostSnapshot,
@@ -578,24 +581,17 @@ export class InvoiceService {
         kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
       } as FindOptionsWhere<InvoiceLine>,
     });
-    if (monthLines.length === 0) {
-      // Nothing billable remains for the month (all documents voided): the close
-      // would otherwise keep describing documents that no longer exist.
-      await this.removePeriodClose(summary.periodYear, summary.periodMonth);
-      return;
-    }
     const invoiceIds = [...new Set(monthLines.map((line) => line.invoiceId))];
-    const invoicesForMonth = await this.invoices.find({
-      where: {
-        id: In(invoiceIds),
-        type: 'services',
-        status: Not('voided'),
-      } as FindOptionsWhere<Invoice>,
-    });
-    if (invoicesForMonth.length === 0) {
-      await this.removePeriodClose(summary.periodYear, summary.periodMonth);
-      return;
-    }
+    const invoicesForMonth =
+      invoiceIds.length === 0
+        ? []
+        : await this.invoices.find({
+            where: {
+              id: In(invoiceIds),
+              type: 'services',
+              status: Not('voided'),
+            } as FindOptionsWhere<Invoice>,
+          });
     const validInvoiceIds = new Set(invoicesForMonth.map((invoice) => invoice.id));
     const billableLines = monthLines.filter((line) => validInvoiceIds.has(line.invoiceId));
 
@@ -659,34 +655,30 @@ export class InvoiceService {
     await this.periodCloses.save(close);
   }
 
-  private async removePeriodClose(serviceYear: number, serviceMonth: number): Promise<void> {
-    const close = await this.periodCloses.findOne({
-      where: { serviceYear, serviceMonth } as FindOptionsWhere<BillingPeriodClose>,
-    });
-    if (close) {
-      await this.dataSource.transaction((manager) => manager.remove(close));
-    }
-  }
-
   // The reconciliation board: every month with salary/catch-up lines, what was
   // invoiced for it, and (once the month's run finalizes) the frozen payroll
   // cost. Rows follow line month labels, so catch-up billing still lands on the
-  // month it belongs to.
+  // month it belongs to. Months whose closes carry cost but no invoice lines
+  // (nobody billable, or all documents voided) stay on the board with zero
+  // invoiced rather than silently disappearing.
   async listReconciliation(): Promise<ReconciliationPeriod[]> {
     const invoices = await this.invoices.find({
       where: { type: 'services', status: Not('voided') } as FindOptionsWhere<Invoice>,
     });
-    if (invoices.length === 0) {
+    const closes = await this.periodCloses.find();
+    if (invoices.length === 0 && closes.length === 0) {
       return [];
     }
     const invoiceById = new Map(invoices.map((invoice) => [invoice.id, invoice]));
-    const lines = await this.lines.find({
-      where: {
-        invoiceId: In(invoices.map((invoice) => invoice.id)),
-        kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
-      } as FindOptionsWhere<InvoiceLine>,
-    });
-    const closes = await this.periodCloses.find();
+    const lines =
+      invoices.length === 0
+        ? []
+        : await this.lines.find({
+            where: {
+              invoiceId: In(invoices.map((invoice) => invoice.id)),
+              kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
+            } as FindOptionsWhere<InvoiceLine>,
+          });
     const closeByPeriod = new Map(
       closes.map((close) => [`${close.serviceYear}-${close.serviceMonth}`, close]),
     );
@@ -722,6 +714,17 @@ export class InvoiceService {
       );
       byPeriod.set(key, bucket);
     }
+    for (const close of closes) {
+      const key = `${close.serviceYear}-${close.serviceMonth}`;
+      if (!byPeriod.has(key)) {
+        byPeriod.set(key, {
+          serviceYear: close.serviceYear,
+          serviceMonth: close.serviceMonth,
+          invoicedAmount: 0,
+          amountsByInvoice: new Map<string, number>(),
+        });
+      }
+    }
 
     const periods: ReconciliationPeriod[] = [];
     for (const [key, bucket] of byPeriod) {
@@ -730,7 +733,7 @@ export class InvoiceService {
         serviceYear: bucket.serviceYear,
         serviceMonth: bucket.serviceMonth,
         status: close?.status ?? 'open',
-        currency: close?.currency ?? invoices[0].currency,
+        currency: close?.currency ?? invoices[0]?.currency ?? '',
         invoiceCount: bucket.amountsByInvoice.size,
         invoicedAmount: bucket.invoicedAmount,
         payrollCostAmount:
@@ -758,10 +761,10 @@ export class InvoiceService {
   /**
    * The auto-drafter behind the `payroll.finalized` consumer. For each billing
    * group it produces at most one Services draft per service month containing:
-   *   � catch-up salary lines for past months never invoiced (pro-rated by
+   *   · catch-up salary lines for past months never invoiced (pro-rated by
    *     working days actually worked),
-   *   � the service-month salary line (full rate unless hired inside it),
-   *   � one PEPM management fee per billed person.
+   *   · the service-month salary line (full rate unless hired inside it),
+   *   · one PEPM management fee per billed person.
    * Advance billing: on/after the anchor day the document covers the following
    * month; before it, the run's own month. Re-running for an already-covered
    * period is a no-op (uniqueness by group + type + service month).
@@ -773,7 +776,7 @@ export class InvoiceService {
 
     // The run's own pay date decides the service month (advance billing: cut
     // on/after the anchor day covers the following month). Anchoring to the run
-    // � not the wall clock � keeps replays and backfills deterministic.
+    // — not the wall clock — keeps replays and backfills deterministic.
     const anchorOfRunMonth = `${summary.periodYear}-${pad2(summary.periodMonth)}-${pad2(config.anchorDay)}`;
     const advance = compareIsoDate(summary.payDate, anchorOfRunMonth) >= 0;
     const service = advance
@@ -1021,7 +1024,7 @@ export class InvoiceService {
         );
         if (rate === null) {
           throw new ValidationFailedError(
-            `No ${input.sourceCurrency}?${billingCurrency} exchange rate is configured for ${date}`,
+            `No ${input.sourceCurrency}→${billingCurrency} exchange rate is configured for ${date}`,
             { sourceCurrency: input.sourceCurrency, billingCurrency, asOf: date },
           );
         }
@@ -1040,7 +1043,7 @@ export class InvoiceService {
     }
     // One expenses document per group and month (the unique index just ignores
     // voided rows). An issued or paid one means the month is closed to new
-    // pass-through lines � surface that instead of letting the insert hit the
+    // pass-through lines — surface that instead of letting the insert hit the
     // unique index.
     let invoice = await this.invoices.findOne({
       where: {
@@ -1061,6 +1064,10 @@ export class InvoiceService {
       const prior = addMonths(input.serviceYear, input.serviceMonth, -1);
       const window = anchoredWindow(prior.year, prior.month, config.anchorDay);
       const payload = {
+        // Explicit because the raw manager create (the expense-billing path)
+        // bypasses the tenant-scoped repository's automatic organization
+        // stamping; the scoped repository merges the same value.
+        organizationId: this.tenantContext.getOrganizationId(),
         groupId: membership.groupId,
         type: 'expenses' as const,
         status: 'draft' as const,
@@ -1225,7 +1232,7 @@ export class InvoiceService {
 
   // Numbering is count-based, so two concurrent issues can pick the same
   // sequence. The unique index on (organizationId, number) turns the loser's
-  // insert into a 23505 which we retry � by then the winner's row is visible
+  // insert into a 23505 which we retry — by then the winner's row is visible
   // to the recount.
   private async issueWithNumberRetry(invoiceId: InvoiceId): Promise<Invoice> {
     const maxAttempts = 3;
@@ -1252,7 +1259,7 @@ export class InvoiceService {
             throw new NotFoundError('Billing group not found', { id: invoice.groupId });
           }
           const prefix = invoice.type === 'services' ? group.servicesPrefix : group.expensesPrefix;
-          // Only issued/paid documents consume a number � drafts must not burn
+          // Only issued/paid documents consume a number — drafts must not burn
           // sequence positions for documents that may never ship.
           const sequence = await manager.count(Invoice, {
             where: {
@@ -1354,7 +1361,7 @@ export class InvoiceService {
     invoice.status = 'voided';
     const saved = await this.invoices.save(invoice);
     // Closes are keyed by the month a line covers, so every month label on the
-    // voided document needs its close refreshed � not just the invoice's service
+    // voided document needs its close refreshed — not just the invoice's service
     // month (advance billing sets that a month ahead of the covered lines).
     const voidedLines = await this.lines.find({
       where: {
@@ -1401,7 +1408,7 @@ export class InvoiceService {
 
   // Rate/membership edits invalidate drafts that reference the employee: the
   // draft still holds the old amount. Flagging (not rewriting) keeps finance in
-  // control � they void the draft and let the next run redraft it.
+  // control — they void the draft and let the next run redraft it.
   private async markDraftsStaleForEmployee(
     employeeId: EmployeeId,
     reason: string,
@@ -1423,7 +1430,7 @@ export class InvoiceService {
     }
   }
 
-  // Month labels already billed per employee across ALL invoices � drafts count,
+  // Month labels already billed per employee across ALL invoices — drafts count,
   // so a manual draft covering September suppresses the next auto-draft's
   // September line instead of double-billing.
   private async loadCoveredMonths(employeeIds: readonly EmployeeId[]): Promise<Set<string>> {

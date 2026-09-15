@@ -261,4 +261,14 @@ describe('CompensationService.createAdjustment', () => {
     const adjustment = await service.createAdjustment({ ...base, kind: 'bonus' });
     expect(adjustment.kind).toBe('bonus');
   });
+
+  it('rejects source provenance with only one side of the pair', async () => {
+    const { service } = buildService({});
+    await expect(
+      service.createAdjustment({ ...base, kind: 'bonus', sourceId: 'claim-1' }),
+    ).rejects.toThrow(/provided together/);
+    await expect(
+      service.createAdjustment({ ...base, kind: 'bonus', sourceType: 'expenseClaim' }),
+    ).rejects.toThrow(/provided together/);
+  });
 });

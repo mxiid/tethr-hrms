@@ -2,6 +2,14 @@
 
 > As of 2026-09-04 (`feat/attendance-module-and-ux-revamp`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## PR #2 third review round: a round-two regression and its follow-ups (2026-09-15)
+
+The third bot pass caught one real regression in the round-two fixes plus three smaller gaps; all four are fixed (one migration).
+
+**Correctness.** The transactional expense-billing path created a month's first expenses invoice with a raw `manager.create` that omitted `organizationId` — the scoped repository stamps tenants, a raw manager does not — so the first bill for a group and month failed the tenant `NOT NULL`. The payload now carries the tenant explicitly and a spec asserts the manager-created payload. `reconcileServiceMonth` no longer deletes a month's period close when nothing is (left) billable: a month with payroll cost but no salary/catch-up lines keeps a close with zero invoiced and a `-cost` variance, and `listReconciliation` now returns close-only months (previously a finalized run with unbilled employees, or a month whose only document was voided, silently vanished from the board). Pay adjustment source provenance is a pair or nothing: `createAdjustment` rejects a lone `sourceType`/`sourceId`, and migration `Phase2AdjustmentSourceGuard` adds the CHECK `("sourceType" IS NULL) = ("sourceId" IS NULL)` so the partial unique index can actually guarantee one adjustment per source fact (Postgres reads a null `sourceType` as distinct). The round-two file rewrite also mangled 19 non-ASCII comment/message glyphs in `invoice.service.ts`; they are restored (`—`, `–`, `→`, `·`) with a byte scan confirming zero replacement characters.
+
+**Verification.** Gates **223 API / 20 shared / 5 UI tests**, lint 0 errors, typecheck/build clean. Battery: API Phase 1 **15/15**, M1 **20/20**, M2 **14/14**, M3 **16/16**; UI billing **7/7**, expenses **11/11**, tax **5/5**, benefits **5/5**. Live round-three checks **5/5**: a fresh month's expenses invoice is created through the transaction manager, voiding a month's only services document keeps the close on the board (zero invoiced, cost reported as variance) and re-drafting restores it, and lone source fields are rejected at the API boundary; a rolled-back mismatched insert is rejected with `23514` in both dev and scratch. Schema parity **1145 columns, 0 differences**; migrations now **9**.
+
 ## PR #2 second review round: follow-up findings fixed (2026-09-15)
 
 Both bots re-ran after the first fix push; every actionable second-round finding was fixed. One migration, `Phase2AdjustmentSourceUnique`, carries the schema change.

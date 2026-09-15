@@ -697,6 +697,19 @@ export class CompensationService {
     if (input.amount <= 0) {
       throw new ValidationFailedError('amount must be greater than zero');
     }
+    // Source provenance is a pair or nothing: a lone sourceId would defeat the
+    // partial unique index (Postgres treats the null sourceType as distinct), so
+    // both-or-neither is enforced here and by a database CHECK.
+    const hasSourceType =
+      input.sourceType !== undefined && input.sourceType !== null && input.sourceType !== '';
+    const hasSourceId =
+      input.sourceId !== undefined && input.sourceId !== null && input.sourceId !== '';
+    if (hasSourceType !== hasSourceId) {
+      throw new ValidationFailedError('sourceType and sourceId must be provided together', {
+        sourceType: input.sourceType ?? null,
+        sourceId: input.sourceId ?? null,
+      });
+    }
     const component = await this.payComponents.findById(input.componentId);
     if (!component) {
       throw new NotFoundError('Pay component not found', { id: input.componentId });

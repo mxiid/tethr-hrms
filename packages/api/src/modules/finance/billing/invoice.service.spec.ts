@@ -1,5 +1,5 @@
 import { toId, type BillingGroupId, type EmployeeId, type InvoiceId, type OrganizationId } from '@hrms/shared';
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 
 import { ConflictError } from '../../../common/errors';
 import { AuditService } from '../../../core/audit/audit.service';
@@ -221,6 +221,67 @@ describe('InvoiceService.draftInvoicesFromRun', () => {
     expect(kinds).toEqual(['catchup']);
     expect((lineCalls[0][1] as Record<string, string>).total).toBe('300.00');
   });
+
+  it('keeps a zero-invoiced close when a run has cost but nobody billable', async () => {
+    const { service, mocks } = buildService();
+    // No billing groups at all: the run still finalizes and carries cost.
+    mocks.groups.find.mockResolvedValue([]);
+
+    const created = await service.draftInvoicesFromRun('run-1');
+
+    expect(created).toHaveLength(0);
+    // 110000 PKR employer cost at 0.0036 → 396.00 USD, nothing invoiced.
+    expect(mocks.periodCloses.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serviceYear: 2026,
+        serviceMonth: 8,
+        invoiceCount: 0,
+        invoicedAmount: '0.00',
+        payrollCostAmount: '396.00',
+        varianceAmount: '-396.00',
+        status: 'variance',
+      }),
+    );
+  });
+});
+
+describe('InvoiceService.listReconciliation', () => {
+  it('returns close-only months (cost, nothing invoiced) with zero amounts', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.find.mockResolvedValue([]);
+    mocks.periodCloses.find.mockResolvedValue([
+      {
+        id: 'close-1',
+        payrollRunId: 'run-1',
+        serviceYear: 2026,
+        serviceMonth: 8,
+        status: 'variance',
+        currency: 'USD',
+        invoiceCount: 0,
+        invoicedAmount: '0.00',
+        payrollCostAmount: '396.00',
+        varianceAmount: '-396.00',
+        payDate: '2026-08-28',
+      },
+    ]);
+
+    const periods = await service.listReconciliation();
+
+    expect(periods).toHaveLength(1);
+    expect(periods[0]).toMatchObject({
+      serviceYear: 2026,
+      serviceMonth: 8,
+      status: 'variance',
+      currency: 'USD',
+      invoiceCount: 0,
+      invoicedAmount: 0,
+      payrollCostAmount: 396,
+      varianceAmount: -396,
+      payrollRunId: 'run-1',
+      payDate: '2026-08-28',
+    });
+    expect(periods[0].invoices).toHaveLength(0);
+  });
 });
 
 describe('InvoiceService.issueInvoice', () => {
@@ -417,6 +478,22 @@ describe('InvoiceService.addExpenseClaimLines', () => {
     const { service, mocks } = buildService();
     mocks.invoices.findOne.mockResolvedValue(expensesInvoice('issued'));
     await expect(service.addExpenseClaimLines(claimLines)).rejects.toThrow(/already issued/);
+  });
+
+  it('stamps the tenant on an invoice created through the transaction manager', async () => {
+    const { service, mocks } = buildService();
+    // No expenses invoice exists yet for the month.
+    const result = await service.addExpenseClaimLines(
+      claimLines,
+      mocks.manager as unknown as EntityManager,
+    );
+    expect(result.addedLines).toBe(1);
+    const invoiceAttrs = mocks.manager.create.mock.calls.find(
+      ([target]) => target === Invoice,
+    )?.[1] as Record<string, unknown> | undefined;
+    expect(invoiceAttrs).toBeDefined();
+    expect(invoiceAttrs?.organizationId).toBe(ORG);
+    expect(invoiceAttrs?.type).toBe('expenses');
   });
 
   it('appends marked lines to the month draft and skips a retry', async () => {

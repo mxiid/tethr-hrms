@@ -1,5 +1,5 @@
 import type { EmployeeId, IsoDate, PayComponentId } from '@hrms/shared';
-import { Column, Entity, Index } from 'typeorm';
+import { Check, Column, Entity, Index } from 'typeorm';
 
 import { TenantScopedEntity } from '../../../../core/database/entities/tenant-scoped.entity';
 
@@ -26,6 +26,10 @@ export type PayAdjustmentKind =
   | 'reimbursement';
 
 @Entity('pay_adjustments')
+// Provenance is both-or-neither, so the partial unique index below can actually
+// guarantee one adjustment per source fact (a null sourceType would read as
+// distinct to Postgres and let duplicates through).
+@Check('pay_adjustments_source_pair_check', '("sourceType" IS NULL) = ("sourceId" IS NULL)')
 @Index(['organizationId', 'employeeId', 'periodYear', 'periodMonth'])
 // One adjustment per source fact (a bonus award, an expense claim): makes
 // retries idempotent instead of paying twice when the first attempt's
