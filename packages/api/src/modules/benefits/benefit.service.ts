@@ -175,11 +175,6 @@ export class BenefitService {
     if (input.reducesTaxable !== undefined) plan.reducesTaxable = input.reducesTaxable;
     if (input.isActive !== undefined) plan.isActive = input.isActive;
     const saved = await this.plans.save(plan);
-    // Amount changes affect every open draft that bills this plan.
-    await this.publisher.publish({
-      name: 'benefits.planChanged',
-      payload: { planId: saved.id, effectiveDate: todayIso() },
-    });
     await this.audit.record({
       action: 'update',
       resourceType: 'benefit_plan',
@@ -277,6 +272,11 @@ export class BenefitService {
           validFrom,
           validTo: null,
           note: input.note?.slice(0, 300) ?? null,
+          // Snapshot the plan's facts: later plan edits are templates for new
+          // enrollments and never rewrite what this enrollment bills.
+          employeeContributionAmount: plan.employeeContributionAmount,
+          employerContributionAmount: plan.employerContributionAmount,
+          reducesTaxable: plan.reducesTaxable,
         }),
       );
       await this.publisher.publishWithin(manager, {
@@ -395,8 +395,15 @@ export class BenefitService {
         periodYear,
         periodMonth,
       );
-      const employeeShare = round2(Number(plan.employeeContributionAmount) * share);
-      const employerShare = round2(Number(plan.employerContributionAmount) * share);
+      // The enrollment snapshot wins; legacy rows without one read the live plan.
+      const employeeAmount = Number(
+        enrollment.employeeContributionAmount ?? plan.employeeContributionAmount,
+      );
+      const employerAmount = Number(
+        enrollment.employerContributionAmount ?? plan.employerContributionAmount,
+      );
+      const employeeShare = round2(employeeAmount * share);
+      const employerShare = round2(employerAmount * share);
       if (employeeShare <= 0 && employerShare <= 0) {
         continue;
       }
@@ -407,7 +414,7 @@ export class BenefitService {
         planName: plan.name,
         employeeShare,
         employerShare,
-        reducesTaxable: plan.reducesTaxable,
+        reducesTaxable: enrollment.reducesTaxable ?? plan.reducesTaxable,
       });
     }
     return charges;

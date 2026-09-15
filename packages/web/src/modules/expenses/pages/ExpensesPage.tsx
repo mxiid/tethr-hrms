@@ -151,14 +151,8 @@ export const ExpensesPage = () => {
     readonly clientExpenseClaims?: readonly ExpenseClaimRecord[];
     readonly expenseClaims?: readonly ExpenseClaimRecord[];
   }>(isTethr ? CLIENT_EXPENSE_CLAIMS_QUERY : EXPENSE_CLAIMS_QUERY);
-  const { data: componentData } = useQuery<{
-    readonly payComponents: readonly { readonly id: string; readonly code: string; readonly name: string; readonly category: string }[];
-  }>(EXPENSE_REIMBURSEMENT_COMPONENTS_QUERY, { skip: !canPay });
 
   const claims = (isTethr ? data?.clientExpenseClaims : data?.expenseClaims) ?? [];
-  const reimbursementComponents = (componentData?.payComponents ?? []).filter(
-    (component) => component.category === 'earning',
-  );
 
   const claimView = useListView({
     routeKey: '/expenses',
@@ -179,13 +173,25 @@ export const ExpensesPage = () => {
   const [billYear, setBillYear] = useState(now.getFullYear());
   const [billMonth, setBillMonth] = useState(now.getMonth() + 1);
 
+  const selected = claims.find((claim) => claim.id === selectedId) ?? null;
+
+  // Components must come from the claim's own workspace: a cross-workspace
+  // reimbursement switches into it before resolving the component id.
+  const { data: componentData } = useQuery<{
+    readonly payComponents: readonly { readonly id: string; readonly code: string; readonly name: string; readonly category: string }[];
+  }>(EXPENSE_REIMBURSEMENT_COMPONENTS_QUERY, {
+    skip: !canPay,
+    variables: { organizationId: selected?.organizationId ?? null },
+  });
+  const reimbursementComponents = (componentData?.payComponents ?? []).filter(
+    (component) => component.category === 'earning',
+  );
+
   const [decideClaim, { loading: deciding }] = useMutation(DECIDE_EXPENSE_CLAIM_MUTATION);
   const [markReimbursed, { loading: paying }] = useMutation(
     MARK_EXPENSE_CLAIM_REIMBURSED_MUTATION,
   );
   const [billClaim, { loading: billing }] = useMutation(BILL_EXPENSE_CLAIM_MUTATION);
-
-  const selected = claims.find((claim) => claim.id === selectedId) ?? null;
 
   const visibleClaims = useMemo(() => {
     const statuses = claimView.filters.status ?? [];
@@ -433,12 +439,15 @@ export const ExpensesPage = () => {
               />
             </div>
 
-            {selected.billedInvoiceId ? (
+            {selected.billedInvoiceId && isTethr ? (
               <p className="employee-secondary">
                 <Link className="table-link" to={`/billing/${selected.billedInvoiceId}`}>
                   On the client expenses invoice <IconExternalLink size={14} />
                 </Link>
               </p>
+            ) : null}
+            {selected.billedInvoiceId && !isTethr ? (
+              <p className="employee-secondary">Billed on the client expenses invoice.</p>
             ) : null}
 
             {canApprove && selected.status === 'submitted' ? (

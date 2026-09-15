@@ -91,8 +91,8 @@ export const MY_EXPENSE_CLAIMS_QUERY = gql`
 `;
 
 export const EXPENSE_REIMBURSEMENT_COMPONENTS_QUERY = gql`
-  query ExpenseReimbursementComponents {
-    payComponents {
+  query ExpenseReimbursementComponents($organizationId: ID) {
+    payComponents(organizationId: $organizationId) {
       id
       code
       name

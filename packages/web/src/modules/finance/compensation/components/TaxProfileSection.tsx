@@ -80,6 +80,24 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
   const onSave = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     setErrorMessage(null);
+    const parse = (raw: string): number | null => {
+      if (raw.trim() === '') return 0;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const amounts = {
+      monthlyExemptionAmount: parse(exemption),
+      priorAnnualIncome: parse(priorIncome),
+      annualTaxCreditAmount: parse(credit),
+    };
+    const fixedValue = fixed.trim() === '' ? null : Number(fixed);
+    if (
+      Object.values(amounts).some((value) => value === null) ||
+      (fixedValue !== null && !Number.isFinite(fixedValue))
+    ) {
+      setErrorMessage('Enter the amounts as numbers.');
+      return;
+    }
     try {
       await saveProfile({
         variables: {
@@ -87,10 +105,8 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
             employeeId,
             effectiveDate,
             filerStatus,
-            monthlyExemptionAmount: exemption.trim() === '' ? 0 : Number(exemption),
-            priorAnnualIncome: priorIncome.trim() === '' ? 0 : Number(priorIncome),
-            annualTaxCreditAmount: credit.trim() === '' ? 0 : Number(credit),
-            fixedMonthlyWithholding: fixed.trim() === '' ? null : Number(fixed),
+            ...amounts,
+            fixedMonthlyWithholding: fixedValue,
             note: note.trim() || null,
           },
         },

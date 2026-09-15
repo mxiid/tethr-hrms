@@ -36,9 +36,14 @@ const toEnrollmentView = (detail: BenefitEnrollmentDetail): BenefitEnrollmentVie
   planId: detail.enrollment.planId,
   planCode: detail.plan?.code ?? null,
   planName: detail.plan?.name ?? null,
-  employeeContributionAmount: detail.plan ? Number(detail.plan.employeeContributionAmount) : 0,
-  employerContributionAmount: detail.plan ? Number(detail.plan.employerContributionAmount) : 0,
-  reducesTaxable: detail.plan?.reducesTaxable ?? false,
+  // The enrollment snapshot wins; legacy rows without one read the live plan.
+  employeeContributionAmount: Number(
+    detail.enrollment.employeeContributionAmount ?? detail.plan?.employeeContributionAmount ?? 0,
+  ),
+  employerContributionAmount: Number(
+    detail.enrollment.employerContributionAmount ?? detail.plan?.employerContributionAmount ?? 0,
+  ),
+  reducesTaxable: detail.enrollment.reducesTaxable ?? detail.plan?.reducesTaxable ?? false,
   validFrom: detail.enrollment.validFrom,
   validTo: detail.enrollment.validTo,
   note: detail.enrollment.note,

@@ -81,8 +81,9 @@ export class TaxProfileChangedPayrollConsumer implements OnModuleInit {
   }
 }
 
-// Enrollment changes and plan amount changes invalidate the benefit lines on
-// open drafts, the same stale-flag contract as raises and tax facts.
+// Enrollment changes invalidate the benefit lines on open drafts, the same
+// stale-flag contract as raises and tax facts. (Plan edits don't: enrollments
+// carry snapshots of what they were sold.)
 @Injectable()
 export class BenefitsChangedPayrollConsumer implements OnModuleInit {
   private readonly logger = new Logger(BenefitsChangedPayrollConsumer.name);
@@ -96,11 +97,10 @@ export class BenefitsChangedPayrollConsumer implements OnModuleInit {
 
   onModuleInit(): void {
     this.eventBus.register('benefits.enrollmentChanged', (event) => this.handle(event));
-    this.eventBus.register('benefits.planChanged', (event) => this.handle(event));
   }
 
   private async handle(event: DomainEvent): Promise<void> {
-    if (event.name !== 'benefits.enrollmentChanged' && event.name !== 'benefits.planChanged') {
+    if (event.name !== 'benefits.enrollmentChanged') {
       return;
     }
     await this.idempotency.runOnce(BENEFITS_CONSUMER_NAME, event, () =>

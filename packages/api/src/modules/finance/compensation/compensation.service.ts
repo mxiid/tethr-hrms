@@ -133,6 +133,7 @@ type CreatePayAdjustmentData = {
 // A period adjustment resolved to the display facts payroll snapshots onto a run
 // line component (and thus a payslip), carrying its provenance.
 type ResolvedAdjustment = {
+  readonly adjustmentId: string;
   readonly componentId: PayComponentId;
   readonly componentCode: string;
   readonly componentName: string;
@@ -607,6 +608,14 @@ export class CompensationService {
       order: { validFrom: 'ASC' },
     });
     const validFrom = anyExisting ? effectiveDate : employee.hireDate;
+    // Closing the open profile at a backdated effective date would invert its
+    // half-open range (validTo before validFrom); reject it like reviseSalary.
+    if (open && compareIsoDate(validFrom, open.validFrom) < 0) {
+      throw new ConflictError('Cannot backdate a tax profile before the open profile starts', {
+        effectiveDate: validFrom,
+        openValidFrom: open.validFrom,
+      });
+    }
     const history = await this.taxProfiles.find({
       where: { employeeId: input.employeeId } as FindOptionsWhere<EmployeeTaxProfile>,
     });
@@ -790,6 +799,7 @@ export class CompensationService {
       }
       return [
         {
+          adjustmentId: adjustment.id,
           componentId: adjustment.componentId,
           componentCode: component.code,
           componentName: component.name,

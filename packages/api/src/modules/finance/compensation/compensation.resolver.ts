@@ -5,6 +5,7 @@ import {
   type EmployeeId,
   type GradeId,
   type IsoDate,
+  type OrganizationId,
   type PayComponentCategory,
   type PayComponentId,
   type PayFrequency,
@@ -20,6 +21,8 @@ import { AuthService } from '../../../core/auth/auth.service';
 import { PERMISSIONS } from '../../../core/authz/permissions';
 import { PermissionsGuard } from '../../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../../core/authz/require-permissions.decorator';
+import { PlatformScopeService } from '../../../core/tenancy/platform-scope.service';
+import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 
 import { CompensationService } from './compensation.service';
 import { AwardBonusInput } from './dto/award-bonus.input';
@@ -139,12 +142,31 @@ export class CompensationResolver {
   constructor(
     private readonly compensationService: CompensationService,
     private readonly authService: AuthService,
+    private readonly platformScope: PlatformScopeService,
+    private readonly tenantContextService: TenantContextService,
   ) {}
 
   @Query(() => [PayComponentView])
   @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
-  async payComponents(): Promise<PayComponentView[]> {
+  async payComponents(
+    @Args('organizationId', { type: () => ID, nullable: true }) organizationId?: string,
+  ): Promise<PayComponentView[]> {
+    // The Tethr expense board needs a client workspace's components to schedule
+    // a cross-workspace reimbursement; that read crosses the platform boundary
+    // under the audited operator switch (platformReadAll is Tethr-only).
+    if (organizationId && organizationId !== this.tenantContextService.getOrganizationId()) {
+      await this.platformScope.assertOperator(PERMISSIONS.platformReadAll);
+      return this.platformScope.switchTo(
+        {
+          organizationId: toId<OrganizationId>(organizationId),
+          purpose: 'pay components read',
+          resourceType: 'pay_component',
+          resourceId: organizationId,
+        },
+        async () => (await this.compensationService.listPayComponents()).map(toPayComponentView),
+      );
+    }
     return (await this.compensationService.listPayComponents()).map(toPayComponentView);
   }
 

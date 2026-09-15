@@ -77,6 +77,19 @@ export const BenefitPlansPanel = () => {
   const onSave = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     setErrorMessage(null);
+    const employeeContributionAmount = Number(employeeAmount.trim() || 0);
+    const employerContributionAmount = Number(employerAmount.trim() || 0);
+    if (
+      !Number.isFinite(employeeContributionAmount) ||
+      !Number.isFinite(employerContributionAmount)
+    ) {
+      setErrorMessage('Enter the monthly amounts as numbers.');
+      return;
+    }
+    if (employeeContributionAmount < 0 || employerContributionAmount < 0) {
+      setErrorMessage('Amounts must be zero or greater.');
+      return;
+    }
     try {
       if (editing) {
         await updatePlan({
@@ -84,8 +97,8 @@ export const BenefitPlansPanel = () => {
             input: {
               planId: editing.id,
               name: name.trim(),
-              employeeContributionAmount: Number(employeeAmount || 0),
-              employerContributionAmount: Number(employerAmount || 0),
+              employeeContributionAmount,
+              employerContributionAmount,
               reducesTaxable,
               isActive,
             },
@@ -97,8 +110,8 @@ export const BenefitPlansPanel = () => {
             input: {
               code: code.trim(),
               name: name.trim(),
-              employeeContributionAmount: Number(employeeAmount || 0),
-              employerContributionAmount: Number(employerAmount || 0),
+              employeeContributionAmount,
+              employerContributionAmount,
               reducesTaxable,
             },
           },

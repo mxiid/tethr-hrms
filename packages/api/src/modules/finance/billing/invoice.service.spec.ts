@@ -313,13 +313,22 @@ describe('InvoiceService.markInvoicePaid', () => {
 
   it('refreshes the month close when a draft is voided', async () => {
     const { service, mocks } = buildService();
+    // Advance-billed document: service month a month ahead of the covered lines.
     mocks.invoices.findById = jest.fn(async () => ({
       id: INVOICE_ID,
       status: 'draft',
       serviceYear: 2026,
-      serviceMonth: 9,
+      serviceMonth: 10,
       type: 'services',
     }));
+    mocks.lines.find.mockResolvedValue([
+      {
+        id: 'line-1',
+        invoiceId: INVOICE_ID,
+        kind: 'salary',
+        monthLabel: 'September 2026',
+      },
+    ]);
     mocks.periodCloses.findOne = jest.fn(async () => ({
       id: 'close-1',
       payrollRunId: 'run-1',
@@ -328,7 +337,13 @@ describe('InvoiceService.markInvoicePaid', () => {
     }));
     const voided = await service.voidInvoice(INVOICE_ID);
     expect(voided.status).toBe('voided');
+    // The September close is refreshed even though the invoice says October.
     expect(mocks.payrollRuns.getFinalizedRunSummary).toHaveBeenCalled();
+    expect(mocks.periodCloses.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ serviceYear: 2026, serviceMonth: 9 }),
+      }),
+    );
   });
 });
 
@@ -389,7 +404,8 @@ describe('InvoiceService.addExpenseClaimLines', () => {
 
     const first = await service.addExpenseClaimLines(claimLines);
     expect(first.addedLines).toBe(1);
-    expect(mocks.lines.save).toHaveBeenCalledWith(
+    expect(mocks.manager.create).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ description: 'Travel: taxi [EXP-0001]' }),
     );
 

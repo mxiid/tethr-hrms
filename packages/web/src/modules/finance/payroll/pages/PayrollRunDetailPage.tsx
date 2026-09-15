@@ -131,6 +131,8 @@ export const PayrollRunDetailPage = () => {
   const [taxInputs, setTaxInputs] = useState<Record<string, string>>({});
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [finalizeReason, setFinalizeReason] = useState('');
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [payReference, setPayReference] = useState('');
 
   const { data, loading, error: loadError, refetch } = useQuery<PayrollRunData>(
     PAYROLL_RUN_QUERY,
@@ -192,6 +194,19 @@ export const PayrollRunDetailPage = () => {
     if (!ok) return;
     setFinalizeOpen(false);
     setFinalizeReason('');
+  };
+
+  const submitMarkPaid = async (): Promise<void> => {
+    const ok = await runAction(
+      () =>
+        markRunPaid({
+          variables: { runId, paymentReference: payReference.trim() || null },
+        }),
+      'Run marked as paid.',
+    );
+    if (ok) {
+      setPayModalOpen(false);
+    }
   };
 
   const requestFinalize = (): void => {
@@ -314,17 +329,10 @@ export const PayrollRunDetailPage = () => {
                 className="button button-primary"
                 disabled={markingPaid}
                 type="button"
-                onClick={() =>
-                  void runAction(
-                    async () => {
-                      const reference = window.prompt('Payment reference (optional)') ?? null;
-                      await markRunPaid({
-                        variables: { runId, paymentReference: reference || null },
-                      });
-                    },
-                    'Run marked as paid.',
-                  )
-                }
+                onClick={() => {
+                  setPayReference('');
+                  setPayModalOpen(true);
+                }}
               >
                 {markingPaid ? 'Saving…' : 'Mark as paid'}
               </button>
@@ -666,6 +674,44 @@ export const PayrollRunDetailPage = () => {
           </div>
         ) : null}
       </aside>
+
+      <Modal
+        isOpen={payModalOpen}
+        onClose={() => setPayModalOpen(false)}
+        title="Mark run as paid"
+        width="sm"
+      >
+        <p className="field-hint">
+          This records the disbursement on the run. The reference is optional.
+        </p>
+        {error ? <p className="auth-error" role="alert">{error}</p> : null}
+        <form
+          className="config-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitMarkPaid();
+          }}
+        >
+          <div className="field">
+            <label htmlFor="pay-reference">Payment reference</label>
+            <input
+              id="pay-reference"
+              autoFocus
+              maxLength={120}
+              placeholder="e.g. Bank transfer 20260930"
+              value={payReference}
+              onChange={(event) => setPayReference(event.target.value)}
+            />
+          </div>
+          <button
+            className="button button-primary button-full"
+            disabled={markingPaid}
+            type="submit"
+          >
+            {markingPaid ? 'Saving…' : 'Mark as paid'}
+          </button>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={finalizeOpen}

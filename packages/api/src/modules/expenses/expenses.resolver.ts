@@ -301,14 +301,14 @@ export class ExpensesResolver {
   @RequirePermissions(PERMISSIONS.expenseApprove)
   async decideExpenseClaim(@Args() args: DecideExpenseClaimArgs): Promise<ExpenseClaimView> {
     const user = await this.authService.getCurrentUser();
-    const claim = await this.claimService.decideClaim(
+    const detail = await this.claimService.decideClaim(
       args.claimId,
       args.decision,
       args.note ?? null,
       toId<UserId>(user.id),
       args.sourceOrganizationId ?? null,
     );
-    return toClaimView(await this.claimService.getClaimDetail(claim.id));
+    return toClaimView(detail);
   }
 
   @Mutation(() => ExpenseClaimView)
@@ -317,7 +317,7 @@ export class ExpensesResolver {
   async markExpenseClaimReimbursed(
     @Args() args: MarkExpenseClaimReimbursedArgs,
   ): Promise<ExpenseClaimView> {
-    const claim = await this.claimService.markReimbursed(
+    const detail = await this.claimService.markReimbursed(
       args.claimId,
       {
         method: args.method,
@@ -328,7 +328,7 @@ export class ExpensesResolver {
       },
       args.sourceOrganizationId ?? null,
     );
-    return toClaimView(await this.claimService.getClaimDetail(claim.id));
+    return toClaimView(detail);
   }
 
   @Mutation(() => BillExpenseClaimResultView)
@@ -344,7 +344,7 @@ export class ExpensesResolver {
       args.sourceOrganizationId ?? null,
     );
     return {
-      claim: toClaimView(await this.claimService.getClaimDetail(result.claim.id)),
+      claim: toClaimView(result.detail),
       invoiceId: result.invoiceId,
       addedLines: result.addedLines,
     };

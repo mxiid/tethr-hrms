@@ -12,7 +12,7 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In, type FindOptionsWhere } from 'typeorm';
+import { DataSource, In, IsNull, Not, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
@@ -116,6 +116,25 @@ const safeSegment = (value: string): string =>
 const isUniqueViolation = (cause: unknown): boolean => {
   const driverError = (cause as { readonly driverError?: { readonly code?: string } }).driverError;
   return driverError?.code === '23505';
+};
+
+// Receipts are documents or photos. Anything the browser can execute (HTML,
+// SVG) is refused at upload and at attach time, so the dev storage driver can
+// never serve active content from a signed receipt link.
+const ALLOWED_RECEIPT_CONTENT_TYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+]);
+
+const assertReceiptContentType = (contentType: string): void => {
+  if (!ALLOWED_RECEIPT_CONTENT_TYPES.has(contentType.trim().toLowerCase())) {
+    throw new ValidationFailedError('Receipt must be a PDF or image file', { contentType });
+  }
 };
 
 // The employee expense-claim domain: categories, claims and lines, with
@@ -326,9 +345,14 @@ export class ExpenseClaimService {
     const categoryNameByCategoryId = new Map(
       categories.map((category) => [category.id, category.name]),
     );
+    // One directory query for every claimant instead of one per claim.
+    const employees = await this.employeeDirectory.getByIds([
+      ...new Set(claims.map((claim) => claim.employeeId)),
+    ]);
+    const employeeById = new Map(employees.map((employee) => [employee.id, employee]));
     const details: ExpenseClaimDetail[] = [];
     for (const claim of claims) {
-      const employee = await this.employeeDirectory.getById(claim.employeeId);
+      const employee = employeeById.get(claim.employeeId);
       details.push({
         claim,
         lines: lines.filter((line) => line.claimId === claim.id),
@@ -452,8 +476,16 @@ export class ExpenseClaimService {
     const maxAttempts = 3;
     for (let attempt = 1; ; attempt += 1) {
       try {
-        const sequence = await this.claims.count();
-        claim.claimNumber = `EXP-${pad4(sequence + 1)}`;
+        // Derive from the highest issued number, never a row count: drafts hold
+        // null numbers, and a concurrent winner just advances the max so the
+        // retry picks the next free value (the unique index is the backstop).
+        const highest = await this.claims.find({
+          where: { claimNumber: Not(IsNull()) } as FindOptionsWhere<ExpenseClaim>,
+          order: { claimNumber: 'DESC' },
+          take: 1,
+        });
+        const highestNumber = Number(highest[0]?.claimNumber?.slice('EXP-'.length) ?? '0') || 0;
+        claim.claimNumber = `EXP-${pad4(highestNumber + 1)}`;
         claim.status = 'submitted';
         claim.submittedAt = new Date();
         const saved = await this.claims.save(claim);
@@ -497,14 +529,15 @@ export class ExpenseClaimService {
 
   // Approver side: the workflow decision is recorded first, then the claim
   // reflects it. `sourceOrganizationId` lets the Tethr board act on a client's
-  // workspace through the audited platform switch.
+  // workspace through the audited platform switch. Returns the hydrated detail
+  // so the caller never has to re-read the claim after the tenant is restored.
   async decideClaim(
     claimId: string,
     decision: 'approved' | 'rejected',
     note: string | null,
     userId: UserId,
     sourceOrganizationId?: string | null,
-  ): Promise<ExpenseClaim> {
+  ): Promise<ExpenseClaimDetail> {
     const organizationId = this.tenantContext.getOrganizationId();
     if (sourceOrganizationId && sourceOrganizationId !== organizationId) {
       await this.platformScope.assertOperator(PERMISSIONS.platformReadAll);
@@ -539,17 +572,19 @@ export class ExpenseClaimService {
       resourceId: saved.id,
       after: { claimNumber: saved.claimNumber, note: saved.decisionNote },
     });
-    return saved;
+    return this.getClaimDetail(saved.id);
   }
 
   // Reimbursement: `direct` records the payment; `payroll` schedules an earning
   // adjustment for a chosen period and keeps the adjustment id, so the payslip
-  // line traces back to this claim.
+  // line traces back to this claim. The claim row is locked for the decision so
+  // concurrent/replayed calls cannot pay twice, and a payroll retry reuses the
+  // adjustment already created for this claim (idempotent by source).
   async markReimbursed(
     claimId: string,
     input: MarkClaimReimbursedData,
     sourceOrganizationId?: string | null,
-  ): Promise<ExpenseClaim> {
+  ): Promise<ExpenseClaimDetail> {
     const organizationId = this.tenantContext.getOrganizationId();
     if (sourceOrganizationId && sourceOrganizationId !== organizationId) {
       await this.platformScope.assertOperator(PERMISSIONS.platformReadAll);
@@ -563,64 +598,100 @@ export class ExpenseClaimService {
         () => this.markReimbursed(claimId, input, null),
       );
     }
-    const claim = await this.claims.findById(claimId);
-    if (!claim) {
-      throw new NotFoundError('Expense claim not found', { id: claimId });
-    }
-    if (claim.status !== 'approved') {
-      throw new ConflictError(`Only approved claims can be reimbursed (status: ${claim.status})`);
-    }
     if (input.method === 'payroll') {
       if (!input.componentId || !input.periodYear || !input.periodMonth) {
         throw new ValidationFailedError(
           'Payroll reimbursement needs a componentId and a pay period',
         );
       }
-      const adjustment = await this.compensation.createAdjustment({
-        employeeId: claim.employeeId,
-        componentId: toId<PayComponentId>(input.componentId),
-        amount: Number(claim.totalAmount),
-        currency: claim.currency,
-        periodYear: input.periodYear,
-        periodMonth: input.periodMonth,
-        kind: 'reimbursement',
-        sourceType: 'expenseClaim',
-        sourceId: claim.id,
-        note: `Expense claim ${claim.claimNumber ?? claim.id}`,
-      });
-      claim.payrollAdjustmentId = adjustment.id;
-      claim.reimbursementPeriodYear = input.periodYear;
-      claim.reimbursementPeriodMonth = input.periodMonth;
-      claim.reimbursementReference = input.paymentReference ?? null;
-    } else {
-      claim.reimbursementReference = input.paymentReference?.slice(0, 120) ?? null;
     }
-    claim.reimbursementMethod = input.method;
-    claim.reimbursedAt = new Date();
-    claim.status = 'paid';
-    const saved = await this.claims.save(claim);
-    await this.audit.record({
-      action: 'reimburse',
-      resourceType: 'expense_claim',
-      resourceId: saved.id,
-      after: {
-        claimNumber: saved.claimNumber,
-        method: saved.reimbursementMethod,
-        total: Number(saved.totalAmount),
-        payrollAdjustmentId: saved.payrollAdjustmentId,
-      },
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const claim = await manager.findOne(ExpenseClaim, {
+        where: { id: claimId } as FindOptionsWhere<ExpenseClaim>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!claim) {
+        throw new NotFoundError('Expense claim not found', { id: claimId });
+      }
+      if (claim.status !== 'approved') {
+        throw new ConflictError(
+          `Only approved claims can be reimbursed (status: ${claim.status})`,
+        );
+      }
+      if (input.method === 'payroll') {
+        const periodYear = input.periodYear as number;
+        const periodMonth = input.periodMonth as number;
+        // A retry after the adjustment was created but the claim save failed
+        // must reuse that adjustment instead of paying the employee twice.
+        const existing = await this.compensation.getAdjustmentsForPeriod(
+          claim.employeeId,
+          periodYear,
+          periodMonth,
+        );
+        const match = existing.find(
+          (adjustment) =>
+            adjustment.sourceType === 'expenseClaim' && adjustment.sourceId === claim.id,
+        );
+        const adjustmentId =
+          match?.adjustmentId ??
+          (
+            await this.compensation.createAdjustment({
+              employeeId: claim.employeeId,
+              componentId: toId<PayComponentId>(input.componentId as string),
+              amount: Number(claim.totalAmount),
+              currency: claim.currency,
+              periodYear,
+              periodMonth,
+              kind: 'reimbursement',
+              sourceType: 'expenseClaim',
+              sourceId: claim.id,
+              note: `Expense claim ${claim.claimNumber ?? claim.id}`,
+            })
+          ).id;
+        claim.payrollAdjustmentId = adjustmentId;
+        claim.reimbursementPeriodYear = periodYear;
+        claim.reimbursementPeriodMonth = periodMonth;
+        claim.reimbursementReference = input.paymentReference ?? null;
+      } else {
+        claim.reimbursementReference = input.paymentReference?.slice(0, 120) ?? null;
+      }
+      claim.reimbursementMethod = input.method;
+      claim.reimbursedAt = new Date();
+      claim.status = 'paid';
+      const persisted = await manager.save(claim);
+      await this.audit.record(
+        {
+          action: 'reimburse',
+          resourceType: 'expense_claim',
+          resourceId: persisted.id,
+          after: {
+            claimNumber: persisted.claimNumber,
+            method: persisted.reimbursementMethod,
+            total: Number(persisted.totalAmount),
+            payrollAdjustmentId: persisted.payrollAdjustmentId,
+          },
+        },
+        manager,
+      );
+      return persisted;
     });
-    return saved;
+    return this.getClaimDetail(saved.id);
   }
 
   // Billable lines ride the client's expenses invoice through the billing
-  // published method; the claim keeps the invoice id for the audit trail.
+  // published method; the claim keeps the invoice id for the audit trail. The
+  // claim row is locked across the check-and-bill so concurrent calls cannot
+  // append the same claim twice.
   async billToClient(
     claimId: string,
     serviceYear: number,
     serviceMonth: number,
     sourceOrganizationId?: string | null,
-  ): Promise<{ readonly claim: ExpenseClaim; readonly invoiceId: string; readonly addedLines: number }> {
+  ): Promise<{
+    readonly detail: ExpenseClaimDetail;
+    readonly invoiceId: string;
+    readonly addedLines: number;
+  }> {
     const organizationId = this.tenantContext.getOrganizationId();
     if (sourceOrganizationId && sourceOrganizationId !== organizationId) {
       await this.platformScope.assertOperator(PERMISSIONS.platformReadAll);
@@ -663,30 +734,60 @@ export class ExpenseClaimService {
     if (billableLines.length === 0) {
       throw new ValidationFailedError('This claim has no client-billable lines');
     }
-    const result = await this.invoices.addExpenseClaimLines({
-      employeeId: claim.employeeId,
-      serviceYear,
-      serviceMonth,
-      sourceLabel: claim.claimNumber ?? claim.id,
-      lines: billableLines.map((line) => ({
-        description: `${billableCategories.get(line.categoryId)?.name ?? 'Expense'}: ${line.description}`,
-        amount: Number(line.amount),
-      })),
+    const latestExpenseDate = billableLines.reduce(
+      (latest, line) => (line.expenseDate > latest ? line.expenseDate : latest),
+      billableLines[0].expenseDate,
+    );
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const locked = await manager.findOne(ExpenseClaim, {
+        where: { id: claim.id } as FindOptionsWhere<ExpenseClaim>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) {
+        throw new NotFoundError('Expense claim not found', { id: claimId });
+      }
+      if (locked.billedInvoiceId) {
+        throw new ConflictError('This claim is already billed to the client', {
+          invoiceId: locked.billedInvoiceId,
+        });
+      }
+      const result = await this.invoices.addExpenseClaimLines({
+        employeeId: locked.employeeId,
+        serviceYear,
+        serviceMonth,
+        sourceLabel: locked.claimNumber ?? locked.id,
+        // The invoice is denominated in the billing currency; pass the claim's
+        // own currency and let billing convert at the frozen claim rate.
+        sourceCurrency: locked.currency,
+        asOf: latestExpenseDate,
+        lines: billableLines.map((line) => ({
+          description: `${billableCategories.get(line.categoryId)?.name ?? 'Expense'}: ${line.description}`,
+          amount: Number(line.amount),
+        })),
+      });
+      locked.billedInvoiceId = result.invoice.id;
+      locked.billedAt = new Date();
+      const persisted = await manager.save(locked);
+      await this.audit.record(
+        {
+          action: 'billToClient',
+          resourceType: 'expense_claim',
+          resourceId: persisted.id,
+          after: {
+            claimNumber: persisted.claimNumber,
+            invoiceId: result.invoice.id,
+            addedLines: result.addedLines,
+          },
+        },
+        manager,
+      );
+      return { persisted, result };
     });
-    claim.billedInvoiceId = result.invoice.id;
-    claim.billedAt = new Date();
-    const saved = await this.claims.save(claim);
-    await this.audit.record({
-      action: 'billToClient',
-      resourceType: 'expense_claim',
-      resourceId: saved.id,
-      after: {
-        claimNumber: saved.claimNumber,
-        invoiceId: result.invoice.id,
-        addedLines: result.addedLines,
-      },
-    });
-    return { claim: saved, invoiceId: result.invoice.id, addedLines: result.addedLines };
+    return {
+      detail: await this.getClaimDetail(saved.persisted.id),
+      invoiceId: saved.result.invoice.id,
+      addedLines: saved.result.addedLines,
+    };
   }
 
   // --- Receipts ---
@@ -701,6 +802,7 @@ export class ExpenseClaimService {
     readonly expiresAt: Date;
     readonly headers: readonly StorageAccessHeader[];
   }> {
+    assertReceiptContentType(input.contentType);
     const organizationId = this.tenantContext.getOrganizationId();
     const storageKey = `expense-receipts/${organizationId}/${todayIso()}/${randomUUID()}-${safeSegment(
       input.fileName,
@@ -749,6 +851,7 @@ export class ExpenseClaimService {
     if (!receipt.storageKey.startsWith(`expense-receipts/${organizationId}/`)) {
       throw new ValidationFailedError('Receipt does not belong to this workspace');
     }
+    assertReceiptContentType(receipt.contentType);
     const info = await this.storage.statObject(receipt.storageKey);
     if (!info) {
       throw new ValidationFailedError('Receipt upload was not found');

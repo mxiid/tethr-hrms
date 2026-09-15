@@ -1,4 +1,5 @@
 import { ArgsType, Field, ID, InputType } from '@nestjs/graphql';
+import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -11,6 +12,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
 @InputType()
@@ -32,6 +34,7 @@ export class ExpenseReceiptInput {
 
   @Field(() => Number)
   @IsNumber()
+  @IsInt()
   @Min(1)
   sizeBytes!: number;
 }
@@ -164,6 +167,8 @@ export class AddExpenseClaimLineInput {
 
   @Field(() => ExpenseReceiptInput, { nullable: true })
   @IsOptional()
+  @ValidateNested()
+  @Type(() => ExpenseReceiptInput)
   receipt?: ExpenseReceiptInput | null;
 }
 
@@ -197,6 +202,8 @@ export class UpdateExpenseClaimLineInput {
 
   @Field(() => ExpenseReceiptInput, { nullable: true })
   @IsOptional()
+  @ValidateNested()
+  @Type(() => ExpenseReceiptInput)
   receipt?: ExpenseReceiptInput | null;
 }
 

@@ -1,4 +1,5 @@
 import { toId, type EmployeeId, type OrganizationId } from '@hrms/shared';
+import type { DataSource } from 'typeorm';
 
 import { AuditService } from '../../../core/audit/audit.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
@@ -93,6 +94,14 @@ const buildService = () => {
 
   const service = new FinalSettlementService(
     settlements,
+    {
+      transaction: jest.fn(async (work: (manager: unknown) => Promise<unknown>) =>
+        work({
+          findOne: jest.fn(async () => null),
+          save: jest.fn(async (value: unknown) => value),
+        }),
+      ),
+    } as unknown as DataSource,
     compensation as unknown as CompensationService,
     employeeDirectory as unknown as EmployeeDirectoryService,
     leaveBalances as unknown as LeaveBalanceService,

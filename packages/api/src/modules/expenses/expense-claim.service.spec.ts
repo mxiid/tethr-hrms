@@ -9,9 +9,10 @@ import { TenantContextService } from '../../core/tenancy/tenant-context.service'
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 import { WorkflowService } from '../../core/workflow';
 import { EmployeeDirectoryService } from '../employee';
-import { OrganizationService } from '../organization/organization.service';
-import { CompensationService } from '../finance/compensation';
 import { InvoiceService } from '../finance/billing/invoice.service';
+import { CompensationService } from '../finance/compensation';
+import { OrganizationService } from '../organization/organization.service';
+
 import { ExpenseCategory } from './entities/expense-category.entity';
 import { ExpenseClaimLine } from './entities/expense-claim-line.entity';
 import { ExpenseClaim } from './entities/expense-claim.entity';
@@ -72,15 +73,22 @@ const travelCategory = (overrides: Partial<ExpenseCategory> = {}): ExpenseCatego
 const buildService = () => {
   const manager = {
     find: jest.fn(async () => [] as unknown[]),
-    findOne: jest.fn(async () => null),
+    // Locked reads inside markReimbursed/billToClient resolve to the same
+    // fixture the repositories serve, so tests can steer them via claims.findById.
+    findOne: jest.fn(async (entity: unknown) =>
+      entity === ExpenseClaim ? claims.findById() : null,
+    ),
     save: jest.fn(async (entity: unknown) => entity),
     remove: jest.fn(async (entity: unknown) => entity),
   };
   const dataSource = {
     transaction: jest.fn(async (work: (mgr: typeof manager) => Promise<unknown>) => work(manager)),
   };
+  const stableClaim = claimFixture();
   const claims = {
-    findById: jest.fn(async () => claimFixture()),
+    // Stable instance: mutations made through the manager are visible to the
+    // detail re-read (which goes through this same repository).
+    findById: jest.fn(async () => stableClaim),
     find: jest.fn(async () => [] as ExpenseClaim[]),
     create: jest.fn((data: Record<string, unknown>) => ({ ...data })),
     save: jest.fn(async (entity: unknown) => entity),
@@ -117,8 +125,14 @@ const buildService = () => {
   };
   const employeeDirectory = {
     getById: jest.fn(async () => ({ firstName: 'Ayesha', lastName: 'Khan' })),
+    getByIds: jest.fn(async (ids: readonly string[]) =>
+      ids.map((id) => ({ id, firstName: 'Ayesha', lastName: 'Khan' })),
+    ),
   };
-  const compensation = { createAdjustment: jest.fn(async () => ({ id: 'adjustment-1' })) };
+  const compensation = {
+    createAdjustment: jest.fn(async () => ({ id: 'adjustment-1' })),
+    getAdjustmentsForPeriod: jest.fn(async () => []),
+  };
   const invoices = {
     addExpenseClaimLines: jest.fn(async () => ({ invoice: { id: 'invoice-1' }, addedLines: 1 })),
   };
@@ -182,7 +196,7 @@ describe('ExpenseClaimService', () => {
           receipt: {
             storageKey: `expense-receipts/${ORG}/2027-05-04/receipt.txt`,
             fileName: 'receipt.txt',
-            contentType: 'text/plain',
+            contentType: 'application/pdf',
             sizeBytes: 10,
           },
         },
@@ -205,7 +219,7 @@ describe('ExpenseClaimService', () => {
           receipt: {
             storageKey: `expense-receipts/${ORG}/2027-05-04/receipt.txt`,
             fileName: 'receipt.txt',
-            contentType: 'text/plain',
+            contentType: 'application/pdf',
             sizeBytes: 10,
           },
         },
@@ -236,8 +250,8 @@ describe('ExpenseClaimService', () => {
         amount: 6000,
       }),
     );
-    expect(saved.payrollAdjustmentId).toBe('adjustment-1');
-    expect(saved.status).toBe('paid');
+    expect(saved.claim.payrollAdjustmentId).toBe('adjustment-1');
+    expect(saved.claim.status).toBe('paid');
   });
 
   it('refuses reimbursement before approval', async () => {
@@ -262,7 +276,7 @@ describe('ExpenseClaimService', () => {
     mocks.lines.find.mockResolvedValue([
       { id: 'line-1', claimId: 'claim-1' } as ExpenseClaimLine,
     ]);
-    mocks.claims.count.mockResolvedValue(2);
+    mocks.claims.find.mockResolvedValue([{ claimNumber: 'EXP-0002' } as ExpenseClaim]);
     const submitted = await service.submitClaim('claim-1', selfActor);
     expect(submitted.claimNumber).toBe('EXP-0003');
     expect(submitted.status).toBe('submitted');
@@ -270,6 +284,18 @@ describe('ExpenseClaimService', () => {
       expect.objectContaining({ subjectType: 'expenseClaim', subjectId: 'claim-1' }),
     );
     expect(submitted.approvalRequestId).toBe('approval-1');
+  });
+
+  it('numbers from the highest issued claim, not from draft rows', async () => {
+    const { service, mocks } = buildService();
+    mocks.claims.findById.mockResolvedValue(claimFixture({ status: 'draft', claimNumber: null }));
+    mocks.lines.find.mockResolvedValue([
+      { id: 'line-1', claimId: 'claim-1' } as ExpenseClaimLine,
+    ]);
+    // Two abandoned drafts (null numbers) must not influence the sequence.
+    mocks.claims.find.mockResolvedValue([{ claimNumber: 'EXP-0007' } as ExpenseClaim]);
+    const submitted = await service.submitClaim('claim-1', selfActor);
+    expect(submitted.claimNumber).toBe('EXP-0008');
   });
 
   it('survives a concurrent default-category seed without failing the read', async () => {

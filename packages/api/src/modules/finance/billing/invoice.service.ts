@@ -971,6 +971,8 @@ export class InvoiceService {
     readonly serviceYear: number;
     readonly serviceMonth: number;
     readonly sourceLabel: string;
+    readonly sourceCurrency?: string;
+    readonly asOf?: IsoDate;
     readonly lines: readonly { readonly description: string; readonly amount: number }[];
   }): Promise<{ invoice: Invoice; addedLines: number }> {
     const membership = await this.members.findOne({
@@ -988,6 +990,31 @@ export class InvoiceService {
       throw new NotFoundError('Billing group not found', { id: membership.groupId });
     }
     const config = await this.getConfig();
+    // The invoice is denominated in the billing currency; a claim in another
+    // currency is converted at the rate of its expense date (or the claim's
+    // fallback date), so invoice totals are never a currency mishmash.
+    const billingCurrency = config.feeCurrency;
+    let convertedLines = input.lines.map((line) => ({
+      description: line.description,
+      amount: line.amount,
+    }));
+    if (input.sourceCurrency && input.sourceCurrency !== billingCurrency) {
+      const rate = await this.fx.getRate(
+        input.sourceCurrency,
+        billingCurrency,
+        input.asOf ?? new Date().toISOString().slice(0, 10),
+      );
+      if (rate === null) {
+        throw new ValidationFailedError(
+          `No ${input.sourceCurrency}→${billingCurrency} exchange rate is configured for the claim date`,
+          { sourceCurrency: input.sourceCurrency, billingCurrency, asOf: input.asOf ?? null },
+        );
+      }
+      convertedLines = input.lines.map((line) => ({
+        description: line.description,
+        amount: round2(line.amount * rate),
+      }));
+    }
     // One expenses document per group and month (the unique index just ignores
     // voided rows). An issued or paid one means the month is closed to new
     // pass-through lines — surface that instead of letting the insert hit the
@@ -1019,7 +1046,7 @@ export class InvoiceService {
           serviceMonth: input.serviceMonth,
           periodStart: window.start,
           periodEndExclusive: window.endExclusive,
-          currency: config.feeCurrency,
+          currency: billingCurrency,
           receiverName: config.receiverName,
           receiverAddress: config.receiverAddress,
           receiverEmail: config.receiverEmail,
@@ -1044,25 +1071,31 @@ export class InvoiceService {
     }
     const employee = await this.employeeDirectory.getById(input.employeeId);
     const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : null;
-    let sortOrder = existingLines.length;
-    for (const line of input.lines) {
-      await this.lines.save(
-        this.lines.create({
-          invoiceId: invoice.id,
-          kind: 'expense',
-          employeeId: input.employeeId,
-          employeeName,
-          monthLabel: null,
-          description: `${line.description.slice(0, 180)} ${marker}`,
-          quantity: '1',
-          unitPrice: toMoneyString(line.amount),
-          total: toMoneyString(line.amount),
-          sortOrder,
-        }),
-      );
-      sortOrder += 1;
-    }
-    await this.recomputeTotals(toId<InvoiceId>(invoice.id));
+    const invoiceId = toId<InvoiceId>(invoice.id);
+    // All-or-nothing: a failure mid-list must not leave the invoice billed for
+    // part of a claim (the marker above then makes a retry safe).
+    await this.dataSource.transaction(async (manager) => {
+      let sortOrder = existingLines.length;
+      for (const line of convertedLines) {
+        await manager.save(
+          manager.create(InvoiceLine, {
+            organizationId: invoice.organizationId,
+            invoiceId,
+            kind: 'expense',
+            employeeId: input.employeeId,
+            employeeName,
+            monthLabel: null,
+            description: `${line.description.slice(0, 180)} ${marker}`,
+            quantity: '1',
+            unitPrice: toMoneyString(line.amount),
+            total: toMoneyString(line.amount),
+            sortOrder,
+          }),
+        );
+        sortOrder += 1;
+      }
+      await recomputeTotalsWithin(manager, invoiceId);
+    });
     const refreshed = await this.invoices.findById(invoice.id);
     return { invoice: refreshed ?? invoice, addedLines: input.lines.length };
   }
@@ -1287,20 +1320,40 @@ export class InvoiceService {
     }
     invoice.status = 'voided';
     const saved = await this.invoices.save(invoice);
-    // A close row may have been computed including this invoice; refresh it so
-    // the stored variance stops reflecting a document that no longer exists.
-    const close = await this.periodCloses.findOne({
+    // Closes are keyed by the month a line covers, so every month label on the
+    // voided document needs its close refreshed — not just the invoice's service
+    // month (advance billing sets that a month ahead of the covered lines).
+    const voidedLines = await this.lines.find({
       where: {
-        serviceYear: saved.serviceYear,
-        serviceMonth: saved.serviceMonth,
-      } as FindOptionsWhere<BillingPeriodClose>,
+        invoiceId: saved.id,
+        kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
+      } as FindOptionsWhere<InvoiceLine>,
     });
-    if (close) {
-      const summary = await this.payrollRuns.getFinalizedRunSummary(
-        toId<PayrollRunId>(close.payrollRunId),
-      );
-      const snapshot = await this.recordCostSnapshot(summary, await this.getConfig());
-      await this.reconcileServiceMonth(summary, snapshot);
+    const affectedMonths = new Map<string, { year: number; month: number }>();
+    for (const line of voidedLines) {
+      const parsed = line.monthLabel ? parseMonthLabel(line.monthLabel) : null;
+      if (parsed) {
+        affectedMonths.set(`${parsed.year}-${parsed.month}`, parsed);
+      }
+    }
+    if (affectedMonths.size > 0) {
+      const config = await this.getConfig();
+      for (const period of affectedMonths.values()) {
+        const close = await this.periodCloses.findOne({
+          where: {
+            serviceYear: period.year,
+            serviceMonth: period.month,
+          } as FindOptionsWhere<BillingPeriodClose>,
+        });
+        if (!close) {
+          continue;
+        }
+        const summary = await this.payrollRuns.getFinalizedRunSummary(
+          toId<PayrollRunId>(close.payrollRunId),
+        );
+        const snapshot = await this.recordCostSnapshot(summary, config);
+        await this.reconcileServiceMonth(summary, snapshot);
+      }
     }
     await this.audit.record({
       action: 'void',

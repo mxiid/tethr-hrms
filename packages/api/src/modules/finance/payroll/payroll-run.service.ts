@@ -228,6 +228,24 @@ const taxableBase = (
   return base > 0 ? Math.round(base * 100) / 100 : 0;
 };
 
+// Generated benefit line identifiers must fit the snapshot columns
+// (componentCode varchar(32), componentName varchar(64)) no matter how long the
+// plan's own code/name is; a short hash keeps distinct plans distinct after
+// truncation.
+const shortCodeHash = (value: string): string => {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36).slice(0, 5).toUpperCase();
+};
+
+const benefitComponentCode = (planCode: string, employer: boolean): string =>
+  `BEN-${planCode.slice(0, 16)}-${shortCodeHash(planCode)}${employer ? '-ER' : ''}`.slice(0, 32);
+
+const benefitComponentName = (planName: string, employer: boolean): string =>
+  `${planName} (${employer ? 'employer' : 'employee'})`.slice(0, 64);
+
 const escapeCsvField = (value: string): string =>
   /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
@@ -744,6 +762,10 @@ export class PayrollRunService {
     if (run.status !== 'finalized') {
       throw new ConflictError('Only finalized runs can be marked paid', { status: run.status });
     }
+    if (run.paidAt !== null) {
+      // A second call must not overwrite the recorded disbursement facts.
+      throw new ConflictError('Payroll run is already marked paid', { paidAt: run.paidAt });
+    }
     run.paidAt = input.settlementDate
       ? new Date(`${input.settlementDate}T00:00:00.000Z`)
       : new Date();
@@ -1218,8 +1240,8 @@ export class PayrollRunService {
         const rows: DraftComponent[] = [];
         if (charge.employeeShare > 0) {
           rows.push({
-            componentCode: `BENEFIT-${charge.planCode}`,
-            componentName: `${charge.planName} (employee)`,
+            componentCode: benefitComponentCode(charge.planCode, false),
+            componentName: benefitComponentName(charge.planName, false),
             category: 'deduction',
             taxable: false,
             dependsOnPaymentDays: false,
@@ -1232,8 +1254,8 @@ export class PayrollRunService {
         }
         if (charge.employerShare > 0) {
           rows.push({
-            componentCode: `BENEFIT-${charge.planCode}-ER`,
-            componentName: `${charge.planName} (employer)`,
+            componentCode: benefitComponentCode(charge.planCode, true),
+            componentName: benefitComponentName(charge.planName, true),
             category: 'employerContribution',
             taxable: false,
             dependsOnPaymentDays: false,

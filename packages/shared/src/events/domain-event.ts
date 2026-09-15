@@ -60,7 +60,6 @@ export const DOMAIN_EVENT_NAMES = [
   'compensation.revised',
   'compensation.taxProfileChanged',
   'benefits.enrollmentChanged',
-  'benefits.planChanged',
   'hiringRequest.submitted',
   'hiringRequest.updated',
   'form.submitted',
@@ -190,15 +189,12 @@ export type DomainEventPayloads = {
     readonly employeeId: EmployeeId;
     readonly effectiveDate: string;
   };
-  // Enrollment changes invalidate the benefits lines on open drafts; a plan
-  // amount change invalidates them for everyone enrolled.
+  // Enrollment changes invalidate the benefits lines on open drafts. Plan edits
+  // are templates for future enrollments (existing enrollments carry snapshots),
+  // so they publish nothing.
   'benefits.enrollmentChanged': {
     readonly enrollmentId: string;
     readonly employeeId: EmployeeId;
-    readonly effectiveDate: string;
-  };
-  'benefits.planChanged': {
-    readonly planId: string;
     readonly effectiveDate: string;
   };
   'hiringRequest.submitted': {

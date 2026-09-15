@@ -7,9 +7,10 @@ import {
   type IsoDate,
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import type { FindOptionsWhere } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, type FindOptionsWhere } from 'typeorm';
 
-import { ConflictError, NotFoundError } from '../../../common/errors';
+import { ConflictError, NotFoundError, ValidationFailedError } from '../../../common/errors';
 import { AuditService } from '../../../core/audit/audit.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../../core/tenancy/tenant-scoped.repository';
@@ -35,6 +36,7 @@ export class FinalSettlementService {
   constructor(
     @Inject(FINAL_SETTLEMENT_REPOSITORY)
     private readonly settlements: TenantScopedRepository<FinalSettlement>,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly compensation: CompensationService,
     private readonly employeeDirectory: EmployeeDirectoryService,
     private readonly leaveBalances: LeaveBalanceService,
@@ -212,30 +214,46 @@ export class FinalSettlementService {
     readonly paymentReference?: string | null;
     readonly settlementDate?: IsoDate | null;
   }): Promise<FinalSettlement> {
-    const settlement = await this.getForEmployee(input.employeeId);
-    if (!settlement) {
-      throw new NotFoundError('Final settlement not found', { employeeId: input.employeeId });
+    if (input.paymentReference != null && input.paymentReference.length > 120) {
+      throw new ValidationFailedError('paymentReference must be 120 characters or fewer');
     }
-    if (settlement.status !== 'computed') {
-      throw new ConflictError(`Settlement is already ${settlement.status}`, {
-        employeeId: input.employeeId,
+    // Lock the settlement row so two concurrent confirmations cannot both read
+    // `computed`, and keep the audit record in the same transaction: a failed
+    // audit rolls the transition back instead of leaving a paid row without one.
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const settlement = await manager.findOne(FinalSettlement, {
+        where: { employeeId: input.employeeId } as FindOptionsWhere<FinalSettlement>,
+        order: { computedAt: 'DESC' },
+        lock: { mode: 'pessimistic_write' },
       });
-    }
-    settlement.status = 'paid';
-    settlement.paidAt = input.settlementDate
-      ? new Date(`${input.settlementDate}T00:00:00.000Z`)
-      : new Date();
-    settlement.paymentReference = input.paymentReference ?? null;
-    const saved = await this.settlements.save(settlement);
-    await this.audit.record({
-      action: 'markPaid',
-      resourceType: 'final_settlement',
-      resourceId: saved.id,
-      after: {
-        employeeId: input.employeeId,
-        netPayableAmount: Number(saved.netPayableAmount),
-        paymentReference: saved.paymentReference,
-      },
+      if (!settlement) {
+        throw new NotFoundError('Final settlement not found', { employeeId: input.employeeId });
+      }
+      if (settlement.status !== 'computed') {
+        throw new ConflictError(`Settlement is already ${settlement.status}`, {
+          employeeId: input.employeeId,
+        });
+      }
+      settlement.status = 'paid';
+      settlement.paidAt = input.settlementDate
+        ? new Date(`${input.settlementDate}T00:00:00.000Z`)
+        : new Date();
+      settlement.paymentReference = input.paymentReference ?? null;
+      const persisted = await manager.save(settlement);
+      await this.audit.record(
+        {
+          action: 'markPaid',
+          resourceType: 'final_settlement',
+          resourceId: persisted.id,
+          after: {
+            employeeId: input.employeeId,
+            netPayableAmount: Number(persisted.netPayableAmount),
+            paymentReference: persisted.paymentReference,
+          },
+        },
+        manager,
+      );
+      return persisted;
     });
     return saved;
   }

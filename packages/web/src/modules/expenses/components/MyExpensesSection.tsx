@@ -97,7 +97,16 @@ export const MyExpensesSection = () => {
   const draft = claims.find((claim) => claim.id === draftClaimId) ?? null;
   const selectedCategory = categories.find((category) => category.id === categoryId) ?? null;
 
+  const resetLineEntry = (): void => {
+    setCategoryId('');
+    setExpenseDate(new Date().toISOString().slice(0, 10));
+    setDescription('');
+    setAmount('');
+    setReceiptFile(null);
+  };
+
   const openNew = (): void => {
+    resetLineEntry();
     setDraftClaimId(null);
     setPurpose('');
     setErrorMessage(null);
@@ -107,6 +116,7 @@ export const MyExpensesSection = () => {
 
   const openDraft = (claim: MyExpenseClaim): void => {
     if (claim.status !== 'draft') return;
+    resetLineEntry();
     setDraftClaimId(claim.id);
     setPurpose(claim.purpose);
     setErrorMessage(null);
@@ -367,6 +377,7 @@ export const MyExpensesSection = () => {
                     adding ||
                     !categoryId ||
                     description.trim().length === 0 ||
+                    !Number.isFinite(Number(amount)) ||
                     Number(amount) <= 0 ||
                     (selectedCategory?.requiresReceipt === true && receiptFile === null)
                   }

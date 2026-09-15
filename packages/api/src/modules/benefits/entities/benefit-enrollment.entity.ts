@@ -21,4 +21,17 @@ export class BenefitEnrollment extends TemporalEntity {
 
   @Column({ type: 'varchar', length: 300, nullable: true })
   note!: string | null;
+
+  // Snapshot of the plan's facts at enrollment time: plan edits are templates
+  // for future enrollments, and an existing enrollment keeps what it was sold
+  // (regenerating a historical draft must never restate older amounts). Null on
+  // rows written before snapshots existed; readers fall back to the live plan.
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  employeeContributionAmount!: string | null;
+
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  employerContributionAmount!: string | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  reducesTaxable!: boolean | null;
 }

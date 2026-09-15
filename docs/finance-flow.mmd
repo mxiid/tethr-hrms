@@ -1,5 +1,9 @@
 %% Finance / Employee-finance end-to-end flow — reverse-engineered from source.
 %% See docs/process-flows.md for the citation list and flagged ambiguities.
+%% HISTORICAL SNAPSHOT: this diagram records the pre-Phase-2 audit. Per-employee
+%% tax profiles, benefits enrollment, and employee expense claims were built and
+%% verified in Finance Phase 2 — see docs/STATUS.md. The "absent" nodes below
+%% describe the state when the audit was taken, not the current codebase.
 flowchart TD
 
 classDef automated fill:#eef0ff,stroke:#6666aa,stroke-dasharray: 3 3,color:#333;
@@ -9,6 +13,7 @@ classDef absent fill:#ffe0e0,stroke:#cc4444,color:#661111,stroke-dasharray: 5 5;
 
 %% ===================== SETUP =====================
 subgraph PHASE_SETUP["Phase 1: Employee Financial Setup"]
+  NOTE(["HISTORICAL (pre-Phase 2 audit).\nTax profiles, benefits enrollment and\nexpense claims have since shipped."])
   F_START(["HR/Finance sets up an\nemployee's compensation"])
   F_STRUCT["Salary Structure defined\nPayComponent breakdown: earning / deduction /\nemployerContribution, percentOfGross or fixedMonthly.\ncompensation.service.ts"]
   F_REVISE["reviseSalary creates a SalaryRevision\neffective-dated (TemporalEntity). This IS the\nemployee-to-structure link - no separate\n'assignment' entity exists.\ncompensationWrite: tethrHr or clientAdmin"]
