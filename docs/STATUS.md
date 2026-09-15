@@ -2,6 +2,20 @@
 
 > As of 2026-09-04 (`feat/attendance-module-and-ux-revamp`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## Hiring flow: the ten flagged gaps closed (2026-09-15, local — not pushed)
+
+The hiring-flow ambiguities recorded in [process-flows.md](process-flows.md) are fixed, with one migration (`ApplicationsUniqueActive`) and new consumers; the notes below are the audit trail.
+
+**Lifecycle.** Sending an offer now writes `stage = 'offer'` on the application, and sub-stage facts cascade to the outcome without a second manual update: a shortlist "not interested" or a failed/no-show interview ends the application `rejected`; a declined offer ends it `withdrawn`, a withdrawn offer `rejected`. Cascades are idempotent and never overwrite a `hired` or already-terminal outcome. Putting a hiring request on hold freezes its linked position (`frozen`), and resuming reopens it.
+
+**Intake integrity.** `FormSubmission` has no dead ends: `FormsService` validates `email`-typed fields before a submission is stored, and the projection now records missing-posting-context, missing-posting and invalid-email submissions as `rejected` with a reason. Migration `ApplicationsUniqueActive` adds a partial unique index (`(organizationId, candidateId, jobPostingId) WHERE outcome = 'active'`) after clearing any legacy duplicates, so one open application per person and posting is a database guarantee; intake refuses a duplicate with a reason and a `23505` backstop catches the race, and `updateApplication` refuses reactivating a duplicate. A rejected or withdrawn candidate can still re-apply later as a new row, preserving history.
+
+**Postings and events.** `unpublishJobPosting` is a real mutation, `postingForRequest` reports live state (the request panel gained an Unpublish button), and cancelling or filling a request unpublishes its postings — the live check caught that the board path returned before the unpublish ran, so the home-tenant unpublish now happens after the platform switch unwinds. Both previously dead events have consumers: `employee.created` seeds the seven onboarding tasks (idempotent) and `hiringRequest.updated` (payload now carries the title) sends a Slack notice.
+
+**Hire handoff and visibility.** Acceptance copies the offer's `probationDays` into `probationEndDate` on the employee and records the offered salary as the first `SalaryRevision` (reason `hire`) when the client workspace has an active structure in that currency — skipped otherwise, where payroll readiness still flags `noPayAssignment`. `employeeOnboardingProgress` gives the checklist an aggregate read (completed/total/allComplete, bank details included) and the profile badge says "all done". The CV parse seam is still a deliberate stub, but it is no longer invisible: the application view exposes `cvParse` and the pool shows "Awaiting AI parsing".
+
+**Verification.** Gates **255 API / 21 shared / 5 UI tests**, lint 0 errors, typecheck/build clean. Regression battery unchanged and green: ATS m4 7/7, m5 8/8, m6 10/10, m7 10/10, m8 9/9, m9 9/9, cross-workspace E2E 10/10, phase-b-hiring 4/4; finance Phase 1 15/15, M1 20/20, M2 14/14, M3 16/16 and UI 7/7, 11/11, 5/5, 5/5. New `verify-hiring-gaps` live suite **17/17** (duplicate rejection, malformed email, offer/decline/withdraw cascades, shortlist and interview cascades, freeze/reopen, board cancel unpublish, manual unpublish, onboarding seeding + progress, probation end date, hire revision). Migration applied to dev + scratch with duplicates prechecked and the scratch test proving cleanup + `23505`; schema parity **1145 columns, 0 differences**; migrations now **10**.
+
 ## PR #2 fifth review round: settlement-date integrity and migration locking (2026-09-15)
 
 The fifth pass flagged one migration-locking suggestion and a settlement-date integrity review; both are addressed.
