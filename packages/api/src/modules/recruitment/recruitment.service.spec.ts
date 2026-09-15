@@ -225,6 +225,22 @@ describe('RecruitmentService', () => {
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
   });
 
+  it('freezes the linked position when a request is put on hold', async () => {
+    const { service, positions } = buildService(
+      makeRequest({ status: 'open', positionId: 'position-1' }),
+    );
+    (positions.ensureByTitle as jest.Mock).mockResolvedValue({ id: 'position-1', status: 'open' });
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'onHold',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'frozen');
+  });
+
   it('reads the cross-client board under platform scope and labels workspaces', async () => {
     const request = makeRequest({ status: 'open' });
     const { service, repository, platformScope, organizations } = buildService();

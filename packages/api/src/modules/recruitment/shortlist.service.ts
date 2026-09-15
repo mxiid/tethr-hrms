@@ -276,6 +276,12 @@ export class ShortlistService {
         entry.clientNote = input.note ?? null;
         entry.decidedAt = input.decision === 'pending' ? null : new Date();
         const saved = await this.entries.save(entry);
+        // A client "not interested" is a terminal fact for the application: the
+        // operator no longer has to remember a second update. Changing the
+        // verdict back does not resurrect it — the decision is one-way here.
+        if (input.decision === 'rejected') {
+          await this.rejectApplication(entry.applicationId);
+        }
         if (shortlist.status === 'presented') {
           shortlist.status = 'feedbackReceived';
           await this.shortlists.save(shortlist);
@@ -283,6 +289,16 @@ export class ShortlistService {
         return saved;
       },
     );
+  }
+
+  // Terminal sub-stage facts end the application once: only an active, un-hired
+  // application is touched, so a repeated decision is a no-op.
+  private async rejectApplication(applicationId: string): Promise<void> {
+    const application = await this.applications.findById(applicationId);
+    if (application && application.outcome === 'active' && application.stage !== 'hired') {
+      application.outcome = 'rejected';
+      await this.applications.save(application);
+    }
   }
 
   private async getById(shortlistId: string): Promise<Shortlist> {

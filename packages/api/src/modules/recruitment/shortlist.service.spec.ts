@@ -168,6 +168,36 @@ describe('ShortlistService', () => {
     );
   });
 
+  it('a client rejection ends the application instead of waiting for a second update', async () => {
+    const { service, entries, shortlists, postings, applications } = buildService({
+      callerOrganization: CLIENT,
+    });
+    (entries.findById as jest.Mock).mockResolvedValue({
+      id: 'entry-1',
+      shortlistId: 'shortlist-1',
+      applicationId: 'application-1',
+      clientDecision: 'pending',
+      clientNote: null,
+      decidedAt: null,
+    });
+    (shortlists.findById as jest.Mock).mockResolvedValue({ id: 'shortlist-1', status: 'presented' });
+    (postings.findById as jest.Mock).mockResolvedValue({
+      id: 'posting-1',
+      sourceOrganizationId: CLIENT,
+    });
+    (applications.findById as jest.Mock).mockResolvedValue({
+      id: 'application-1',
+      stage: 'shortlisted',
+      outcome: 'active',
+    });
+
+    await service.recordDecision({ shortlistEntryId: 'entry-1', decision: 'rejected' });
+
+    expect(applications.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'application-1', outcome: 'rejected' }),
+    );
+  });
+
   it('hides another client’s entry as not-found', async () => {
     const { service, entries, shortlists, postings } = buildService({ callerOrganization: CLIENT });
     (entries.findById as jest.Mock).mockResolvedValue({ id: 'entry-1', shortlistId: 'shortlist-1' });

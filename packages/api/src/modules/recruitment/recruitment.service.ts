@@ -325,6 +325,16 @@ export class RecruitmentService {
         request.status === 'filled' ? 'filled' : 'closed',
       );
     }
+
+    // A held request freezes its position (no sourcing against it), and resuming
+    // reopens it through the `open` branch above. Never freeze a filled/closed
+    // position — only an open one.
+    if (request.positionId && request.status === 'onHold') {
+      const position = await this.positions.ensureByTitle(request.positionTitle);
+      if (position.status === 'open') {
+        await this.positions.setStatus(position.id, 'frozen');
+      }
+    }
     return request;
   }
 }

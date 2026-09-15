@@ -163,6 +163,54 @@ describe('OfferService', () => {
     await expect(service.send(OFFER_ID)).rejects.toThrow('Only a draft offer can be sent');
   });
 
+  it('moves the application to the offer stage when the offer is sent', async () => {
+    const { service, applications } = buildService({ offer: { status: 'draft' } });
+    (applications.findById as jest.Mock).mockResolvedValueOnce({
+      id: 'application-1',
+      stage: 'interviewing',
+      outcome: 'active',
+    });
+
+    await service.send(OFFER_ID);
+
+    expect(applications.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'application-1', stage: 'offer' }),
+    );
+  });
+
+  it('declining ends the application as withdrawn', async () => {
+    const { service, applications } = buildService();
+
+    await service.decline(OFFER_ID, 'Accepted another role');
+
+    expect(applications.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'application-1', outcome: 'withdrawn' }),
+    );
+  });
+
+  it('withdrawing ends the application as rejected', async () => {
+    const { service, applications } = buildService();
+
+    await service.withdraw(OFFER_ID);
+
+    expect(applications.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'application-1', outcome: 'rejected' }),
+    );
+  });
+
+  it('never rewrites an application that already hired', async () => {
+    const { service, applications } = buildService();
+    (applications.findById as jest.Mock).mockResolvedValueOnce({
+      id: 'application-1',
+      stage: 'hired',
+      outcome: 'hired',
+    });
+
+    await service.withdraw(OFFER_ID);
+
+    expect(applications.save).not.toHaveBeenCalled();
+  });
+
   it('acceptance locks the offer, hires into the client workspace, and closes the loop in one transaction', async () => {
     const {
       service,

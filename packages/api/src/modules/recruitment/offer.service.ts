@@ -95,7 +95,12 @@ export class OfferService {
     }
     offer.status = 'sent';
     offer.sentAt = new Date();
-    return this.compose(await this.offers.save(offer));
+    const saved = await this.offers.save(offer);
+    // Sending is the moment the pipeline reaches the offer stage; a draft was
+    // internal. The stage is never rolled back — decline/withdraw only end the
+    // outcome, leaving the reached stage as history.
+    await this.moveApplicationStage(saved.applicationId, 'offer');
+    return this.compose(saved);
   }
 
   async withdraw(offerId: string): Promise<OfferRecord> {
@@ -105,7 +110,10 @@ export class OfferService {
     }
     offer.status = 'withdrawn';
     offer.respondedAt = new Date();
-    return this.compose(await this.offers.save(offer));
+    const saved = await this.offers.save(offer);
+    // The company pulled the offer: the application ends rejected.
+    await this.closeApplication(saved.applicationId, 'rejected');
+    return this.compose(saved);
   }
 
   async decline(offerId: string, note?: string | null): Promise<OfferRecord> {
@@ -116,7 +124,33 @@ export class OfferService {
     offer.status = 'declined';
     offer.respondedAt = new Date();
     if (note) offer.notes = note;
-    return this.compose(await this.offers.save(offer));
+    const saved = await this.offers.save(offer);
+    // The candidate said no: the application ends withdrawn, not rejected.
+    await this.closeApplication(saved.applicationId, 'withdrawn');
+    return this.compose(saved);
+  }
+
+  // Stage moves follow the offer facts, so the pipeline is never left claiming
+  // an application is interviewing after it has reached the offer.
+  private async moveApplicationStage(applicationId: string, stage: 'offer'): Promise<void> {
+    const application = await this.applications.findById(applicationId);
+    if (application && application.stage !== 'hired' && application.stage !== stage) {
+      application.stage = stage;
+      await this.applications.save(application);
+    }
+  }
+
+  // Terminal sub-stage facts end the application once: only an active, un-hired
+  // application is touched, so a later retry or a second decline is a no-op.
+  private async closeApplication(
+    applicationId: string,
+    outcome: 'withdrawn' | 'rejected',
+  ): Promise<void> {
+    const application = await this.applications.findById(applicationId);
+    if (application && application.outcome === 'active' && application.stage !== 'hired') {
+      application.outcome = outcome;
+      await this.applications.save(application);
+    }
   }
 
   // Acceptance hires: employee in the client's workspace, application hired,

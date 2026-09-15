@@ -168,6 +168,28 @@ describe('InterviewService', () => {
     );
   });
 
+  it('a failed interview ends the application rejected', async () => {
+    const { service, applications, interviews } = buildService();
+    (applications.findById as jest.Mock).mockResolvedValue({
+      id: 'application-1',
+      stage: 'interviewing',
+      outcome: 'active',
+    });
+
+    await service.updateStatus({
+      interviewId: INTERVIEW_ID,
+      status: 'completed',
+      outcome: 'failed',
+    });
+
+    expect(interviews.save).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'failed' }),
+    );
+    expect(applications.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'application-1', outcome: 'rejected' }),
+    );
+  });
+
   it('rejects a panel member that is not on the interview', async () => {
     const { service, panel } = buildService({
       panelMember: { interviewId: 'other-interview' },
