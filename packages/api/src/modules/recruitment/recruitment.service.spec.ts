@@ -131,6 +131,7 @@ const buildService = (existing: HiringRequest | null = null) => {
     organizations,
     positions,
     tenantContext,
+    audit,
   };
 };
 
@@ -184,7 +185,7 @@ describe('RecruitmentService', () => {
   });
 
   it('opens a submitted request, links a position, and records the trail', async () => {
-    const { service, manager, publisher, positions, repository } = buildService(makeRequest());
+    const { service, manager, publisher, positions, audit } = buildService(makeRequest());
 
     const request = await service.updateHiringRequest({
       hiringRequestId: REQUEST,
@@ -198,7 +199,14 @@ describe('RecruitmentService', () => {
     expect(request.tethrNote).toBe('Kicking off sourcing.');
     expect(request.positionId).toBe('position-1');
     expect(positions.ensureByTitle).toHaveBeenCalledWith('Senior developer');
-    expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ positionId: 'position-1' }));
+    // The link and its audit are one atomic change.
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({ positionId: 'position-1' }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'linkPosition', resourceId: REQUEST }),
+      manager,
+    );
     expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: 'tethr',
@@ -206,6 +214,12 @@ describe('RecruitmentService', () => {
         note: 'Kicking off sourcing.',
         status: 'open',
       }),
+    );
+    // The status audit joins the update transaction instead of running after
+    // it, so a failed audit rolls the transition back.
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'update', resourceId: REQUEST }),
+      manager,
     );
     expect(publisher.publishWithin).toHaveBeenCalledWith(
       expect.anything(),

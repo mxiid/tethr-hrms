@@ -311,7 +311,7 @@ describe('OfferService', () => {
   });
 
   it('falls back to the title lookup only when the request has no linked position', async () => {
-    const { service, positions, recruitment } = buildService();
+    const { service, positions, recruitment, manager } = buildService();
     (recruitment.updateHiringRequest as jest.Mock).mockResolvedValue({
       id: 'request-1',
       status: 'filled',
@@ -322,6 +322,34 @@ describe('OfferService', () => {
 
     expect(positions.ensureByTitle).toHaveBeenCalledWith('Staff Engineer', expect.anything());
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'filled', expect.anything());
+    // The fallback records the link so the request cannot stay unlinked while
+    // its position is filled.
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'request-1', positionId: 'position-1' }),
+    );
+  });
+
+  it('reads the offer under a write lock in every status transition', async () => {
+    const draft = buildService({ offer: { status: 'draft' } });
+    await draft.service.send(OFFER_ID);
+    expect(draft.manager.findOne).toHaveBeenCalledWith(
+      Offer,
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+
+    const withdrawn = buildService({ offer: { status: 'sent' } });
+    await withdrawn.service.withdraw(OFFER_ID);
+    expect(withdrawn.manager.findOne).toHaveBeenCalledWith(
+      Offer,
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+
+    const declined = buildService({ offer: { status: 'sent' } });
+    await declined.service.decline(OFFER_ID);
+    expect(declined.manager.findOne).toHaveBeenCalledWith(
+      Offer,
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
   });
 
   it('refuses acceptance of an offer that was never sent', async () => {

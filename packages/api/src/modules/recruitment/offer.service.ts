@@ -97,6 +97,7 @@ export class OfferService {
           id: offerId,
           organizationId: this.tenantContext.getOrganizationId(),
         } as FindOptionsWhere<Offer>,
+        lock: { mode: 'pessimistic_write' },
       });
       if (!offer) {
         throw new NotFoundError('Offer not found', { id: offerId });
@@ -123,6 +124,7 @@ export class OfferService {
           id: offerId,
           organizationId: this.tenantContext.getOrganizationId(),
         } as FindOptionsWhere<Offer>,
+        lock: { mode: 'pessimistic_write' },
       });
       if (!offer) {
         throw new NotFoundError('Offer not found', { id: offerId });
@@ -147,6 +149,7 @@ export class OfferService {
           id: offerId,
           organizationId: this.tenantContext.getOrganizationId(),
         } as FindOptionsWhere<Offer>,
+        lock: { mode: 'pessimistic_write' },
       });
       if (!offer) {
         throw new NotFoundError('Offer not found', { id: offerId });
@@ -314,6 +317,11 @@ export class OfferService {
           } else {
             const position = await this.positions.ensureByTitle(posting.title, manager);
             await this.positions.setStatus(position.id, 'filled', manager);
+            // Record the link too: otherwise the request stays permanently
+            // unlinked while its position is filled, and a later reconcile
+            // could never find it by id.
+            filled.positionId = position.id;
+            await manager.save(filled);
           }
         },
         manager,

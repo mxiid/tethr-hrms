@@ -295,11 +295,24 @@ export class RecruitmentService {
           },
         });
       }
+      // The status audit commits with the request, its trail and its event:
+      // a failed audit rolls the whole transition back instead of leaving a
+      // changed request that the API reports as an error.
+      await this.audit.record(
+        {
+          action: 'update',
+          resourceType: 'hiring_request',
+          resourceId: saved.id,
+          before: { status: previousStatus },
+          after: { status: saved.status, positionId: saved.positionId },
+        },
+        manager,
+      );
       return { saved, previousStatus };
     };
     // A caller-owned transaction (offer acceptance) skips the position sync —
     // it performs the position closure itself within the same transaction.
-    const { saved, previousStatus } = input.manager
+    const { saved } = input.manager
       ? await run(input.manager)
       : await this.dataSource.transaction((manager) => run(manager));
 
@@ -310,7 +323,8 @@ export class RecruitmentService {
     // reconciliation can never reopen a position after a newer transition —
     // and the result below reports that freshest state (the link an `open`
     // reconciliation just made included). Best-effort — the updated event's
-    // consumer reconciles again durably.
+    // consumer reconciles again durably. The status audit already committed
+    // with the transaction; a link this make adds its own audit.
     let current = saved;
     if (!input.manager) {
       try {
@@ -323,18 +337,6 @@ export class RecruitmentService {
         );
       }
     }
-
-    await this.audit.record(
-      {
-        action: 'update',
-        resourceType: 'hiring_request',
-        resourceId: saved.id,
-        before: { status: previousStatus },
-        after: { status: saved.status, positionId: current.positionId },
-      },
-      // Join the caller's transaction when one is supplied (offer acceptance).
-      input.manager,
-    );
 
     // A closed (or held) request takes its posting off the air — decided from
     // the freshest state, so a stale transition (this call's snapshot) cannot
@@ -457,7 +459,21 @@ export class RecruitmentService {
       }
       const position = await this.positions.ensureByTitle(request.positionTitle);
       request.positionId = position.id;
-      await this.hiringRequests.save(request);
+      // The link and its audit are their own atomic change: reconciliation runs
+      // outside the request transaction, and a half-written link (row saved,
+      // audit failed) would hide the position ownership from the trail.
+      await this.dataSource.transaction(async (manager) => {
+        const linked = await manager.save(request);
+        await this.audit.record(
+          {
+            action: 'linkPosition',
+            resourceType: 'hiring_request',
+            resourceId: linked.id,
+            after: { positionId: linked.positionId },
+          },
+          manager,
+        );
+      });
       if (position.status !== 'open') {
         await this.positions.setStatus(position.id, 'open');
       }
