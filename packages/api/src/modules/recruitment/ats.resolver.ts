@@ -102,13 +102,11 @@ export class AtsResolver {
       toId<HiringRequestId>(input.hiringRequestId),
       input.organizationId ? toId<OrganizationId>(input.organizationId) : null,
     );
-    const { formId } = await this.ats.applicationFormForPosting(toId<JobPostingId>(posting.id));
-    const token = this.formTokens.mint({
-      formId,
-      organizationId: toId(posting.organizationId),
-      refId: posting.id,
-    });
-    return { jobPostingId: posting.id, title: posting.title, applyPath: `/apply/${token}` };
+    return {
+      jobPostingId: posting.id,
+      title: posting.title,
+      applyPath: await this.applyPathFor(posting),
+    };
   }
 
   // Takes a live posting off the air without touching its request. Closing the
@@ -124,7 +122,8 @@ export class AtsResolver {
   }
 
   // Live posting state for a request (null when it was never published), so the
-  // operator panel shows the truth after a reload.
+  // operator panel shows the truth after a reload — the signed apply link is
+  // re-minted from the posting, never stored.
   @Query(() => JobPostingView, { nullable: true })
   @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.hiringRequestManage)
@@ -132,7 +131,23 @@ export class AtsResolver {
     @Args('hiringRequestId', { type: () => ID }) hiringRequestId: string,
   ): Promise<JobPostingView | null> {
     const posting = await this.ats.getPostingForRequest(toId<HiringRequestId>(hiringRequestId));
-    return posting ? this.toPostingView(posting) : null;
+    if (!posting) {
+      return null;
+    }
+    return this.toPostingView(
+      posting,
+      posting.isPublished ? await this.applyPathFor(posting) : null,
+    );
+  }
+
+  private async applyPathFor(posting: JobPosting): Promise<string> {
+    const { formId } = await this.ats.applicationFormForPosting(toId<JobPostingId>(posting.id));
+    const token = this.formTokens.mint({
+      formId,
+      organizationId: toId(posting.organizationId),
+      refId: posting.id,
+    });
+    return `/apply/${token}`;
   }
 
   @Mutation(() => CandidateView)
@@ -223,7 +238,7 @@ export class AtsResolver {
     return views;
   }
 
-  private toPostingView(posting: JobPosting): JobPostingView {
+  private toPostingView(posting: JobPosting, applyPath: string | null = null): JobPostingView {
     return {
       id: posting.id,
       title: posting.title,
@@ -235,6 +250,7 @@ export class AtsResolver {
       salaryMax: posting.salaryMax === null ? null : Number(posting.salaryMax),
       salaryCurrency: posting.salaryCurrency,
       sourceHiringRequestId: posting.sourceHiringRequestId,
+      applyPath,
     };
   }
 }

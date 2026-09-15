@@ -86,6 +86,7 @@ export const POSTING_FOR_REQUEST_QUERY = gql`
       id
       title
       isPublished
+      applyPath
     }
   }
 `;

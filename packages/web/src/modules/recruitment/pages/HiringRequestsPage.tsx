@@ -64,6 +64,7 @@ type PostingRecord = {
   readonly id: string;
   readonly title: string;
   readonly isPublished: boolean;
+  readonly applyPath: string | null;
 };
 
 type HiringRequestRecord = {
@@ -1084,19 +1085,20 @@ export const HiringRequestsPage = () => {
                   {livePosting?.isPublished ? (
                     <>
                       <p>This posting is live and accepting applications.</p>
-                      {applyLink ? (
+                      {/* The link is re-minted on read, so it survives a reload. */}
+                      {livePosting.applyPath ?? applyLink ? (
                         <p>
                           Live link:{' '}
-                          <code>{`${window.location.origin}${applyLink}`}</code>
+                          <code>{`${window.location.origin}${livePosting.applyPath ?? applyLink}`}</code>
                         </p>
                       ) : null}
                       <div className="record-panel-actions">
-                        {applyLink ? (
+                        {livePosting.applyPath ?? applyLink ? (
                           <button
                             className="button button-secondary"
                             onClick={() =>
                               void navigator.clipboard.writeText(
-                                `${window.location.origin}${applyLink}`,
+                                `${window.location.origin}${livePosting.applyPath ?? applyLink}`,
                               )
                             }
                             type="button"

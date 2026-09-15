@@ -331,4 +331,24 @@ describe('CompensationService.recordHireSalary', () => {
     expect(revision).toBeNull();
     expect(manager.save).not.toHaveBeenCalled();
   });
+
+  it('skips a malformed offer currency instead of blocking the hire', async () => {
+    const { service, salaryStructures, manager } = buildService({});
+    (salaryStructures.find as jest.Mock).mockResolvedValue([
+      { id: 'structure-1', code: 'STD', currency: 'USD', isActive: true },
+    ]);
+
+    const revision = await service.recordHireSalary(
+      {
+        employeeId: EMPLOYEE,
+        annualAmount: 120000,
+        currency: 'US',
+        effectiveDate: '2026-10-01',
+      },
+      manager,
+    );
+
+    expect(revision).toBeNull();
+    expect(manager.save).not.toHaveBeenCalled();
+  });
 });

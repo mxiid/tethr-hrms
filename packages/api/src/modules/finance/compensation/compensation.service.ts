@@ -465,10 +465,15 @@ export class CompensationService {
     },
     manager: EntityManager,
   ): Promise<SalaryRevision | null> {
-    const currency = normalizeCurrency(input.currency);
+    const normalized = input.currency.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(normalized)) {
+      // A malformed currency can never match a structure; skip the revision
+      // rather than let a legacy offer's bad code block the hire itself.
+      return null;
+    }
     const structures = await this.salaryStructures.find({ order: { code: 'ASC' } });
     const structure = structures.find(
-      (candidate) => candidate.isActive && candidate.currency === currency,
+      (candidate) => candidate.isActive && candidate.currency === normalized,
     );
     if (!structure) {
       return null;

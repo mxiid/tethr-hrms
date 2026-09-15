@@ -41,6 +41,7 @@ export class CreateOfferInput {
   @Field()
   @IsString()
   @MaxLength(3)
+  @Matches(/^[A-Za-z]{3}$/, { message: 'salaryCurrency must be a 3-letter ISO code' })
   salaryCurrency!: string;
 
   @Field()

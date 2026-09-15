@@ -287,6 +287,20 @@ describe('RecruitmentService', () => {
     );
   });
 
+  it('does not publish a status event when only the note changes', async () => {
+    const { service, publisher } = buildService(makeRequest({ status: 'open' }));
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      tethrNote: 'Just a note, no status change.',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(publisher.publishWithin).not.toHaveBeenCalled();
+  });
+
   it('reads the cross-client board under platform scope and labels workspaces', async () => {
     const request = makeRequest({ status: 'open' });
     const { service, repository, platformScope, organizations } = buildService();
@@ -346,7 +360,8 @@ describe('RecruitmentService', () => {
     );
   });
 
-  it('returns client-visible update history with hiring requests', async () => {    const request = makeRequest({ status: 'open', tethrNote: 'Internal note.' });
+  it('returns client-visible update history with hiring requests', async () => {
+    const request = makeRequest({ status: 'open', tethrNote: 'Internal note.' });
     const update = {
       id: 'update-1',
       organizationId: ORGANIZATION,

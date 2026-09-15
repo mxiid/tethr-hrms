@@ -277,14 +277,19 @@ export class RecruitmentService {
           createdByUserId: input.updatedByUserId,
         }),
       );
-      await this.publisher.publishWithin(manager, {
-        name: 'hiringRequest.updated',
-        payload: {
-          hiringRequestId: toId<HiringRequestId>(saved.id),
-          status: saved.status,
-          positionTitle: saved.positionTitle,
-        },
-      });
+      // A note-only save is not a status change: the event drives the Slack
+      // status notice, so publishing it for every call would repeat the last
+      // status. The update trail above still records every note.
+      if (saved.status !== previousStatus) {
+        await this.publisher.publishWithin(manager, {
+          name: 'hiringRequest.updated',
+          payload: {
+            hiringRequestId: toId<HiringRequestId>(saved.id),
+            status: saved.status,
+            positionTitle: saved.positionTitle,
+          },
+        });
+      }
       return { saved, previousStatus };
     };
     // A caller-owned transaction (offer acceptance) skips the position sync —
