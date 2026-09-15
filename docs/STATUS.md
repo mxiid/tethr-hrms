@@ -2,6 +2,20 @@
 
 > As of 2026-09-04 (`feat/attendance-module-and-ux-revamp`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## PR #2 fourth review round: migration safety and transition atomicity (2026-09-15)
+
+The fourth bot pass flagged deploy-safety and atomicity follow-ups; all three are fixed.
+
+**Migration safety.** `Phase2AdjustmentSourceGuard` adds a CHECK that provenance is a pair (`sourceType`/`sourceId` both or neither), but PostgreSQL validates a new CHECK against every existing row — and the old schema and GraphQL input allowed half-pairs. The migration now clears one-sided provenance rows (`UPDATE ... SET "sourceType" = NULL, "sourceId" = NULL WHERE ("sourceType" IS NULL) <> ("sourceId" IS NULL)`) before adding the constraint; the money fact survives and every in-code writer already sets both. Verified end to end on the scratch database: revert → seed a one-sided row → run → the row is normalized and the constraint holds (a mismatched insert is rejected `23514`).
+
+**Snapshot race recovery.** `recordCostSnapshot` is idempotent per run, but its `findOne → save` pair can race (`draftInvoicesFromRun` vs the void refresh on the same run; unique index `payroll_cost_snapshots_org_run_unique`). The loser now catches only `23505`, re-fetches the winner's snapshot by `payrollRunId` and returns it; if the row is still absent it rethrows the original error, and every other error propagates.
+
+**Transition atomicity.** `markInvoicePaid` and `voidInvoice` now read the invoice with an organization-scoped `pessimistic_write` lock, re-check the status inside that transaction, and commit the state change with its audit record (`audit.record(input, manager)`), so a concurrent confirmation conflicts instead of double-applying and a crash cannot leave a paid/voided invoice with no audit. Void's period-close refresh stays idempotent post-commit work, re-triggered by any later draft of the same run.
+
+**Also:** `CLAUDE.md` now records the PR convention — mention `@greptile-apps` when opening a pull request to start the Greptile review.
+
+**Verification.** Gates **227 API / 20 shared / 5 UI tests**, lint 0 errors, typecheck/build clean. Battery: API Phase 1 **15/15**, M1 **20/20**, M2 **14/14**, M3 **16/16**; UI billing **7/7**, expenses **11/11**, tax **5/5**, benefits **5/5**; round-three live checks **5/5**. Scratch migration test: one-sided row normalized, constraint added, mismatched insert rejected `23514`. Schema parity **1145 columns, 0 differences**; pair prechecks clean on dev and scratch.
+
 ## PR #2 third review round: a round-two regression and its follow-ups (2026-09-15)
 
 The third bot pass caught one real regression in the round-two fixes plus three smaller gaps; all four are fixed (one migration).

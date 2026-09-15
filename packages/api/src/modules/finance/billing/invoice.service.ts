@@ -541,26 +541,42 @@ export class InvoiceService {
     }
     const billingCurrency = config.feeCurrency;
     const fxRate = await this.fx.getRate(summary.payrollCurrency, billingCurrency, summary.payDate);
-    return this.costSnapshots.save(
-      this.costSnapshots.create({
-        payrollRunId: summary.runId,
-        periodYear: summary.periodYear,
-        periodMonth: summary.periodMonth,
-        payDate: summary.payDate,
-        payrollCurrency: summary.payrollCurrency,
-        billingCurrency,
-        fxRate: fxRate === null ? null : fxRate.toFixed(8),
-        grossTotal: toMoneyString(summary.grossTotal),
-        employerCostTotal: toMoneyString(summary.employerCostTotal),
-        convertedEmployerCost:
-          fxRate === null ? null : toMoneyString(summary.employerCostTotal * fxRate),
-        employeeCosts: summary.payslips.map((payslip) => ({
-          employeeId: payslip.employeeId,
-          grossAmount: payslip.grossAmount,
-          employerCostAmount: payslip.employerCostAmount,
-        })),
-      }),
-    );
+    try {
+      return await this.costSnapshots.save(
+        this.costSnapshots.create({
+          payrollRunId: summary.runId,
+          periodYear: summary.periodYear,
+          periodMonth: summary.periodMonth,
+          payDate: summary.payDate,
+          payrollCurrency: summary.payrollCurrency,
+          billingCurrency,
+          fxRate: fxRate === null ? null : fxRate.toFixed(8),
+          grossTotal: toMoneyString(summary.grossTotal),
+          employerCostTotal: toMoneyString(summary.employerCostTotal),
+          convertedEmployerCost:
+            fxRate === null ? null : toMoneyString(summary.employerCostTotal * fxRate),
+          employeeCosts: summary.payslips.map((payslip) => ({
+            employeeId: payslip.employeeId,
+            grossAmount: payslip.grossAmount,
+            employerCostAmount: payslip.employerCostAmount,
+          })),
+        }),
+      );
+    } catch (cause) {
+      // Drafting and the void refresh can race for the same run; the loser's
+      // insert hits the unique index. Recover the winner's row instead of
+      // aborting the caller's work.
+      if (!isUniqueViolation(cause)) {
+        throw cause;
+      }
+      const winner = await this.costSnapshots.findOne({
+        where: { payrollRunId: summary.runId } as FindOptionsWhere<PayrollCostSnapshot>,
+      });
+      if (winner) {
+        return winner;
+      }
+      throw cause;
+    }
   }
 
   // Compare what was billed for the run's own month against the month's actual
@@ -1323,43 +1339,75 @@ export class InvoiceService {
   }
 
   async markInvoicePaid(input: MarkInvoicePaidData): Promise<Invoice> {
-    const invoice = await this.invoices.findById(input.invoiceId);
-    if (!invoice) {
-      throw new NotFoundError('Invoice not found', { id: input.invoiceId });
-    }
-    if (invoice.status !== 'issued') {
-      throw new ConflictError(`Only issued invoices can be marked paid (status: ${invoice.status})`);
-    }
-    invoice.status = 'paid';
-    // The settlement date can lag the moment finance records it (checks clear
-    // days later); default to today when not given.
-    invoice.paidAt = input.settlementDate
-      ? new Date(`${input.settlementDate}T00:00:00.000Z`)
-      : new Date();
-    invoice.paymentReference = input.paymentReference ?? null;
-    const saved = await this.invoices.save(invoice);
-    await this.audit.record({
-      action: 'markPaid',
-      resourceType: 'invoice',
-      resourceId: saved.id,
-      after: { number: saved.number, reference: saved.paymentReference },
+    const organizationId = this.tenantContext.getOrganizationId();
+    // The locked read, the status re-check, the payment facts and the audit are
+    // one unit of work: a concurrent confirmation cannot double-apply, and a
+    // crash cannot leave a paid invoice with no audit trail.
+    return this.dataSource.transaction(async (manager) => {
+      const invoice = await manager.findOne(Invoice, {
+        where: { id: input.invoiceId, organizationId } as FindOptionsWhere<Invoice>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!invoice) {
+        throw new NotFoundError('Invoice not found', { id: input.invoiceId });
+      }
+      if (invoice.status !== 'issued') {
+        throw new ConflictError(
+          `Only issued invoices can be marked paid (status: ${invoice.status})`,
+        );
+      }
+      invoice.status = 'paid';
+      // The settlement date can lag the moment finance records it (checks clear
+      // days later); default to today when not given.
+      invoice.paidAt = input.settlementDate
+        ? new Date(`${input.settlementDate}T00:00:00.000Z`)
+        : new Date();
+      invoice.paymentReference = input.paymentReference ?? null;
+      const saved = await manager.save(invoice);
+      await this.audit.record(
+        {
+          action: 'markPaid',
+          resourceType: 'invoice',
+          resourceId: saved.id,
+          after: { number: saved.number, reference: saved.paymentReference },
+        },
+        manager,
+      );
+      return saved;
     });
-    return saved;
   }
 
   // A draft that will never ship is voided instead of deleted: the period is
   // released for re-drafting (the unique index ignores voided rows) while the
-  // audit trail keeps the abandoned document.
+  // audit trail keeps the abandoned document. The transition and its audit are
+  // one transaction; the close refresh below is idempotent post-commit work and
+  // is re-triggered by any later draft of the same run.
   async voidInvoice(invoiceId: InvoiceId): Promise<Invoice> {
-    const invoice = await this.invoices.findById(invoiceId);
-    if (!invoice) {
-      throw new NotFoundError('Invoice not found', { id: invoiceId });
-    }
-    if (invoice.status !== 'draft') {
-      throw new ConflictError(`Only drafts can be voided (status: ${invoice.status})`);
-    }
-    invoice.status = 'voided';
-    const saved = await this.invoices.save(invoice);
+    const organizationId = this.tenantContext.getOrganizationId();
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const invoice = await manager.findOne(Invoice, {
+        where: { id: invoiceId, organizationId } as FindOptionsWhere<Invoice>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!invoice) {
+        throw new NotFoundError('Invoice not found', { id: invoiceId });
+      }
+      if (invoice.status !== 'draft') {
+        throw new ConflictError(`Only drafts can be voided (status: ${invoice.status})`);
+      }
+      invoice.status = 'voided';
+      const persisted = await manager.save(invoice);
+      await this.audit.record(
+        {
+          action: 'void',
+          resourceType: 'invoice',
+          resourceId: persisted.id,
+          after: { serviceYear: persisted.serviceYear, serviceMonth: persisted.serviceMonth },
+        },
+        manager,
+      );
+      return persisted;
+    });
     // Closes are keyed by the month a line covers, so every month label on the
     // voided document needs its close refreshed — not just the invoice's service
     // month (advance billing sets that a month ahead of the covered lines).
@@ -1395,12 +1443,6 @@ export class InvoiceService {
         await this.reconcileServiceMonth(summary, snapshot);
       }
     }
-    await this.audit.record({
-      action: 'void',
-      resourceType: 'invoice',
-      resourceId: saved.id,
-      after: { serviceYear: saved.serviceYear, serviceMonth: saved.serviceMonth },
-    });
     return saved;
   }
 

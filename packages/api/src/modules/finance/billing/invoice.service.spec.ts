@@ -163,7 +163,7 @@ const buildService = () => {
 
   return {
     service,
-    mocks: { manager, configs, groups, members, invoices, lines, costSnapshots, periodCloses, employeeDirectory, payrollRuns, publisher, fx },
+    mocks: { manager, configs, groups, members, invoices, lines, costSnapshots, periodCloses, employeeDirectory, payrollRuns, publisher, fx, audit },
   };
 };
 
@@ -242,6 +242,51 @@ describe('InvoiceService.draftInvoicesFromRun', () => {
         status: 'variance',
       }),
     );
+  });
+
+  const winnerSnapshot = {
+    id: 'snapshot-winner',
+    payrollRunId: 'run-1',
+    periodYear: 2026,
+    periodMonth: 8,
+    payDate: '2026-08-28',
+    billingCurrency: 'USD',
+    fxRate: '0.0036',
+    convertedEmployerCost: '396.00',
+    employeeCosts: [],
+  };
+
+  it('recovers a concurrent snapshot insert and reuses the winner row', async () => {
+    const { service, mocks } = buildService();
+    mocks.groups.find.mockResolvedValue([]);
+    mocks.costSnapshots.save.mockRejectedValueOnce({ driverError: { code: '23505' } });
+    mocks.costSnapshots.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(winnerSnapshot);
+
+    const created = await service.draftInvoicesFromRun('run-1');
+
+    expect(created).toHaveLength(0);
+    expect(mocks.periodCloses.save).toHaveBeenCalledWith(
+      expect.objectContaining({ payrollCostAmount: '396.00', invoicedAmount: '0.00' }),
+    );
+  });
+
+  it('rethrows the unique violation when the winner row cannot be found', async () => {
+    const { service, mocks } = buildService();
+    mocks.groups.find.mockResolvedValue([]);
+    const violation = { driverError: { code: '23505' } };
+    mocks.costSnapshots.save.mockRejectedValueOnce(violation);
+
+    await expect(service.draftInvoicesFromRun('run-1')).rejects.toMatchObject(violation);
+  });
+
+  it('propagates snapshot insert errors that are not unique violations', async () => {
+    const { service, mocks } = buildService();
+    mocks.groups.find.mockResolvedValue([]);
+    mocks.costSnapshots.save.mockRejectedValueOnce(new Error('snapshot boom'));
+
+    await expect(service.draftInvoicesFromRun('run-1')).rejects.toThrow('snapshot boom');
   });
 });
 
@@ -346,14 +391,13 @@ describe('InvoiceService.issueInvoice', () => {
 });
 
 describe('InvoiceService.markInvoicePaid', () => {
-  it('records payment on an issued invoice with reference', async () => {
+  it('records payment on an issued invoice with reference inside the locked transaction', async () => {
     const { service, mocks } = buildService();
-    mocks.invoices.findById = jest.fn(async () => ({
+    mocks.manager.findOne = jest.fn(async () => ({
       id: INVOICE_ID,
       status: 'issued',
       number: 'SP0001',
       paymentReference: null,
-      save: undefined,
     }));
     const paid = await service.markInvoicePaid({
       invoiceId: INVOICE_ID,
@@ -362,11 +406,35 @@ describe('InvoiceService.markInvoicePaid', () => {
     expect(paid.status).toBe('paid');
     expect(paid.paymentReference).toBe('CHK-99');
     expect(paid.paidAt).not.toBeNull();
+    expect(mocks.manager.findOne).toHaveBeenCalledWith(
+      Invoice,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: INVOICE_ID, organizationId: ORG }),
+        lock: { mode: 'pessimistic_write' },
+      }),
+    );
+    // The audit commits with the payment facts, not after them.
+    expect(mocks.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'markPaid', resourceId: INVOICE_ID }),
+      mocks.manager,
+    );
   });
 
   it('rejects marking a draft invoice paid', async () => {
     const { service, mocks } = buildService();
-    mocks.invoices.findById = jest.fn(async () => ({ id: INVOICE_ID, status: 'draft' }));
+    mocks.manager.findOne = jest.fn(async () => ({ id: INVOICE_ID, status: 'draft' }));
+    await expect(service.markInvoicePaid({ invoiceId: INVOICE_ID })).rejects.toThrow(
+      /Only issued/,
+    );
+  });
+
+  it('refuses a second confirmation found paid inside the lock', async () => {
+    const { service, mocks } = buildService();
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'paid',
+      number: 'SP0001',
+    }));
     await expect(service.markInvoicePaid({ invoiceId: INVOICE_ID })).rejects.toThrow(
       /Only issued/,
     );
@@ -375,7 +443,7 @@ describe('InvoiceService.markInvoicePaid', () => {
   it('refreshes the month close when a draft is voided', async () => {
     const { service, mocks } = buildService();
     // Advance-billed document: service month a month ahead of the covered lines.
-    mocks.invoices.findById = jest.fn(async () => ({
+    mocks.manager.findOne = jest.fn(async () => ({
       id: INVOICE_ID,
       status: 'draft',
       serviceYear: 2026,
@@ -404,6 +472,18 @@ describe('InvoiceService.markInvoicePaid', () => {
       expect.objectContaining({
         where: expect.objectContaining({ serviceYear: 2026, serviceMonth: 9 }),
       }),
+    );
+    // The void and its audit committed together, inside the locked transaction.
+    expect(mocks.manager.findOne).toHaveBeenCalledWith(
+      Invoice,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: INVOICE_ID, organizationId: ORG }),
+        lock: { mode: 'pessimistic_write' },
+      }),
+    );
+    expect(mocks.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'void', resourceId: INVOICE_ID }),
+      mocks.manager,
     );
   });
 });
