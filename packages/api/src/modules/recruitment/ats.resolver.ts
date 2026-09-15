@@ -8,12 +8,25 @@ import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { AtsService } from './ats.service';
-import { ApplicationView } from './dto/application.output';
+import { ApplicationView, CvParseView } from './dto/application.output';
 import { CreateCandidateInput, PublishHiringRequestInput, UpdateApplicationInput } from './dto/ats.inputs';
 import { CandidateDetailView, CandidateView, JobPostingView, PublishedPostingView } from './dto/candidate.output';
 import type { Application } from './entities/application.entity';
 import type { Candidate } from './entities/candidate.entity';
+import type { CvParse } from './entities/cv-parse.entity';
 import type { JobPosting } from './entities/job-posting.entity';
+
+// The parse seam is a provider call that has not landed; when it does, the rows
+// will carry `parsed`/`failed` and this view already passes them through.
+const toCvParseView = (parse: CvParse | undefined): CvParseView | null =>
+  parse
+    ? {
+        status: parse.status,
+        provider: parse.provider,
+        parsedAt: parse.parsedAt ? parse.parsedAt.toISOString() : null,
+        score: parse.score === null ? null : Number(parse.score),
+      }
+    : null;
 
 // The ATS operator surface: the candidate pool, applications and postings are
 // Tethr-only (candidate:read/candidate:manage never reach client roles). The
@@ -171,12 +184,13 @@ export class AtsResolver {
   }
 
   private async toApplicationViews(applications: readonly Application[]): Promise<ApplicationView[]> {
-    const [postingsById, candidatesById, withResume] = await Promise.all([
+    const [postingsById, candidatesById, withResume, cvParses] = await Promise.all([
       this.ats.postingsByIds(applications.map((application) => application.jobPostingId)),
       this.ats.candidatesByIds(applications.map((application) => application.candidateId)),
       this.ats.resumePresenceByCandidateIds(
         applications.map((application) => application.candidateId),
       ),
+      this.ats.cvParseByCandidateIds(applications.map((application) => application.candidateId)),
     ]);
     const views: ApplicationView[] = [];
     for (const application of applications) {
@@ -202,6 +216,7 @@ export class AtsResolver {
         manualRating: application.manualRating,
         notes: application.notes,
         hasResume: withResume.has(application.candidateId),
+        cvParse: toCvParseView(cvParses.get(application.candidateId)),
         createdAt: application.createdAt.toISOString(),
       });
     }

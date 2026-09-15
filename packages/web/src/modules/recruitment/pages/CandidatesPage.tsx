@@ -71,10 +71,27 @@ type ApplicationRecord = {
   readonly manualRating: number | null;
   readonly notes: string | null;
   readonly hasResume: boolean;
+  readonly cvParse: {
+    readonly status: string;
+    readonly provider: string | null;
+    readonly parsedAt: string | null;
+    readonly score: number | null;
+  } | null;
   readonly createdAt: string;
 };
 
 type CandidateDetail = CandidateRecord & { readonly applications: readonly ApplicationRecord[] };
+
+// The AI parse seam is deliberately a stub; surface its state plainly instead
+// of showing nothing while every row sits pending forever.
+const cvParseLabel = (parse: ApplicationRecord['cvParse']): string | null => {
+  if (!parse) return null;
+  if (parse.status === 'parsed') {
+    return parse.score === null ? 'AI parse ready' : `AI score ${parse.score}`;
+  }
+  if (parse.status === 'failed') return 'AI parse failed';
+  return 'Awaiting AI parsing';
+};
 
 type OfferRecord = {
   readonly id: string;
@@ -524,7 +541,11 @@ export const CandidatesPage = () => {
                           label={outcomeLabels[draft.outcome]}
                         />
                         {application.hasResume ? (
-                          <span className="employee-secondary">CV attached</span>
+                          <span className="employee-secondary">
+                            {['CV attached', cvParseLabel(application.cvParse)]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
                         ) : null}
                       </div>
                       <div className="employee-secondary">

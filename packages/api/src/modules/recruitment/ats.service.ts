@@ -593,4 +593,31 @@ export class AtsService {
     });
     return new Set(rows.map((row) => row.candidateId));
   }
+
+  // The parse state of each candidate's latest resume, batched for the pool.
+  // The provider call is a seam today, so a row reads `pending`; surfaces show
+  // that instead of pretending the pipeline is doing something it is not.
+  async cvParseByCandidateIds(ids: readonly string[]): Promise<ReadonlyMap<string, CvParse>> {
+    if (ids.length === 0) return new Map();
+    const documents = await this.candidateDocuments.find({
+      where: { candidateId: In([...ids]), label: 'resume' },
+      order: { versionNumber: 'ASC' },
+    });
+    const latest = new Map<string, CandidateDocument>();
+    for (const document of documents) {
+      // Ascending version: the last row for a candidate is the latest resume.
+      latest.set(document.candidateId, document);
+    }
+    if (latest.size === 0) return new Map();
+    const parses = await this.cvParses.find({
+      where: { candidateDocumentId: In([...latest.values()].map((document) => document.id)) },
+    });
+    const byDocument = new Map(parses.map((parse) => [parse.candidateDocumentId, parse]));
+    const result = new Map<string, CvParse>();
+    for (const [candidateId, document] of latest) {
+      const parse = byDocument.get(document.id);
+      if (parse) result.set(candidateId, parse);
+    }
+    return result;
+  }
 }

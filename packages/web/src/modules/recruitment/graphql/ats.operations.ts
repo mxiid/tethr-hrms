@@ -58,6 +58,12 @@ export const CANDIDATE_DETAIL_QUERY = gql`
         manualRating
         notes
         hasResume
+        cvParse {
+          status
+          provider
+          parsedAt
+          score
+        }
         createdAt
       }
     }

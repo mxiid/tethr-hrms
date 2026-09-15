@@ -1,5 +1,23 @@
 import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
 
+// The CV parse seam's state for a candidate's latest resume. The provider call
+// is deliberately deferred; until it lands the row reads `pending`, which the
+// pool surfaces as "Awaiting AI parsing" instead of silently doing nothing.
+@ObjectType('CvParse')
+export class CvParseView {
+  @Field()
+  status!: string;
+
+  @Field(() => String, { nullable: true })
+  provider!: string | null;
+
+  @Field(() => String, { nullable: true })
+  parsedAt!: string | null;
+
+  @Field(() => Float, { nullable: true })
+  score!: number | null;
+}
+
 @ObjectType('Application')
 export class ApplicationView {
   @Field(() => ID)
@@ -62,6 +80,10 @@ export class ApplicationView {
 
   @Field()
   hasResume!: boolean;
+
+  // Null until a resume exists; then the latest document's parse state.
+  @Field(() => CvParseView, { nullable: true })
+  cvParse!: CvParseView | null;
 
   @Field()
   createdAt!: string;
