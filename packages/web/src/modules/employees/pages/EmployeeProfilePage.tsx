@@ -40,6 +40,7 @@ import {
   EMPLOYEES_QUERY,
   SET_EMPLOYEE_MANAGER_MUTATION,
   EMPLOYEE_HR_RECORD_QUERY,
+  EMPLOYEE_ONBOARDING_PROGRESS_QUERY,
   EMPLOYEE_ONBOARDING_TASKS_QUERY,
   EMPLOYEE_SALARY_STRUCTURES_QUERY,
   PREPARE_EMPLOYEE_DOCUMENT_UPLOAD_MUTATION,
@@ -309,6 +310,13 @@ type EmployeeOnboardingTask = {
 };
 type EmployeeOnboardingTasksData = {
   readonly employeeOnboardingTasks: readonly EmployeeOnboardingTask[];
+};
+type EmployeeOnboardingProgressData = {
+  readonly employeeOnboardingProgress: {
+    readonly completed: number;
+    readonly total: number;
+    readonly allComplete: boolean;
+  };
 };
 type OnboardingTaskDraft = {
   readonly status: EmployeeOnboardingTaskStatus;
@@ -652,6 +660,13 @@ export const EmployeeProfilePage = () => {
     skip: !employeeId || !canManageHrRecord,
     variables: { employeeId },
   });
+  // The server's aggregate (bank details included) is the source of truth; the
+  // client must not re-count the checklist.
+  const { data: onboardingProgressData, refetch: refetchOnboardingProgress } =
+    useQuery<EmployeeOnboardingProgressData>(EMPLOYEE_ONBOARDING_PROGRESS_QUERY, {
+      skip: !employeeId || !canManageHrRecord,
+      variables: { employeeId },
+    });
   const { data: salaryStructuresData, loading: loadingSalaryStructures } =
     useQuery<SalaryStructuresData>(EMPLOYEE_SALARY_STRUCTURES_QUERY, {
       skip: !canReviseSalary,
@@ -688,9 +703,14 @@ export const EmployeeProfilePage = () => {
   const assessments = detailData?.employeeAssessments ?? [];
   const documents = detailData?.employeeDocuments ?? [];
   const bonuses = detailData?.bonusAwards ?? [];
-  const onboardingCompletedCount = onboardingTasks.filter(
-    (task) => task.status === 'completed',
-  ).length;
+  const onboardingCompletedCount =
+    onboardingProgressData?.employeeOnboardingProgress.completed ??
+    onboardingTasks.filter((task) => task.status === 'completed').length;
+  const onboardingTaskTotal =
+    onboardingProgressData?.employeeOnboardingProgress.total ?? (onboardingTasks.length || 7);
+  const onboardingAllComplete =
+    onboardingProgressData?.employeeOnboardingProgress.allComplete ??
+    (onboardingTasks.length > 0 && onboardingCompletedCount === onboardingTasks.length);
   const offboardingCompletedCount = offboardingTasks.filter(
     (task) => task.status === 'completed',
   ).length;
@@ -1105,7 +1125,14 @@ export const EmployeeProfilePage = () => {
           },
         },
       });
-      await Promise.all([refetchHrRecord(), refetchDetail(), refetchDetail()]);
+      // Bank details feed the derived onboarding task and the aggregate, so
+      // both onboarding reads refresh alongside the record itself.
+      await Promise.all([
+        refetchHrRecord(),
+        refetchDetail(),
+        refetchOnboardingTasks(),
+        refetchOnboardingProgress(),
+      ]);
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not save HR record');
     }
@@ -1224,7 +1251,8 @@ export const EmployeeProfilePage = () => {
           },
         },
       });
-      await refetchOnboardingTasks();
+        await refetchOnboardingTasks();
+        await refetchOnboardingProgress();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not save onboarding task');
     }
@@ -2537,7 +2565,8 @@ export const EmployeeProfilePage = () => {
               <DetailSection
                 badge={
                   <span className="table-density">
-                    {onboardingCompletedCount}/{onboardingTasks.length || 7} complete
+                    {onboardingCompletedCount}/{onboardingTaskTotal} complete
+                    {onboardingAllComplete ? ' · all done' : ''}
                   </span>
                 }
                 title="Onboarding"

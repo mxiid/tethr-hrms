@@ -62,6 +62,7 @@ export const DOMAIN_EVENT_NAMES = [
   'benefits.enrollmentChanged',
   'hiringRequest.submitted',
   'hiringRequest.updated',
+  'offer.accepted',
   'form.submitted',
   'announcement.published',
   'employeeFeedback.submitted',
@@ -204,6 +205,20 @@ export type DomainEventPayloads = {
   'hiringRequest.updated': {
     readonly hiringRequestId: HiringRequestId;
     readonly status: string;
+    // Carried so the notification consumer can name the request without a
+    // second lookup in another aggregate.
+    readonly positionTitle: string;
+  };
+  'offer.accepted': {
+    // The hire is complete; compensation records the employee's first revision
+    // from these snapshotted terms instead of a synchronous cross-module call.
+    readonly offerId: string;
+    readonly applicationId: string;
+    readonly employeeId: EmployeeId;
+    readonly annualAmount: number;
+    readonly currency: string;
+    readonly effectiveDate: string;
+    readonly acceptedByUserId: UserId | null;
   };
   'form.submitted': {
     readonly formId: FormId;

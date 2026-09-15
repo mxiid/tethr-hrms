@@ -9,6 +9,13 @@ import { TenantScopedEntity } from '../../../core/database/entities/tenant-scope
 @Entity('applications')
 @Index(['organizationId', 'jobPostingId'])
 @Index(['organizationId', 'candidateId'])
+// One OPEN application per person and posting. A rejected or withdrawn
+// application stays historical, so the same candidate may re-apply later as a
+// new row; two simultaneous open applications cannot exist.
+@Index('applications_org_candidate_posting_active_unique', ['organizationId', 'candidateId', 'jobPostingId'], {
+  unique: true,
+  where: `"outcome" = 'active'`,
+})
 export class Application extends TenantScopedEntity {
   @Column({ type: 'uuid' })
   candidateId!: string;

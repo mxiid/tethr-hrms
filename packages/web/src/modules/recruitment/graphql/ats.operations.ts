@@ -58,6 +58,12 @@ export const CANDIDATE_DETAIL_QUERY = gql`
         manualRating
         notes
         hasResume
+        cvParse {
+          status
+          provider
+          parsedAt
+          score
+        }
         createdAt
       }
     }
@@ -70,6 +76,26 @@ export const PUBLISH_HIRING_REQUEST_MUTATION = gql`
       jobPostingId
       title
       applyPath
+    }
+  }
+`;
+
+export const POSTING_FOR_REQUEST_QUERY = gql`
+  query PostingForRequest($hiringRequestId: ID!) {
+    postingForRequest(hiringRequestId: $hiringRequestId) {
+      id
+      title
+      isPublished
+      applyPath
+    }
+  }
+`;
+
+export const UNPUBLISH_JOB_POSTING_MUTATION = gql`
+  mutation UnpublishJobPosting($postingId: ID!) {
+    unpublishJobPosting(postingId: $postingId) {
+      id
+      isPublished
     }
   }
 `;

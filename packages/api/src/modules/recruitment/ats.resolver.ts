@@ -8,12 +8,25 @@ import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { AtsService } from './ats.service';
-import { ApplicationView } from './dto/application.output';
+import { ApplicationView, CvParseView } from './dto/application.output';
 import { CreateCandidateInput, PublishHiringRequestInput, UpdateApplicationInput } from './dto/ats.inputs';
 import { CandidateDetailView, CandidateView, JobPostingView, PublishedPostingView } from './dto/candidate.output';
 import type { Application } from './entities/application.entity';
 import type { Candidate } from './entities/candidate.entity';
+import type { CvParse } from './entities/cv-parse.entity';
 import type { JobPosting } from './entities/job-posting.entity';
+
+// The parse seam is a provider call that has not landed; when it does, the rows
+// will carry `parsed`/`failed` and this view already passes them through.
+const toCvParseView = (parse: CvParse | undefined): CvParseView | null =>
+  parse
+    ? {
+        status: parse.status,
+        provider: parse.provider,
+        parsedAt: parse.parsedAt ? parse.parsedAt.toISOString() : null,
+        score: parse.score === null ? null : Number(parse.score),
+      }
+    : null;
 
 // The ATS operator surface: the candidate pool, applications and postings are
 // Tethr-only (candidate:read/candidate:manage never reach client roles). The
@@ -89,13 +102,52 @@ export class AtsResolver {
       toId<HiringRequestId>(input.hiringRequestId),
       input.organizationId ? toId<OrganizationId>(input.organizationId) : null,
     );
+    return {
+      jobPostingId: posting.id,
+      title: posting.title,
+      applyPath: await this.applyPathFor(posting),
+    };
+  }
+
+  // Takes a live posting off the air without touching its request. Closing the
+  // request does this automatically; this is the manual lever (and the only one
+  // for a client-cancelled request, whose posting lives in Tethr's workspace).
+  @Mutation(() => JobPostingView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.hiringRequestManage)
+  async unpublishJobPosting(
+    @Args('postingId', { type: () => ID }) postingId: string,
+  ): Promise<JobPostingView> {
+    return this.toPostingView(await this.ats.unpublishPosting(toId<JobPostingId>(postingId)));
+  }
+
+  // Live posting state for a request (null when it was never published), so the
+  // operator panel shows the truth after a reload — the signed apply link is
+  // re-minted from the posting, never stored.
+  @Query(() => JobPostingView, { nullable: true })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.hiringRequestManage)
+  async postingForRequest(
+    @Args('hiringRequestId', { type: () => ID }) hiringRequestId: string,
+  ): Promise<JobPostingView | null> {
+    const posting = await this.ats.getPostingForRequest(toId<HiringRequestId>(hiringRequestId));
+    if (!posting) {
+      return null;
+    }
+    return this.toPostingView(
+      posting,
+      posting.isPublished ? await this.applyPathFor(posting) : null,
+    );
+  }
+
+  private async applyPathFor(posting: JobPosting): Promise<string> {
     const { formId } = await this.ats.applicationFormForPosting(toId<JobPostingId>(posting.id));
     const token = this.formTokens.mint({
       formId,
       organizationId: toId(posting.organizationId),
       refId: posting.id,
     });
-    return { jobPostingId: posting.id, title: posting.title, applyPath: `/apply/${token}` };
+    return `/apply/${token}`;
   }
 
   @Mutation(() => CandidateView)
@@ -147,12 +199,13 @@ export class AtsResolver {
   }
 
   private async toApplicationViews(applications: readonly Application[]): Promise<ApplicationView[]> {
-    const [postingsById, candidatesById, withResume] = await Promise.all([
+    const [postingsById, candidatesById, withResume, cvParses] = await Promise.all([
       this.ats.postingsByIds(applications.map((application) => application.jobPostingId)),
       this.ats.candidatesByIds(applications.map((application) => application.candidateId)),
       this.ats.resumePresenceByCandidateIds(
         applications.map((application) => application.candidateId),
       ),
+      this.ats.cvParseByCandidateIds(applications.map((application) => application.candidateId)),
     ]);
     const views: ApplicationView[] = [];
     for (const application of applications) {
@@ -178,13 +231,14 @@ export class AtsResolver {
         manualRating: application.manualRating,
         notes: application.notes,
         hasResume: withResume.has(application.candidateId),
+        cvParse: toCvParseView(cvParses.get(application.candidateId)),
         createdAt: application.createdAt.toISOString(),
       });
     }
     return views;
   }
 
-  private toPostingView(posting: JobPosting): JobPostingView {
+  private toPostingView(posting: JobPosting, applyPath: string | null = null): JobPostingView {
     return {
       id: posting.id,
       title: posting.title,
@@ -196,6 +250,7 @@ export class AtsResolver {
       salaryMax: posting.salaryMax === null ? null : Number(posting.salaryMax),
       salaryCurrency: posting.salaryCurrency,
       sourceHiringRequestId: posting.sourceHiringRequestId,
+      applyPath,
     };
   }
 }

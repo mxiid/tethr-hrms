@@ -69,6 +69,12 @@ export class JobPostingView {
 
   @Field(() => ID)
   sourceHiringRequestId!: string;
+
+  // Minted on demand for a live posting (the request panel needs a link it can
+  // copy after a reload); null when the posting is not published or the caller
+  // did not ask for a fresh link.
+  @Field(() => String, { nullable: true })
+  applyPath!: string | null;
 }
 
 @ObjectType('PublishedPosting')

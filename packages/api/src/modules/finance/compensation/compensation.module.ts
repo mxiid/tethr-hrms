@@ -9,6 +9,7 @@ import { EmployeeModule } from '../../employee';
 import { EmployeeTerminatedCompensationConsumer } from './compensation.consumer';
 import { CompensationResolver } from './compensation.resolver';
 import { CompensationService } from './compensation.service';
+import { OfferAcceptedCompensationConsumer } from './offer-accepted.consumer';
 import {
   PAY_COMPONENT_REPOSITORY,
   BONUS_AWARD_REPOSITORY,
@@ -45,6 +46,7 @@ import { SalaryStructure } from './entities/salary-structure.entity';
     CompensationService,
     CompensationResolver,
     EmployeeTerminatedCompensationConsumer,
+    OfferAcceptedCompensationConsumer,
     provideTenantScopedRepository(PAY_COMPONENT_REPOSITORY, PayComponent),
     provideTenantScopedRepository(SALARY_STRUCTURE_REPOSITORY, SalaryStructure),
     provideTenantScopedRepository(SALARY_STRUCTURE_COMPONENT_REPOSITORY, SalaryStructureComponent),

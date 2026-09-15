@@ -14,9 +14,10 @@ import {
   type OrganizationId,
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { In } from 'typeorm';
+import { type FindOptionsWhere, In } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
+import { AuditService } from '../../core/audit/audit.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
 import { MessageQueueService } from '../../core/queue/message-queue.service';
 import { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
@@ -94,7 +95,30 @@ const currencyCode = (value: string | undefined): string | null => {
   return /^[A-Z]{3}$/.test(code) ? code : null;
 };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@(?=[^\s@][^\s@]*\.[^\s@])[^\s@]+$/;
+
+// Postgres unique-violation, as surfaced by the pg driver (same check the
+// finance services use).
+const isUniqueViolation = (cause: unknown): boolean => {
+  const driverError = (cause as { readonly driverError?: { readonly code?: string } }).driverError;
+  return driverError?.code === '23505';
+};
+
+// The partial index behind one-open-application-per-role. Matching the
+// constraint name keeps unrelated 23505s (e.g. the primary key) from being
+// mislabelled as a domain conflict.
+const isActiveApplicationViolation = (cause: unknown): boolean => {
+  const driverError = (
+    cause as {
+      readonly driverError?: { readonly code?: string; readonly constraint?: string };
+    }
+  ).driverError;
+  return (
+    driverError?.code === '23505' &&
+    (driverError.constraint === undefined ||
+      driverError.constraint === 'applications_org_candidate_posting_active_unique')
+  );
+};
 
 // The ATS core: postings, the candidate pool, applications and CV documents.
 // Everything lives in the operator's (Tethr's) workspace; client visibility is
@@ -114,6 +138,7 @@ export class AtsService {
     private readonly queue: MessageQueueService,
     private readonly tenantContext: TenantContextService,
     private readonly platformScope: PlatformScopeService,
+    private readonly audit: AuditService,
   ) {}
 
   // --- Postings -----------------------------------------------------------------
@@ -157,15 +182,26 @@ export class AtsService {
   }
 
   private async createOrReopenPosting(request: HiringRequest): Promise<JobPosting> {
-    const existing = await this.postings.findOne({
-      where: { sourceHiringRequestId: request.id },
-    });
     const organizationId = this.tenantContext.getOrganizationId();
-    const posting = existing
+    // One posting per request is the intent; if legacy duplicates exist, the
+    // earliest is the canonical document and the rest are taken down so the
+    // read path and this publish can never disagree about what is live.
+    const existing = await this.postings.find({
+      where: { sourceHiringRequestId: request.id } as FindOptionsWhere<JobPosting>,
+      order: { createdAt: 'ASC' },
+    });
+    const [posting, ...duplicates] = existing;
+    for (const duplicate of duplicates) {
+      if (duplicate.isPublished) {
+        duplicate.isPublished = false;
+        await this.postings.save(duplicate);
+      }
+    }
+    const saved = posting
       ? await (async () => {
-          existing.isPublished = true;
-          existing.postedAt = existing.postedAt ?? new Date();
-          return this.postings.save(existing);
+          posting.isPublished = true;
+          posting.postedAt = posting.postedAt ?? new Date();
+          return this.postings.save(posting);
         })()
       : await this.postings.save(
           this.postings.create({
@@ -184,7 +220,7 @@ export class AtsService {
             closesOn: request.targetFillDate,
           }),
         );
-    return posting;
+    return saved;
   }
 
   listPostings(): Promise<JobPosting[]> {
@@ -197,6 +233,38 @@ export class AtsService {
       throw new NotFoundError('Job posting not found', { id });
     }
     return posting;
+  }
+
+  // The posting born from a request, so the operator panel can show live state
+  // after a reload (the publish response carries the id only in-session). The
+  // oldest row is canonical if legacy duplicates exist.
+  getPostingForRequest(hiringRequestId: HiringRequestId): Promise<JobPosting | null> {
+    return this.postings.findOne({
+      where: { sourceHiringRequestId: hiringRequestId } as FindOptionsWhere<JobPosting>,
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  // Pulls a posting off the air without touching its request. Closing the
+  // request also does this automatically (RecruitmentService); this is the
+  // operator lever for a live posting whose request stands.
+  async unpublishPosting(postingId: JobPostingId): Promise<JobPosting> {
+    const posting = await this.postings.findById(postingId);
+    if (!posting) {
+      throw new NotFoundError('Job posting not found', { id: postingId });
+    }
+    if (!posting.isPublished) {
+      return posting;
+    }
+    posting.isPublished = false;
+    const saved = await this.postings.save(posting);
+    await this.audit.record({
+      action: 'unpublish',
+      resourceType: 'job_posting',
+      resourceId: saved.id,
+      after: { sourceHiringRequestId: saved.sourceHiringRequestId },
+    });
+    return saved;
   }
 
   // The first consumer of the form builder: the standard application form is the
@@ -281,6 +349,24 @@ export class AtsService {
       if (!APPLICATION_OUTCOMES.includes(input.outcome)) {
         throw new ValidationFailedError('Unknown application outcome', { outcome: input.outcome });
       }
+      // Reactivating one application while another is open for the same person
+      // and role would violate the active-application guarantee (and the index
+      // behind it); refuse it with a message instead of a constraint error.
+      if (input.outcome === 'active' && application.outcome !== 'active') {
+        const other = await this.applications.findOne({
+          where: {
+            candidateId: application.candidateId,
+            jobPostingId: application.jobPostingId,
+            outcome: 'active',
+          } as FindOptionsWhere<Application>,
+        });
+        if (other && other.id !== application.id) {
+          throw new ConflictError(
+            'Another active application already exists for this candidate and role',
+            { applicationId: other.id },
+          );
+        }
+      }
       application.outcome = input.outcome;
     }
     if (input.onHold !== undefined) {
@@ -299,7 +385,19 @@ export class AtsService {
     if (input.notes !== undefined) {
       application.notes = input.notes;
     }
-    return this.applications.save(application);
+    try {
+      return await this.applications.save(application);
+    } catch (cause) {
+      // Two reactivations can pass the pre-check concurrently; translate the
+      // index violation into the same domain conflict the pre-check raises.
+      if (isActiveApplicationViolation(cause)) {
+        throw new ConflictError(
+          'Another active application already exists for this candidate and role',
+          { applicationId: application.id },
+        );
+      }
+      throw cause;
+    }
   }
 
   // --- Projection: a form submission becomes a candidate + application --------
@@ -312,10 +410,17 @@ export class AtsService {
     const { submission, fields } = await this.forms.getSubmissionForProjection(submissionId);
     const postingRef = typeof submission.metadata.refId === 'string' ? submission.metadata.refId : null;
     if (!postingRef) {
+      // No dead ends: an unprojectable submission is recorded as rejected with
+      // a reason instead of sitting pending forever.
+      await this.forms.markSubmissionRejected(
+        submissionId,
+        'The submission is missing its posting context',
+      );
       return null;
     }
     const posting = await this.postings.findById(postingRef);
     if (!posting) {
+      await this.forms.markSubmissionRejected(submissionId, 'The posting is no longer available');
       return null;
     }
     // A link can outlive the posting it was minted for (form links live for
@@ -347,6 +452,7 @@ export class AtsService {
     }
     const email = bounded(byMap.get('candidate.email')?.toLowerCase(), 320);
     if (!email || !EMAIL_PATTERN.test(email)) {
+      await this.forms.markSubmissionRejected(submissionId, 'A valid candidate email is required');
       return null;
     }
 
@@ -368,28 +474,63 @@ export class AtsService {
       portfolio: bounded(byMap.get('candidate.portfolio'), 320),
     });
 
-    const application = await this.applications.save(
-      this.applications.create({
-        organizationId: this.tenantContext.getOrganizationId(),
+    // One open application per person and posting: a second submission while an
+    // earlier one is still active is refused with a reason (a rejected or
+    // withdrawn candidate may re-apply later as a new row). The partial unique
+    // index is the backstop under a concurrent duplicate.
+    const activeApplication = await this.applications.findOne({
+      where: {
         candidateId: candidate.id,
         jobPostingId: posting.id,
-        formSubmissionId: submission.id,
-        stage: 'screening',
         outcome: 'active',
-        onHold: false,
-        holdReason: null,
-        expectedSalary: numeric(byMap.get('application.expectedSalary')),
-        salaryCurrency: currencyCode(byMap.get('application.salaryCurrency')),
-        currentSalary: numeric(byMap.get('application.currentSalary')),
-        currentTitle: bounded(byMap.get('application.currentTitle'), 200),
-        yearsExperience: integer(byMap.get('application.yearsExperience')),
-        location: bounded(byMap.get('application.location'), 200),
-        skills: bounded(byMap.get('application.skills'), 20000),
-        coverNote: bounded(byMap.get('application.coverNote'), 20000),
-        manualRating: null,
-        notes: null,
-      }),
-    );
+      } as FindOptionsWhere<Application>,
+    });
+    if (activeApplication) {
+      await this.ensureResumeRecorded(candidate.id, submission);
+      await this.forms.markSubmissionRejected(
+        submissionId,
+        'You already have an active application for this role',
+      );
+      return null;
+    }
+
+    let application: Application;
+    try {
+      application = await this.applications.save(
+        this.applications.create({
+          organizationId: this.tenantContext.getOrganizationId(),
+          candidateId: candidate.id,
+          jobPostingId: posting.id,
+          formSubmissionId: submission.id,
+          stage: 'screening',
+          outcome: 'active',
+          onHold: false,
+          holdReason: null,
+          expectedSalary: numeric(byMap.get('application.expectedSalary')),
+          salaryCurrency: currencyCode(byMap.get('application.salaryCurrency')),
+          currentSalary: numeric(byMap.get('application.currentSalary')),
+          currentTitle: bounded(byMap.get('application.currentTitle'), 200),
+          yearsExperience: integer(byMap.get('application.yearsExperience')),
+          location: bounded(byMap.get('application.location'), 200),
+          skills: bounded(byMap.get('application.skills'), 20000),
+          coverNote: bounded(byMap.get('application.coverNote'), 20000),
+          manualRating: null,
+          notes: null,
+        }),
+      );
+    } catch (cause) {
+      if (!isUniqueViolation(cause)) {
+        throw cause;
+      }
+      // The pre-check lost a race with another submission: still record the CV
+      // (the person applied, and the document is theirs), then reject.
+      await this.ensureResumeRecorded(candidate.id, submission);
+      await this.forms.markSubmissionRejected(
+        submissionId,
+        'You already have an active application for this role',
+      );
+      return null;
+    }
 
     await this.ensureResumeRecorded(candidate.id, submission);
     await this.forms.markSubmissionProjected(submissionId, 'application', application.id);
@@ -495,5 +636,32 @@ export class AtsService {
       where: { candidateId: In([...ids]), label: 'resume' },
     });
     return new Set(rows.map((row) => row.candidateId));
+  }
+
+  // The parse state of each candidate's latest resume, batched for the pool.
+  // The provider call is a seam today, so a row reads `pending`; surfaces show
+  // that instead of pretending the pipeline is doing something it is not.
+  async cvParseByCandidateIds(ids: readonly string[]): Promise<ReadonlyMap<string, CvParse>> {
+    if (ids.length === 0) return new Map();
+    const documents = await this.candidateDocuments.find({
+      where: { candidateId: In([...ids]), label: 'resume' },
+      order: { versionNumber: 'ASC' },
+    });
+    const latest = new Map<string, CandidateDocument>();
+    for (const document of documents) {
+      // Ascending version: the last row for a candidate is the latest resume.
+      latest.set(document.candidateId, document);
+    }
+    if (latest.size === 0) return new Map();
+    const parses = await this.cvParses.find({
+      where: { candidateDocumentId: In([...latest.values()].map((document) => document.id)) },
+    });
+    const byDocument = new Map(parses.map((parse) => [parse.candidateDocumentId, parse]));
+    const result = new Map<string, CvParse>();
+    for (const [candidateId, document] of latest) {
+      const parse = byDocument.get(document.id);
+      if (parse) result.set(candidateId, parse);
+    }
+    return result;
   }
 }

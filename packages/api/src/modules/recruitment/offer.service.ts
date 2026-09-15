@@ -1,10 +1,11 @@
-import { toId, type HiringRequestId, type OrganizationId, type UserId } from '@hrms/shared';
+import { addIsoDays, toId, type EmployeeId, type HiringRequestId, type OrganizationId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { PERMISSIONS } from '../../core/authz/permissions';
+import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
@@ -14,6 +15,7 @@ import { PositionService } from '../position/position.service';
 import { APPLICATION_REPOSITORY, CANDIDATE_REPOSITORY, JOB_POSTING_REPOSITORY, OFFER_REPOSITORY } from './ats.tokens';
 import { Application } from './entities/application.entity';
 import { Candidate } from './entities/candidate.entity';
+import { HiringRequest } from './entities/hiring-request.entity';
 import { JobPosting } from './entities/job-posting.entity';
 import { Offer } from './entities/offer.entity';
 import { RecruitmentService } from './recruitment.service';
@@ -51,6 +53,7 @@ export class OfferService {
     @Inject(JOB_POSTING_REPOSITORY) private readonly postings: TenantScopedRepository<JobPosting>,
     private readonly employees: EmployeeService,
     private readonly positions: PositionService,
+    private readonly publisher: DomainEventPublisher,
     private readonly recruitment: RecruitmentService,
     private readonly platformScope: PlatformScopeService,
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -89,34 +92,121 @@ export class OfferService {
   }
 
   async send(offerId: string): Promise<OfferRecord> {
-    const offer = await this.getById(offerId);
-    if (offer.status !== 'draft') {
-      throw new ConflictError('Only a draft offer can be sent');
-    }
-    offer.status = 'sent';
-    offer.sentAt = new Date();
-    return this.compose(await this.offers.save(offer));
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const offer = await manager.findOne(Offer, {
+        where: {
+          id: offerId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<Offer>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!offer) {
+        throw new NotFoundError('Offer not found', { id: offerId });
+      }
+      if (offer.status !== 'draft') {
+        throw new ConflictError('Only a draft offer can be sent');
+      }
+      offer.status = 'sent';
+      offer.sentAt = new Date();
+      const persisted = await manager.save(offer);
+      // Sending is the moment the pipeline reaches the offer stage; a draft was
+      // internal. The stage is never rolled back — decline/withdraw only end the
+      // outcome, leaving the reached stage as history.
+      await this.moveApplicationStage(manager, persisted.applicationId, 'offer');
+      return persisted;
+    });
+    return this.compose(saved);
   }
 
   async withdraw(offerId: string): Promise<OfferRecord> {
-    const offer = await this.getById(offerId);
-    if (offer.status !== 'draft' && offer.status !== 'sent') {
-      throw new ConflictError('Only a draft or sent offer can be withdrawn');
-    }
-    offer.status = 'withdrawn';
-    offer.respondedAt = new Date();
-    return this.compose(await this.offers.save(offer));
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const offer = await manager.findOne(Offer, {
+        where: {
+          id: offerId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<Offer>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!offer) {
+        throw new NotFoundError('Offer not found', { id: offerId });
+      }
+      if (offer.status !== 'draft' && offer.status !== 'sent') {
+        throw new ConflictError('Only a draft or sent offer can be withdrawn');
+      }
+      offer.status = 'withdrawn';
+      offer.respondedAt = new Date();
+      const persisted = await manager.save(offer);
+      // The company pulled the offer: the application ends rejected.
+      await this.closeApplication(manager, persisted.applicationId, 'rejected');
+      return persisted;
+    });
+    return this.compose(saved);
   }
 
   async decline(offerId: string, note?: string | null): Promise<OfferRecord> {
-    const offer = await this.getById(offerId);
-    if (offer.status !== 'sent') {
-      throw new ConflictError('Only a sent offer can be declined');
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const offer = await manager.findOne(Offer, {
+        where: {
+          id: offerId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<Offer>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!offer) {
+        throw new NotFoundError('Offer not found', { id: offerId });
+      }
+      if (offer.status !== 'sent') {
+        throw new ConflictError('Only a sent offer can be declined');
+      }
+      offer.status = 'declined';
+      offer.respondedAt = new Date();
+      if (note) offer.notes = note;
+      const persisted = await manager.save(offer);
+      // The candidate said no: the application ends withdrawn, not rejected.
+      await this.closeApplication(manager, persisted.applicationId, 'withdrawn');
+      return persisted;
+    });
+    return this.compose(saved);
+  }
+
+  // Stage moves follow the offer facts, so the pipeline is never left claiming
+  // an application is interviewing after it has reached the offer. Runs in the
+  // caller's transaction: the offer write and the application write commit
+  // together, so a retry can never find one without the other.
+  private async moveApplicationStage(
+    manager: EntityManager,
+    applicationId: string,
+    stage: 'offer',
+  ): Promise<void> {
+    const application = await manager.findOne(Application, {
+      where: {
+        id: applicationId,
+        organizationId: this.tenantContext.getOrganizationId(),
+      } as FindOptionsWhere<Application>,
+    });
+    if (application && application.stage !== 'hired' && application.stage !== stage) {
+      application.stage = stage;
+      await manager.save(application);
     }
-    offer.status = 'declined';
-    offer.respondedAt = new Date();
-    if (note) offer.notes = note;
-    return this.compose(await this.offers.save(offer));
+  }
+
+  // Terminal sub-stage facts end the application once: only an active, un-hired
+  // application is touched, so a later retry or a second decline is a no-op.
+  private async closeApplication(
+    manager: EntityManager,
+    applicationId: string,
+    outcome: 'withdrawn' | 'rejected',
+  ): Promise<void> {
+    const application = await manager.findOne(Application, {
+      where: {
+        id: applicationId,
+        organizationId: this.tenantContext.getOrganizationId(),
+      } as FindOptionsWhere<Application>,
+    });
+    if (application && application.outcome === 'active' && application.stage !== 'hired') {
+      application.outcome = outcome;
+      await manager.save(application);
+    }
   }
 
   // Acceptance hires: employee in the client's workspace, application hired,
@@ -166,7 +256,25 @@ export class OfferService {
           resourceType: 'offer',
           resourceId: offer.id,
         },
-        () => this.hireEmployee(candidate, posting.title, offer, manager),
+        async () => {
+          const hired = await this.hireEmployee(candidate, posting.title, offer, manager);
+          // The salary handoff travels as an outbox event in this transaction:
+          // compensation's consumer records the first revision idempotently,
+          // so recruitment never calls finance synchronously.
+          await this.publisher.publishWithin(manager, {
+            name: 'offer.accepted',
+            payload: {
+              offerId: offer.id,
+              applicationId: application.id,
+              employeeId: toId<EmployeeId>(hired.id),
+              annualAmount: Number(offer.baseSalary),
+              currency: offer.salaryCurrency,
+              effectiveDate: offer.startDate,
+              acceptedByUserId: hiredByUserId,
+            },
+          });
+          return hired;
+        },
         manager,
       );
 
@@ -193,7 +301,7 @@ export class OfferService {
           resourceId: offer.id,
         },
         async () => {
-          await this.recruitment.updateHiringRequest({
+          const filled = await this.recruitment.updateHiringRequest({
             hiringRequestId: toId<HiringRequestId>(posting.sourceHiringRequestId),
             status: 'filled',
             tethrNote: `Filled — ${candidate.fullName} accepted the offer.`,
@@ -201,8 +309,44 @@ export class OfferService {
             actor: 'tethr',
             manager,
           });
-          const position = await this.positions.ensureByTitle(posting.title, manager);
-          await this.positions.setStatus(position.id, 'filled', manager);
+          // Fill the request's authoritative linked position by id; the title
+          // lookup is only the fallback for a request with no established link
+          // (titles are neither unique nor immutable, so resolving by title
+          // here could fill a different position than the request owns).
+          if (filled.positionId) {
+            await this.positions.setStatus(filled.positionId, 'filled', manager);
+          } else {
+            const position = await this.positions.ensureByTitle(posting.title, manager);
+            // Link before filling: if a competing transaction linked the request
+            // elsewhere (or changed its state), the conditional link loses and
+            // the title-matched position must not be filled — filling is only
+            // ever applied to the request's authoritative link.
+            const linked = await this.recruitment.linkPositionForRequest(
+              {
+                hiringRequestId: filled.id,
+                positionId: position.id,
+                expectedStatus: 'filled',
+              },
+              manager,
+            );
+            if (linked) {
+              filled.positionId = position.id;
+              await this.positions.setStatus(position.id, 'filled', manager);
+            } else {
+              // A competing link won: fill the request's actual position, and
+              // touch nothing when there is none (the durable consumer
+              // reconciles it).
+              const current = await manager.findOne(HiringRequest, {
+                where: {
+                  id: filled.id,
+                  organizationId: this.tenantContext.getOrganizationId(),
+                } as FindOptionsWhere<HiringRequest>,
+              });
+              if (current?.positionId) {
+                await this.positions.setStatus(current.positionId, 'filled', manager);
+              }
+            }
+          }
         },
         manager,
       );
@@ -234,14 +378,6 @@ export class OfferService {
     return records;
   }
 
-  private async getById(offerId: string): Promise<Offer> {
-    const offer = await this.offers.findById(offerId);
-    if (!offer) {
-      throw new NotFoundError('Offer not found', { id: offerId });
-    }
-    return offer;
-  }
-
   // Employee numbers are unique per workspace; the timestamp suffix can repeat,
   // so a collision (23505) retries with a distinct number rather than failing
   // the hire after the employee write.
@@ -270,6 +406,12 @@ export class OfferService {
               workEmail: candidate.email,
               roleTitle,
               hireDate: offer.startDate,
+              // The offer's probation length becomes a concrete end date on the
+              // employee record.
+              probationEndDate:
+                offer.probationDays !== null && offer.probationDays >= 0
+                  ? addIsoDays(offer.startDate, offer.probationDays)
+                  : undefined,
               noticePeriodDays: offer.noticePeriodDays,
               workerType: 'permanent',
             },

@@ -6,7 +6,7 @@ import {
   type OrganizationId,
   type UserId,
 } from '@hrms/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, type FindOptionsWhere, In } from 'typeorm';
 
@@ -22,6 +22,7 @@ import { PositionService } from '../position/position.service';
 
 import { HiringRequestUpdate, type HiringRequestUpdateActor } from './entities/hiring-request-update.entity';
 import { HiringRequest } from './entities/hiring-request.entity';
+import { JobPosting } from './entities/job-posting.entity';
 import { HIRING_REQUEST_REPOSITORY, HIRING_REQUEST_UPDATE_REPOSITORY } from './recruitment.tokens';
 
 // The request's own lifecycle. Everything pipeline-shaped (`sourcing`,
@@ -86,6 +87,8 @@ const money = (value: number | null | undefined): string | null =>
 
 @Injectable()
 export class RecruitmentService {
+  private readonly logger = new Logger(RecruitmentService.name);
+
   constructor(
     @Inject(HIRING_REQUEST_REPOSITORY)
     private readonly hiringRequests: TenantScopedRepository<HiringRequest>,
@@ -219,7 +222,7 @@ export class RecruitmentService {
     // before touching it. A client caller can never pass another workspace.
     if (input.sourceOrganizationId && input.sourceOrganizationId !== organizationId) {
       await this.platformScope.assertOperator(PERMISSIONS.hiringRequestManage);
-      return this.platformScope.switchTo(
+      const updated = await this.platformScope.switchTo(
         {
           organizationId: input.sourceOrganizationId,
           purpose: 'hiring request update',
@@ -228,6 +231,18 @@ export class RecruitmentService {
         },
         () => this.updateHiringRequest({ ...input, sourceOrganizationId: null }),
       );
+      // Postings live in the operator's workspace, so the unpublish must run
+      // here at home — the switch has unwound, the tenant is Tethr again. It is
+      // best-effort: the event published with the request drives the durable
+      // consumer retry, so a failure here cannot leave a live posting behind.
+      if (
+        updated.status === 'cancelled' ||
+        updated.status === 'filled' ||
+        updated.status === 'onHold'
+      ) {
+        await this.unpublishPostingBestEffort(updated.id);
+      }
+      return updated;
     }
     const run = async (
       manager: EntityManager,
@@ -267,63 +282,269 @@ export class RecruitmentService {
           createdByUserId: input.updatedByUserId,
         }),
       );
-      await this.publisher.publishWithin(manager, {
-        name: 'hiringRequest.updated',
-        payload: { hiringRequestId: toId<HiringRequestId>(saved.id), status: saved.status },
-      });
+      // A note-only save is not a status change: the event drives the Slack
+      // status notice, so publishing it for every call would repeat the last
+      // status. The update trail above still records every note.
+      if (saved.status !== previousStatus) {
+        await this.publisher.publishWithin(manager, {
+          name: 'hiringRequest.updated',
+          payload: {
+            hiringRequestId: toId<HiringRequestId>(saved.id),
+            status: saved.status,
+            positionTitle: saved.positionTitle,
+          },
+        });
+      }
+      // The status audit commits with the request, its trail and its event:
+      // a failed audit rolls the whole transition back instead of leaving a
+      // changed request that the API reports as an error.
+      await this.audit.record(
+        {
+          action: 'update',
+          resourceType: 'hiring_request',
+          resourceId: saved.id,
+          before: { status: previousStatus },
+          after: { status: saved.status, positionId: saved.positionId },
+        },
+        manager,
+      );
       return { saved, previousStatus };
     };
     // A caller-owned transaction (offer acceptance) skips the position sync —
     // it performs the position closure itself within the same transaction.
-    const { saved, previousStatus } = input.manager
+    const { saved } = input.manager
       ? await run(input.manager)
       : await this.dataSource.transaction((manager) => run(manager));
 
-    const withPosition = input.manager
-      ? saved
-      : await this.applyPositionTransition(saved, previousStatus);
+    // State-based and idempotent: run on every call, not only on a status
+    // change, so replaying the same status repairs a position that a previous
+    // attempt failed to synchronize. Reconciles the request's *current* state
+    // (not this call's snapshot) with a convergence re-check, so a slow
+    // reconciliation can never reopen a position after a newer transition —
+    // and the result below reports that freshest state (the link an `open`
+    // reconciliation just made included). Best-effort — the updated event's
+    // consumer reconciles again durably. The status audit already committed
+    // with the transaction; a link this make adds its own audit.
+    let current = saved;
+    if (!input.manager) {
+      try {
+        current = (await this.reconcilePositionForRequest(saved.id)) ?? saved;
+      } catch (cause) {
+        this.logger.error(
+          `Position reconciliation failed for request ${saved.id}: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+        );
+      }
+    }
 
-    await this.audit.record(
-      {
-        action: 'update',
-        resourceType: 'hiring_request',
-        resourceId: withPosition.id,
-        before: { status: previousStatus },
-        after: { status: withPosition.status, positionId: withPosition.positionId },
-      },
-      // Join the caller's transaction when one is supplied (offer acceptance).
-      input.manager,
-    );
-    return withPosition;
+    // A closed (or held) request takes its posting off the air — decided from
+    // the freshest state, so a stale transition (this call's snapshot) cannot
+    // unpublish a posting whose request has since moved on. Postings live in
+    // the caller's workspace (Tethr's, for client requests): on the board path
+    // the platform switch has already unwound, so this queries at home and is a
+    // no-op for a client workspace. Best-effort here; the durable consumer
+    // retries until the posting is down.
+    //
+    // Skipped when the caller owns the transaction (offer acceptance): it has
+    // already unpublished the posting inside its own unit of work, and opening
+    // a sibling transaction here would block on the row lock the caller holds.
+    if (
+      !input.manager &&
+      (current.status === 'cancelled' ||
+        current.status === 'filled' ||
+        current.status === 'onHold')
+    ) {
+      await this.unpublishPostingBestEffort(current.id);
+    }
+    return current;
+  }
+
+  // The sync attempt in front of the durable consumer: failures are logged, not
+  // surfaced, so a committed request update never looks like a failed call.
+  private async unpublishPostingBestEffort(hiringRequestId: string): Promise<void> {
+    try {
+      await this.unpublishPostingsForRequest(hiringRequestId);
+    } catch (cause) {
+      this.logger.error(
+        `Posting unpublish failed for request ${hiringRequestId} (the consumer will retry): ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+      );
+    }
+  }
+
+  // Durable cleanup entry point (the hiringRequest.updated consumer calls this
+  // under the operator workspace's tenant). All rows for the request and their
+  // audit records commit together, and the operation is idempotent, so a retry
+  // can never leave a partial set or an unaudited unpublish. It reconciles
+  // every row for the request, not just the first, in case legacy duplicates
+  // exist.
+  //
+  // The raw manager query carries the active organization explicitly: the
+  // system principal runs this in the operator workspace, and
+  // `sourceHiringRequestId` has no uniqueness guarantee, so without the
+  // predicate a posting owned by another workspace could be matched and
+  // unpublished.
+  async unpublishPostingsForRequest(hiringRequestId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const postings = await manager.find(JobPosting, {
+        where: {
+          sourceHiringRequestId: hiringRequestId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<JobPosting>,
+        order: { createdAt: 'ASC' },
+      });
+      for (const posting of postings) {
+        if (!posting.isPublished) {
+          continue;
+        }
+        posting.isPublished = false;
+        const saved = await manager.save(posting);
+        await this.audit.record(
+          {
+            action: 'unpublish',
+            resourceType: 'job_posting',
+            resourceId: saved.id,
+            after: { reason: 'hiring request closed', hiringRequestId },
+          },
+          manager,
+        );
+      }
+    });
+  }
+
+  // Fresh-state entry point for position reconciliation: loads the request,
+  // applies the reconciliation for its *current* status, then re-reads. If the
+  // status changed while the position was being written (a concurrent
+  // transition's reconciliation, or this call's own later state), it applies
+  // the newer state too, so the position converges on the latest request
+  // instead of a stale snapshot. Bounded: the next event or update reconciles
+  // again if the status keeps moving.
+  //
+  // Returns the latest request (or null when it no longer exists). Decisions
+  // that must reflect reality — the cleanup consumer's publication gate — read
+  // this value, never an event payload's status.
+  async reconcilePositionForRequest(hiringRequestId: string): Promise<HiringRequest | null> {
+    const maxAttempts = 3;
+    let request = await this.hiringRequests.findById(hiringRequestId);
+    for (let attempt = 0; attempt < maxAttempts && request; attempt += 1) {
+      await this.reconcilePosition(request);
+      const latest = await this.hiringRequests.findById(hiringRequestId);
+      if (!latest || latest.status === request.status) {
+        return latest;
+      }
+      request = latest;
+    }
+    if (request) {
+      // Attempts exhausted with the status still moving: apply the newest
+      // observed state once more, so the returned request is reconciled rather
+      // than merely observed. Any further change is picked up by the next
+      // event or update.
+      await this.reconcilePosition(request);
+    }
+    return request;
+  }
+
+  // Links an unlinked request to a position with a targeted update: only
+  // `positionId` is written, never the whole entity, so a concurrent transition
+  // that changed the status while the position was being resolved can never be
+  // reverted. The conditional update and its audit commit in the caller's
+  // transaction; `false` means the row was no longer in the expected state or
+  // was already linked, and the caller should follow the latest state.
+  async linkPositionForRequest(
+    input: {
+      readonly hiringRequestId: string;
+      readonly positionId: string;
+      readonly expectedStatus: HiringRequestStatus;
+    },
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const result = await manager
+      .createQueryBuilder()
+      .update(HiringRequest)
+      .set({ positionId: input.positionId, updatedAt: () => 'CURRENT_TIMESTAMP' })
+      .where('id = :id', { id: input.hiringRequestId })
+      .andWhere('"organizationId" = :organizationId', {
+        organizationId: this.tenantContext.getOrganizationId(),
+      })
+      .andWhere('status = :expectedStatus', { expectedStatus: input.expectedStatus })
+      .andWhere('"positionId" IS NULL')
+      .execute();
+    const linked = (result.affected ?? 0) > 0;
+    if (linked) {
+      await this.audit.record(
+        {
+          action: 'linkPosition',
+          resourceType: 'hiring_request',
+          resourceId: input.hiringRequestId,
+          after: { positionId: input.positionId, status: input.expectedStatus },
+        },
+        manager,
+      );
+    }
+    return linked;
   }
 
   // Reconcile with Position, whose status and headcount shadow the request's:
-  // opening links the requisition to a position; a terminal request closes it.
-  // Kept outside the request transaction on purpose — positions are a different
-  // aggregate, and a failed reconciliation is visible rather than silent.
-  private async applyPositionTransition(
-    request: HiringRequest,
-    previousStatus: HiringRequestStatus,
-  ): Promise<HiringRequest> {
-    if (request.status === previousStatus) return request;
-
+  // opening links the requisition to a position; held freezes it; terminal
+  // closes it. State-based, so replaying the same status repairs divergence and
+  // a retry after a partial failure converges. Kept outside the request
+  // transaction on purpose — positions are a different aggregate.
+  async reconcilePosition(request: HiringRequest): Promise<HiringRequest> {
     if (request.status === 'open') {
-      const position = await this.positions.ensureByTitle(request.positionTitle);
-      if (request.positionId !== position.id) {
-        request.positionId = position.id;
-        await this.hiringRequests.save(request);
+      // Once a position is linked, follow it by id: titles are not unique and
+      // may have been renamed, so re-resolving by title here could relink the
+      // request to a different row and reopen the wrong position. Title lookup
+      // is only for the first open that has no link yet.
+      if (request.positionId) {
+        const position = await this.positions.getById(request.positionId);
+        if (position.status !== 'open') {
+          await this.positions.setStatus(position.id, 'open');
+        }
+        return request;
       }
+      const position = await this.positions.ensureByTitle(request.positionTitle);
+      // Link conditionally: a concurrent transition may have changed the status
+      // while the position was being resolved, and an unconditional entity save
+      // would write the stale snapshot back. Only a row that is still open and
+      // unlinked is updated, and its link audit commits with it; otherwise the
+      // caller reloads and reconciles the newer state — and the position is not
+      // opened, because it may not belong to this request any more.
+      const linked = await this.dataSource.transaction((manager) =>
+        this.linkPositionForRequest(
+          {
+            hiringRequestId: request.id,
+            positionId: position.id,
+            expectedStatus: 'open',
+          },
+          manager,
+        ),
+      );
+      if (!linked) {
+        return request;
+      }
+      request.positionId = position.id;
       if (position.status !== 'open') {
         await this.positions.setStatus(position.id, 'open');
       }
       return request;
     }
 
-    if (request.positionId && (request.status === 'filled' || request.status === 'cancelled')) {
-      await this.positions.setStatus(
-        request.positionId,
-        request.status === 'filled' ? 'filled' : 'closed',
-      );
+    if (!request.positionId) {
+      return request;
+    }
+    // Every non-open transition targets the linked position by id — never by
+    // title, which is not unique and may have been renamed.
+    const position = await this.positions.getById(request.positionId);
+    if (request.status === 'onHold' && position.status === 'open') {
+      await this.positions.setStatus(position.id, 'frozen');
+    }
+    if (request.status === 'filled' && position.status !== 'filled') {
+      await this.positions.setStatus(position.id, 'filled');
+    }
+    if (request.status === 'cancelled' && position.status !== 'closed') {
+      await this.positions.setStatus(position.id, 'closed');
     }
     return request;
   }

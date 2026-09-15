@@ -209,6 +209,19 @@ H_EMPLOYEE -.-> A_EVT3
 9. **The offer's `baseSalary`, `salaryCurrency`, and `probationDays` are never copied onto the created `Employee` record** at hire time.
 10. **The onboarding checklist has no aggregate completion gate.** Each of the 7 tasks is tracked independently; nothing reads "all tasks complete" to flip any other state, and nothing auto-seeds the checklist when an employee is hired (`employee.created` has no consumer — see #4).
 
+**Resolved on 2026-09-15** (the list above is kept as the audit of what the diagram surfaced):
+
+1. Sending an offer writes `stage = 'offer'` (`OfferService.send`); the stage is never rolled back.
+2. A hiring request on hold freezes its linked position; resuming reopens it.
+3. The provider call is still a stub, but its state is now visible: `ApplicationView.cvParse` reports pending/parsed/failed and the pool shows "Awaiting AI parsing".
+4. Both events have consumers: `employee.created` seeds the onboarding checklist and `hiringRequest.updated` notifies Slack (payload carries the title).
+5. Shortlist rejection, failed/no-show interviews and declined/withdrawn offers end the application outcome (withdrawn for a candidate decline, rejected otherwise); a terminal outcome is never overwritten.
+6. Form intake validates email-typed fields; the projection rejects missing-context, missing-posting and invalid-email submissions with reasons instead of leaving them pending.
+7. `unpublishJobPosting` exists, cancelling or filling a request unpublishes its postings, and the request panel has an Unpublish action.
+8. A partial unique index guarantees one active application per candidate and posting; intake refuses a duplicate with a reason (a rejected/withdrawn candidate may re-apply later).
+9. Acceptance copies the probation end date onto the employee and records the offer salary as the hire revision when the client workspace has a matching structure.
+10. `employee.created` seeds the checklist, and `employeeOnboardingProgress` reports completed/total/allComplete.
+
 ### Files this diagram was derived from
 
 ```

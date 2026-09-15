@@ -249,6 +249,64 @@ describe('FormsService', () => {
     );
   });
 
+  it('refuses a malformed email before the submission is stored', async () => {
+    const published = {
+      id: FORM,
+      organizationId: ORGANIZATION,
+      name: 'Application form',
+      slug: 'application',
+      status: 'published' as const,
+      target: 'application' as const,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as FormDefinition;
+    const { service, manager, publisher } = buildService({
+      existingForm: published,
+      fields: [
+        makeField({ fieldKey: 'fullName', label: 'Full name', required: true }),
+        makeField({ fieldKey: 'email', label: 'Email', required: true, type: 'email', sortOrder: 1 }),
+      ],
+    });
+
+    await expect(
+      service.submitForm({
+        formId: FORM,
+        data: { answers: { fullName: 'Ada', email: 'not-an-email' }, files: [], metadata: {} },
+        rateLimitKey: 'test',
+      }),
+    ).rejects.toThrow('Email must be a valid email address');
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
+  it('keeps accepting the dotted-domain shapes the previous pattern accepted', async () => {
+    const published = {
+      id: FORM,
+      organizationId: ORGANIZATION,
+      name: 'Application form',
+      slug: 'application',
+      status: 'published' as const,
+      target: 'application' as const,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as FormDefinition;
+    const { service } = buildService({
+      existingForm: published,
+      fields: [
+        makeField({ fieldKey: 'fullName', label: 'Full name', required: true }),
+        makeField({ fieldKey: 'email', label: 'Email', required: true, type: 'email', sortOrder: 1 }),
+      ],
+    });
+
+    const submission = await service.submitForm({
+      formId: FORM,
+      data: { answers: { fullName: 'Ada', email: 'a@b..c' }, files: [], metadata: {} },
+      rateLimitKey: 'test',
+    });
+
+    expect(submission.id).toBe('submission-1');
+  });
+
   it('refuses files that were not uploaded through this form', async () => {
     const published = {
       id: FORM,

@@ -1,4 +1,5 @@
 import { toId, type OrganizationId } from '@hrms/shared';
+import type { DataSource } from 'typeorm';
 
 import type { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
 import type { TenantContextService } from '../../core/tenancy/tenant-context.service';
@@ -54,6 +55,15 @@ const buildService = (options: { callerOrganization?: OrganizationId } = {}) => 
   const tenantContext = {
     getOrganizationId: jest.fn().mockReturnValue(options.callerOrganization ?? TETHR),
   } as unknown as TenantContextService;
+  const manager = {
+    findOne: jest.fn().mockResolvedValue(null),
+    save: jest.fn((value: unknown) => Promise.resolve(value)),
+  };
+  const dataSource = {
+    transaction: jest.fn((callback: (transactionManager: typeof manager) => Promise<unknown>) =>
+      callback(manager),
+    ),
+  } as unknown as DataSource;
 
   return {
     service: new ShortlistService(
@@ -64,6 +74,7 @@ const buildService = (options: { callerOrganization?: OrganizationId } = {}) => 
       postings,
       platformScope,
       tenantContext,
+      dataSource,
     ),
     shortlists,
     entries,
@@ -72,6 +83,7 @@ const buildService = (options: { callerOrganization?: OrganizationId } = {}) => 
     postings,
     platformScope,
     tenantContext,
+    manager,
   };
 };
 
@@ -141,7 +153,9 @@ describe('ShortlistService', () => {
   });
 
   it('lets the owning client record a verdict through the projection', async () => {
-    const { service, entries, shortlists, postings } = buildService({ callerOrganization: CLIENT });
+    const { service, entries, shortlists, postings, manager } = buildService({
+      callerOrganization: CLIENT,
+    });
     (entries.findById as jest.Mock).mockResolvedValue({
       id: 'entry-1',
       shortlistId: 'shortlist-1',
@@ -163,8 +177,38 @@ describe('ShortlistService', () => {
 
     expect(entry.clientDecision).toBe('interested');
     expect(entry.clientNote).toBe('Move to interview.');
-    expect(shortlists.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'feedbackReceived' }),
+    );
+  });
+
+  it('a client rejection ends the application instead of waiting for a second update', async () => {
+    const { service, entries, shortlists, postings, manager } = buildService({
+      callerOrganization: CLIENT,
+    });
+    (entries.findById as jest.Mock).mockResolvedValue({
+      id: 'entry-1',
+      shortlistId: 'shortlist-1',
+      applicationId: 'application-1',
+      clientDecision: 'pending',
+      clientNote: null,
+      decidedAt: null,
+    });
+    (shortlists.findById as jest.Mock).mockResolvedValue({ id: 'shortlist-1', status: 'presented' });
+    (postings.findById as jest.Mock).mockResolvedValue({
+      id: 'posting-1',
+      sourceOrganizationId: CLIENT,
+    });
+    (manager.findOne as jest.Mock).mockResolvedValue({
+      id: 'application-1',
+      stage: 'shortlisted',
+      outcome: 'active',
+    });
+
+    await service.recordDecision({ shortlistEntryId: 'entry-1', decision: 'rejected' });
+
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'application-1', outcome: 'rejected' }),
     );
   });
 
