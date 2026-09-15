@@ -411,11 +411,20 @@ export class RecruitmentService {
   // transaction on purpose — positions are a different aggregate.
   async reconcilePosition(request: HiringRequest): Promise<HiringRequest> {
     if (request.status === 'open') {
-      const position = await this.positions.ensureByTitle(request.positionTitle);
-      if (request.positionId !== position.id) {
-        request.positionId = position.id;
-        await this.hiringRequests.save(request);
+      // Once a position is linked, follow it by id: titles are not unique and
+      // may have been renamed, so re-resolving by title here could relink the
+      // request to a different row and reopen the wrong position. Title lookup
+      // is only for the first open that has no link yet.
+      if (request.positionId) {
+        const position = await this.positions.getById(request.positionId);
+        if (position.status !== 'open') {
+          await this.positions.setStatus(position.id, 'open');
+        }
+        return request;
       }
+      const position = await this.positions.ensureByTitle(request.positionTitle);
+      request.positionId = position.id;
+      await this.hiringRequests.save(request);
       if (position.status !== 'open') {
         await this.positions.setStatus(position.id, 'open');
       }

@@ -9,9 +9,10 @@ import { TenantContextService } from '../../../core/tenancy/tenant-context.servi
 import { RecruitmentService } from '../recruitment.service';
 
 const CONSUMER_NAME = 'recruitment.notify-hiring-request-updated';
-// Held and terminal requests must not keep sourcing: the posting comes down and
-// the linked position is reconciled to match the request.
-const CLEANUP_STATUSES = ['onHold', 'filled', 'cancelled'];
+// Held and terminal requests must not keep sourcing: their posting comes down.
+// Every status change reconciles the linked position, including a resume from
+// onHold, because the synchronous attempt may have failed.
+const UNPUBLISH_STATUSES = ['onHold', 'filled', 'cancelled'];
 
 // A request changing state is the agency's cue: on hold, filled or cancelled all
 // change what the team does next. The event is transactional with the request
@@ -44,12 +45,15 @@ export class HiringRequestUpdatedConsumer implements OnModuleInit {
     const { hiringRequestId, status, positionTitle } = event.payload;
     await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
-        if (CLEANUP_STATUSES.includes(status)) {
-          // Positions live in the request's workspace, so reconcile under the
-          // event's tenant. Postings live in the operator's workspace: step
-          // over there as the system principal (the unpublish writes its own
-          // audit records), no user session exists for this consumer.
-          await this.recruitment.reconcilePositionForRequest(hiringRequestId);
+        // Positions live in the request's workspace, so reconcile under the
+        // event's tenant — for every status change, a resume included: the
+        // sync attempt in the request call may have failed, and this is the
+        // durable retry that repairs it.
+        await this.recruitment.reconcilePositionForRequest(hiringRequestId);
+        if (UNPUBLISH_STATUSES.includes(status)) {
+          // Postings live in the operator's workspace: step over there as the
+          // system principal (the unpublish writes its own audit records), no
+          // user session exists for this consumer.
           const tethrOrganizationId = await this.platformScope.resolveTethrOrganizationId();
           await this.tenantContext.run(
             { organizationId: tethrOrganizationId, userId: null },

@@ -87,12 +87,14 @@ describe('HiringRequestUpdatedConsumer', () => {
     );
   });
 
-  it('only notifies for a status that needs no cleanup', async () => {
+  it('reconciles the position on a resume but leaves the posting alone', async () => {
     const { dispatch, recruitment, notifications, visitedTenants } = buildConsumer('open');
 
     await dispatch();
 
-    expect(recruitment.reconcilePositionForRequest).not.toHaveBeenCalled();
+    // A resume from onHold must repair a frozen position; only held/terminal
+    // statuses take the posting down, so no operator-workspace step happens.
+    expect(recruitment.reconcilePositionForRequest).toHaveBeenCalledWith(REQUEST);
     expect(recruitment.unpublishPostingsForRequest).not.toHaveBeenCalled();
     expect(visitedTenants).toEqual([CLIENT]);
     expect(notifications.sendSlack).toHaveBeenCalled();

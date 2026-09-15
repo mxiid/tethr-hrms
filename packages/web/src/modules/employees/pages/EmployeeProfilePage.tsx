@@ -707,7 +707,7 @@ export const EmployeeProfilePage = () => {
     onboardingProgressData?.employeeOnboardingProgress.completed ??
     onboardingTasks.filter((task) => task.status === 'completed').length;
   const onboardingTaskTotal =
-    onboardingProgressData?.employeeOnboardingProgress.total ?? onboardingTasks.length;
+    onboardingProgressData?.employeeOnboardingProgress.total ?? (onboardingTasks.length || 7);
   const onboardingAllComplete =
     onboardingProgressData?.employeeOnboardingProgress.allComplete ??
     (onboardingTasks.length > 0 && onboardingCompletedCount === onboardingTasks.length);
@@ -2565,7 +2565,7 @@ export const EmployeeProfilePage = () => {
               <DetailSection
                 badge={
                   <span className="table-density">
-                    {onboardingCompletedCount}/{onboardingTaskTotal || 7} complete
+                    {onboardingCompletedCount}/{onboardingTaskTotal} complete
                     {onboardingAllComplete ? ' · all done' : ''}
                   </span>
                 }

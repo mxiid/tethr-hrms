@@ -266,7 +266,7 @@ describe('RecruitmentService', () => {
     // The request is open but its position is frozen: a previous attempt
     // committed the status without the reconciliation. Replaying the same
     // status must still bring the position back, not skip the transition.
-    (positions.ensureByTitle as jest.Mock).mockResolvedValue({
+    (positions.getById as jest.Mock).mockResolvedValue({
       id: 'position-1',
       status: 'frozen',
     });
@@ -278,7 +278,32 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
+    expect(positions.getById).toHaveBeenCalledWith('position-1');
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'open');
+  });
+
+  it('never relinks an open request that already has a linked position', async () => {
+    const { service, positions, repository } = buildService(
+      makeRequest({ status: 'open', positionId: 'position-1' }),
+    );
+    // A same-title position exists, but the request's link is authoritative.
+    (positions.ensureByTitle as jest.Mock).mockResolvedValue({
+      id: 'position-other',
+      status: 'open',
+    });
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(positions.ensureByTitle).not.toHaveBeenCalled();
+    expect(positions.getById).toHaveBeenCalledWith('position-1');
+    expect(repository.save).not.toHaveBeenCalledWith(
+      expect.objectContaining({ positionId: 'position-other' }),
+    );
   });
 
   it('unpublishes the linked posting when a request is cancelled', async () => {
