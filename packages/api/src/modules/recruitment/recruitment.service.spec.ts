@@ -325,8 +325,28 @@ describe('RecruitmentService', () => {
     expect(request.status).toBe('open');
   });
 
-  it('returns client-visible update history with hiring requests', async () => {
-    const request = makeRequest({ status: 'open', tethrNote: 'Internal note.' });
+  it('unpublishes the posting when the board cancels a client request', async () => {
+    const { service, postings } = buildService(
+      makeRequest({ organizationId: CLIENT_ORGANIZATION, status: 'open', positionId: 'position-1' }),
+    );
+    (postings.find as jest.Mock).mockResolvedValue([
+      { id: 'posting-1', sourceHiringRequestId: REQUEST, isPublished: true },
+    ]);
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'cancelled',
+      updatedByUserId: USER,
+      actor: 'tethr',
+      sourceOrganizationId: CLIENT_ORGANIZATION,
+    });
+
+    expect(postings.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'posting-1', isPublished: false }),
+    );
+  });
+
+  it('returns client-visible update history with hiring requests', async () => {    const request = makeRequest({ status: 'open', tethrNote: 'Internal note.' });
     const update = {
       id: 'update-1',
       organizationId: ORGANIZATION,

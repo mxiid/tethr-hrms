@@ -223,7 +223,7 @@ export class RecruitmentService {
     // before touching it. A client caller can never pass another workspace.
     if (input.sourceOrganizationId && input.sourceOrganizationId !== organizationId) {
       await this.platformScope.assertOperator(PERMISSIONS.hiringRequestManage);
-      return this.platformScope.switchTo(
+      const updated = await this.platformScope.switchTo(
         {
           organizationId: input.sourceOrganizationId,
           purpose: 'hiring request update',
@@ -232,6 +232,12 @@ export class RecruitmentService {
         },
         () => this.updateHiringRequest({ ...input, sourceOrganizationId: null }),
       );
+      // Postings live in the operator's workspace, so the unpublish must run
+      // here at home — the switch has unwound, the tenant is Tethr again.
+      if (updated.status === 'cancelled' || updated.status === 'filled') {
+        await this.unpublishPostingsForRequest(updated.id);
+      }
+      return updated;
     }
     const run = async (
       manager: EntityManager,
