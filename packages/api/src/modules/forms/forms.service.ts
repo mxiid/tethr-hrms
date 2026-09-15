@@ -73,6 +73,10 @@ export type SubmissionProjection = {
 };
 
 const FIELD_KEY_PATTERN = /^[a-z][a-zA-Z0-9_]{0,63}$/;
+// Same shape the intake projection enforces; catching it here turns a silent
+// orphaned submission into a field error the applicant can fix.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_EMAIL_LENGTH = 320;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 3;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
@@ -370,6 +374,19 @@ export class FormsService {
       const value = data.answers[field.fieldKey];
       if (value === undefined || value.trim() === '') {
         throw new ValidationFailedError(`${field.label} is required`, {
+          fieldKey: field.fieldKey,
+        });
+      }
+    }
+    // An `email` field must carry a real address: the projection refuses to
+    // build a candidate from a malformed one, and an anonymous applicant has no
+    // other way to learn why nothing happened.
+    for (const field of fields) {
+      if (field.type !== 'email') continue;
+      const value = data.answers[field.fieldKey]?.trim();
+      if (value === undefined || value === '') continue;
+      if (value.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(value)) {
+        throw new ValidationFailedError(`${field.label} must be a valid email address`, {
           fieldKey: field.fieldKey,
         });
       }

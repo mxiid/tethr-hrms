@@ -97,6 +97,13 @@ const currencyCode = (value: string | undefined): string | null => {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Postgres unique-violation, as surfaced by the pg driver (same check the
+// finance services use).
+const isUniqueViolation = (cause: unknown): boolean => {
+  const driverError = (cause as { readonly driverError?: { readonly code?: string } }).driverError;
+  return driverError?.code === '23505';
+};
+
 // The ATS core: postings, the candidate pool, applications and CV documents.
 // Everything lives in the operator's (Tethr's) workspace; client visibility is
 // a narrow projection added with shortlists.
@@ -313,6 +320,24 @@ export class AtsService {
       if (!APPLICATION_OUTCOMES.includes(input.outcome)) {
         throw new ValidationFailedError('Unknown application outcome', { outcome: input.outcome });
       }
+      // Reactivating one application while another is open for the same person
+      // and role would violate the active-application guarantee (and the index
+      // behind it); refuse it with a message instead of a constraint error.
+      if (input.outcome === 'active' && application.outcome !== 'active') {
+        const other = await this.applications.findOne({
+          where: {
+            candidateId: application.candidateId,
+            jobPostingId: application.jobPostingId,
+            outcome: 'active',
+          } as FindOptionsWhere<Application>,
+        });
+        if (other && other.id !== application.id) {
+          throw new ConflictError(
+            'Another active application already exists for this candidate and role',
+            { applicationId: other.id },
+          );
+        }
+      }
       application.outcome = input.outcome;
     }
     if (input.onHold !== undefined) {
@@ -344,10 +369,17 @@ export class AtsService {
     const { submission, fields } = await this.forms.getSubmissionForProjection(submissionId);
     const postingRef = typeof submission.metadata.refId === 'string' ? submission.metadata.refId : null;
     if (!postingRef) {
+      // No dead ends: an unprojectable submission is recorded as rejected with
+      // a reason instead of sitting pending forever.
+      await this.forms.markSubmissionRejected(
+        submissionId,
+        'The submission is missing its posting context',
+      );
       return null;
     }
     const posting = await this.postings.findById(postingRef);
     if (!posting) {
+      await this.forms.markSubmissionRejected(submissionId, 'The posting is no longer available');
       return null;
     }
     // A link can outlive the posting it was minted for (form links live for
@@ -379,6 +411,7 @@ export class AtsService {
     }
     const email = bounded(byMap.get('candidate.email')?.toLowerCase(), 320);
     if (!email || !EMAIL_PATTERN.test(email)) {
+      await this.forms.markSubmissionRejected(submissionId, 'A valid candidate email is required');
       return null;
     }
 
@@ -400,28 +433,60 @@ export class AtsService {
       portfolio: bounded(byMap.get('candidate.portfolio'), 320),
     });
 
-    const application = await this.applications.save(
-      this.applications.create({
-        organizationId: this.tenantContext.getOrganizationId(),
+    // One open application per person and posting: a second submission while an
+    // earlier one is still active is refused with a reason (a rejected or
+    // withdrawn candidate may re-apply later as a new row). The partial unique
+    // index is the backstop under a concurrent duplicate.
+    const activeApplication = await this.applications.findOne({
+      where: {
         candidateId: candidate.id,
         jobPostingId: posting.id,
-        formSubmissionId: submission.id,
-        stage: 'screening',
         outcome: 'active',
-        onHold: false,
-        holdReason: null,
-        expectedSalary: numeric(byMap.get('application.expectedSalary')),
-        salaryCurrency: currencyCode(byMap.get('application.salaryCurrency')),
-        currentSalary: numeric(byMap.get('application.currentSalary')),
-        currentTitle: bounded(byMap.get('application.currentTitle'), 200),
-        yearsExperience: integer(byMap.get('application.yearsExperience')),
-        location: bounded(byMap.get('application.location'), 200),
-        skills: bounded(byMap.get('application.skills'), 20000),
-        coverNote: bounded(byMap.get('application.coverNote'), 20000),
-        manualRating: null,
-        notes: null,
-      }),
-    );
+      } as FindOptionsWhere<Application>,
+    });
+    if (activeApplication) {
+      await this.ensureResumeRecorded(candidate.id, submission);
+      await this.forms.markSubmissionRejected(
+        submissionId,
+        'You already have an active application for this role',
+      );
+      return null;
+    }
+
+    let application: Application;
+    try {
+      application = await this.applications.save(
+        this.applications.create({
+          organizationId: this.tenantContext.getOrganizationId(),
+          candidateId: candidate.id,
+          jobPostingId: posting.id,
+          formSubmissionId: submission.id,
+          stage: 'screening',
+          outcome: 'active',
+          onHold: false,
+          holdReason: null,
+          expectedSalary: numeric(byMap.get('application.expectedSalary')),
+          salaryCurrency: currencyCode(byMap.get('application.salaryCurrency')),
+          currentSalary: numeric(byMap.get('application.currentSalary')),
+          currentTitle: bounded(byMap.get('application.currentTitle'), 200),
+          yearsExperience: integer(byMap.get('application.yearsExperience')),
+          location: bounded(byMap.get('application.location'), 200),
+          skills: bounded(byMap.get('application.skills'), 20000),
+          coverNote: bounded(byMap.get('application.coverNote'), 20000),
+          manualRating: null,
+          notes: null,
+        }),
+      );
+    } catch (cause) {
+      if (!isUniqueViolation(cause)) {
+        throw cause;
+      }
+      await this.forms.markSubmissionRejected(
+        submissionId,
+        'You already have an active application for this role',
+      );
+      return null;
+    }
 
     await this.ensureResumeRecorded(candidate.id, submission);
     await this.forms.markSubmissionProjected(submissionId, 'application', application.id);

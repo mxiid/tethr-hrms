@@ -107,6 +107,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
       ],
     }),
     markSubmissionProjected: jest.fn().mockResolvedValue(undefined),
+    markSubmissionRejected: jest.fn().mockResolvedValue(undefined),
   } as unknown as FormsService;
   const queue = { add: jest.fn().mockResolvedValue(undefined) } as unknown as MessageQueueService;
   const tenantContext = {
@@ -147,7 +148,6 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
     audit,
   };
 };
-
 describe('AtsService', () => {
   it('projects an application submission into a candidate, application, CV document and parse job', async () => {
     const { service, candidates, applications, documents, cvParses, forms, queue } = buildService();
@@ -309,6 +309,81 @@ describe('AtsService', () => {
         yearsExperience: null,
         salaryCurrency: null,
       }),
+    );
+  });
+});
+
+describe('AtsService intake integrity', () => {
+  it('rejects a malformed email instead of orphaning the submission', async () => {
+    const { service, forms } = buildService();
+    (forms.getSubmissionForProjection as jest.Mock).mockResolvedValue({
+      submission: {
+        id: SUBMISSION,
+        formId: toId<FormId>('form-1'),
+        answers: { fullName: 'Ada Lovelace', email: 'not-an-email' },
+        files: [],
+        metadata: { refId: POSTING },
+      },
+      fields: [
+        { fieldKey: 'fullName', mapsTo: 'candidate.fullName' },
+        { fieldKey: 'email', mapsTo: 'candidate.email' },
+      ],
+    });
+
+    await expect(service.applyFormSubmission(SUBMISSION)).resolves.toBeNull();
+    expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
+      SUBMISSION,
+      'A valid candidate email is required',
+    );
+  });
+
+  it('rejects a submission with no posting context instead of leaving it pending', async () => {
+    const { service, forms } = buildService();
+    (forms.getSubmissionForProjection as jest.Mock).mockResolvedValue({
+      submission: {
+        id: SUBMISSION,
+        formId: toId<FormId>('form-1'),
+        answers: { fullName: 'Ada Lovelace', email: 'ada@example.com' },
+        files: [],
+        metadata: {},
+      },
+      fields: [
+        { fieldKey: 'fullName', mapsTo: 'candidate.fullName' },
+        { fieldKey: 'email', mapsTo: 'candidate.email' },
+      ],
+    });
+
+    await expect(service.applyFormSubmission(SUBMISSION)).resolves.toBeNull();
+    expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
+      SUBMISSION,
+      'The submission is missing its posting context',
+    );
+  });
+
+  it('refuses a second active application for the same posting', async () => {
+    const { service, forms, applications } = buildService();
+    (applications.findOne as jest.Mock)
+      .mockResolvedValueOnce(null) // no application for this submission yet
+      .mockResolvedValueOnce({ id: 'application-existing' }); // …but an active one exists
+
+    await expect(service.applyFormSubmission(SUBMISSION)).resolves.toBeNull();
+    expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
+      SUBMISSION,
+      'You already have an active application for this role',
+    );
+    expect(applications.save).not.toHaveBeenCalled();
+  });
+
+  it('recovers a duplicate application that races the unique index', async () => {
+    const { service, forms, applications } = buildService();
+    (applications.save as jest.Mock).mockRejectedValueOnce({
+      driverError: { code: '23505' },
+    });
+
+    await expect(service.applyFormSubmission(SUBMISSION)).resolves.toBeNull();
+    expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
+      SUBMISSION,
+      'You already have an active application for this role',
     );
   });
 });
