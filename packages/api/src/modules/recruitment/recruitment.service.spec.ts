@@ -58,6 +58,13 @@ const buildService = (existing: HiringRequest | null = null) => {
   const updates = {
     find: jest.fn().mockResolvedValue([]),
   } as unknown as TenantScopedRepository<HiringRequestUpdate>;
+  const queryBuilder = {
+    update: jest.fn().mockReturnThis(),
+    set: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    execute: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
   const manager = {
     create: jest.fn((_entity: unknown, value: unknown) => value),
     save: jest.fn((value: Record<string, unknown>) =>
@@ -65,6 +72,7 @@ const buildService = (existing: HiringRequest | null = null) => {
     ),
     findOne: jest.fn().mockResolvedValue(existing),
     find: jest.fn().mockResolvedValue([]),
+    createQueryBuilder: jest.fn(() => queryBuilder),
   } as unknown as EntityManager;
   const dataSource = {
     transaction: jest.fn((callback: (transactionManager: EntityManager) => Promise<unknown>) =>
@@ -124,6 +132,7 @@ const buildService = (existing: HiringRequest | null = null) => {
       positions,
     ),
     manager,
+    queryBuilder,
     publisher,
     repository,
     updates,
@@ -185,7 +194,7 @@ describe('RecruitmentService', () => {
   });
 
   it('opens a submitted request, links a position, and records the trail', async () => {
-    const { service, manager, publisher, positions, audit } = buildService(makeRequest());
+    const { service, manager, publisher, positions, queryBuilder, audit } = buildService(makeRequest());
 
     const request = await service.updateHiringRequest({
       hiringRequestId: REQUEST,
@@ -199,10 +208,13 @@ describe('RecruitmentService', () => {
     expect(request.tethrNote).toBe('Kicking off sourcing.');
     expect(request.positionId).toBe('position-1');
     expect(positions.ensureByTitle).toHaveBeenCalledWith('Senior developer');
-    // The link and its audit are one atomic change.
-    expect(manager.save).toHaveBeenCalledWith(
+    // The link is a targeted conditional update — only positionId, and only
+    // while the row is still open and unlinked — with its audit in the same
+    // transaction.
+    expect(queryBuilder.set).toHaveBeenCalledWith(
       expect.objectContaining({ positionId: 'position-1' }),
     );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith('"positionId" IS NULL');
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'linkPosition', resourceId: REQUEST }),
       manager,
@@ -225,6 +237,58 @@ describe('RecruitmentService', () => {
       expect.anything(),
       expect.objectContaining({ name: 'hiringRequest.updated' }),
     );
+  });
+
+  it('skips opening the position when the conditional link finds a newer state', async () => {
+    const { service, repository, positions, queryBuilder, audit } = buildService(
+      makeRequest({ status: 'submitted' }),
+    );
+    // The link loses the race: the row is no longer open and unlinked.
+    (queryBuilder.execute as jest.Mock).mockResolvedValue({ affected: 0 });
+    // The reload (and the loop's convergence check) observe the newer state.
+    (repository.findById as jest.Mock)
+      .mockResolvedValueOnce(makeRequest({ status: 'open', positionId: null }))
+      .mockResolvedValue(makeRequest({ status: 'cancelled', positionId: null }));
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    // No link, no link audit, and the position is not opened for a request the
+    // link could not own.
+    expect(audit.record).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'linkPosition' }),
+      expect.anything(),
+    );
+    expect(positions.setStatus).not.toHaveBeenCalled();
+  });
+
+  it('reconciles the final observed state when the status keeps moving', async () => {
+    const { service, repository, positions, queryBuilder } = buildService(
+      makeRequest({ status: 'submitted' }),
+    );
+    (queryBuilder.execute as jest.Mock).mockResolvedValue({ affected: 1 });
+    // Every reload reports a different status, exhausting the bounded loop; the
+    // final observed request must still be reconciled before returning.
+    (repository.findById as jest.Mock)
+      .mockResolvedValueOnce(makeRequest({ status: 'open', positionId: 'position-1' }))
+      .mockResolvedValueOnce(makeRequest({ status: 'cancelled', positionId: 'position-1' }))
+      .mockResolvedValueOnce(makeRequest({ status: 'filled', positionId: 'position-1' }))
+      .mockResolvedValue(makeRequest({ status: 'open', positionId: 'position-1' }));
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'open',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    // Three loop passes plus the post-exhaustion apply all reached the position
+    // read, proving the newest observation was reconciled too.
+    expect((positions.getById as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(4);
   });
 
   it('refuses an illegal transition and leaves the request untouched', async () => {

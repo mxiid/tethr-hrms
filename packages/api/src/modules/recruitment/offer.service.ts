@@ -317,11 +317,21 @@ export class OfferService {
           } else {
             const position = await this.positions.ensureByTitle(posting.title, manager);
             await this.positions.setStatus(position.id, 'filled', manager);
-            // Record the link too: otherwise the request stays permanently
-            // unlinked while its position is filled, and a later reconcile
-            // could never find it by id.
-            filled.positionId = position.id;
-            await manager.save(filled);
+            // Record the link too, through recruitment's conditional link so
+            // only positionId is written and the linkPosition audit commits in
+            // this transaction — otherwise the request would stay permanently
+            // unlinked while its position is filled, with no audit of the link.
+            const linked = await this.recruitment.linkPositionForRequest(
+              {
+                hiringRequestId: filled.id,
+                positionId: position.id,
+                expectedStatus: 'filled',
+              },
+              manager,
+            );
+            if (linked) {
+              filled.positionId = position.id;
+            }
           }
         },
         manager,

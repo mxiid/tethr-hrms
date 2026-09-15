@@ -115,6 +115,7 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
     updateHiringRequest: jest
       .fn()
       .mockResolvedValue({ id: 'request-1', status: 'filled', positionId: 'position-1' }),
+    linkPositionForRequest: jest.fn().mockResolvedValue(true),
   } as unknown as RecruitmentService;
   const platformScope = {
     assertOperator: jest.fn().mockResolvedValue({ organizationId: TETHR }),
@@ -322,10 +323,16 @@ describe('OfferService', () => {
 
     expect(positions.ensureByTitle).toHaveBeenCalledWith('Staff Engineer', expect.anything());
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'filled', expect.anything());
-    // The fallback records the link so the request cannot stay unlinked while
-    // its position is filled.
-    expect(manager.save).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'request-1', positionId: 'position-1' }),
+    // The link is recorded through recruitment's conditional helper so only
+    // positionId is written and the linkPosition audit commits in this
+    // transaction.
+    expect(recruitment.linkPositionForRequest).toHaveBeenCalledWith(
+      {
+        hiringRequestId: 'request-1',
+        positionId: 'position-1',
+        expectedStatus: 'filled',
+      },
+      manager,
     );
   });
 

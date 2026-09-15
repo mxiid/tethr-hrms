@@ -436,7 +436,54 @@ export class RecruitmentService {
       }
       request = latest;
     }
+    if (request) {
+      // Attempts exhausted with the status still moving: apply the newest
+      // observed state once more, so the returned request is reconciled rather
+      // than merely observed. Any further change is picked up by the next
+      // event or update.
+      await this.reconcilePosition(request);
+    }
     return request;
+  }
+
+  // Links an unlinked request to a position with a targeted update: only
+  // `positionId` is written, never the whole entity, so a concurrent transition
+  // that changed the status while the position was being resolved can never be
+  // reverted. The conditional update and its audit commit in the caller's
+  // transaction; `false` means the row was no longer in the expected state or
+  // was already linked, and the caller should follow the latest state.
+  async linkPositionForRequest(
+    input: {
+      readonly hiringRequestId: string;
+      readonly positionId: string;
+      readonly expectedStatus: HiringRequestStatus;
+    },
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const result = await manager
+      .createQueryBuilder()
+      .update(HiringRequest)
+      .set({ positionId: input.positionId, updatedAt: () => 'CURRENT_TIMESTAMP' })
+      .where('id = :id', { id: input.hiringRequestId })
+      .andWhere('"organizationId" = :organizationId', {
+        organizationId: this.tenantContext.getOrganizationId(),
+      })
+      .andWhere('status = :expectedStatus', { expectedStatus: input.expectedStatus })
+      .andWhere('"positionId" IS NULL')
+      .execute();
+    const linked = (result.affected ?? 0) > 0;
+    if (linked) {
+      await this.audit.record(
+        {
+          action: 'linkPosition',
+          resourceType: 'hiring_request',
+          resourceId: input.hiringRequestId,
+          after: { positionId: input.positionId, status: input.expectedStatus },
+        },
+        manager,
+      );
+    }
+    return linked;
   }
 
   // Reconcile with Position, whose status and headcount shadow the request's:
@@ -458,22 +505,26 @@ export class RecruitmentService {
         return request;
       }
       const position = await this.positions.ensureByTitle(request.positionTitle);
-      request.positionId = position.id;
-      // The link and its audit are their own atomic change: reconciliation runs
-      // outside the request transaction, and a half-written link (row saved,
-      // audit failed) would hide the position ownership from the trail.
-      await this.dataSource.transaction(async (manager) => {
-        const linked = await manager.save(request);
-        await this.audit.record(
+      // Link conditionally: a concurrent transition may have changed the status
+      // while the position was being resolved, and an unconditional entity save
+      // would write the stale snapshot back. Only a row that is still open and
+      // unlinked is updated, and its link audit commits with it; otherwise the
+      // caller reloads and reconciles the newer state — and the position is not
+      // opened, because it may not belong to this request any more.
+      const linked = await this.dataSource.transaction((manager) =>
+        this.linkPositionForRequest(
           {
-            action: 'linkPosition',
-            resourceType: 'hiring_request',
-            resourceId: linked.id,
-            after: { positionId: linked.positionId },
+            hiringRequestId: request.id,
+            positionId: position.id,
+            expectedStatus: 'open',
           },
           manager,
-        );
-      });
+        ),
+      );
+      if (!linked) {
+        return request;
+      }
+      request.positionId = position.id;
       if (position.status !== 'open') {
         await this.positions.setStatus(position.id, 'open');
       }
