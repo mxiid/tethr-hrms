@@ -14,9 +14,10 @@ import {
   type OrganizationId,
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { In } from 'typeorm';
+import { type FindOptionsWhere, In } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
+import { AuditService } from '../../core/audit/audit.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
 import { MessageQueueService } from '../../core/queue/message-queue.service';
 import { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
@@ -114,6 +115,7 @@ export class AtsService {
     private readonly queue: MessageQueueService,
     private readonly tenantContext: TenantContextService,
     private readonly platformScope: PlatformScopeService,
+    private readonly audit: AuditService,
   ) {}
 
   // --- Postings -----------------------------------------------------------------
@@ -197,6 +199,36 @@ export class AtsService {
       throw new NotFoundError('Job posting not found', { id });
     }
     return posting;
+  }
+
+  // The posting born from a request, so the operator panel can show live state
+  // after a reload (the publish response carries the id only in-session).
+  getPostingForRequest(hiringRequestId: HiringRequestId): Promise<JobPosting | null> {
+    return this.postings.findOne({
+      where: { sourceHiringRequestId: hiringRequestId } as FindOptionsWhere<JobPosting>,
+    });
+  }
+
+  // Pulls a posting off the air without touching its request. Closing the
+  // request also does this automatically (RecruitmentService); this is the
+  // operator lever for a live posting whose request stands.
+  async unpublishPosting(postingId: JobPostingId): Promise<JobPosting> {
+    const posting = await this.postings.findById(postingId);
+    if (!posting) {
+      throw new NotFoundError('Job posting not found', { id: postingId });
+    }
+    if (!posting.isPublished) {
+      return posting;
+    }
+    posting.isPublished = false;
+    const saved = await this.postings.save(posting);
+    await this.audit.record({
+      action: 'unpublish',
+      resourceType: 'job_posting',
+      resourceId: saved.id,
+      after: { sourceHiringRequestId: saved.sourceHiringRequestId },
+    });
+    return saved;
   }
 
   // The first consumer of the form builder: the standard application form is the

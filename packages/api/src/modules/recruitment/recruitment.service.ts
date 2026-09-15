@@ -20,8 +20,10 @@ import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.reposit
 import { OrganizationService } from '../organization/organization.service';
 import { PositionService } from '../position/position.service';
 
+import { JOB_POSTING_REPOSITORY } from './ats.tokens';
 import { HiringRequestUpdate, type HiringRequestUpdateActor } from './entities/hiring-request-update.entity';
 import { HiringRequest } from './entities/hiring-request.entity';
+import { JobPosting } from './entities/job-posting.entity';
 import { HIRING_REQUEST_REPOSITORY, HIRING_REQUEST_UPDATE_REPOSITORY } from './recruitment.tokens';
 
 // The request's own lifecycle. Everything pipeline-shaped (`sourcing`,
@@ -92,6 +94,8 @@ export class RecruitmentService {
     @Inject(HIRING_REQUEST_UPDATE_REPOSITORY)
     private readonly hiringRequestUpdates: TenantScopedRepository<HiringRequestUpdate>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    @Inject(JOB_POSTING_REPOSITORY)
+    private readonly postings: TenantScopedRepository<JobPosting>,
     private readonly publisher: DomainEventPublisher,
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
@@ -269,7 +273,11 @@ export class RecruitmentService {
       );
       await this.publisher.publishWithin(manager, {
         name: 'hiringRequest.updated',
-        payload: { hiringRequestId: toId<HiringRequestId>(saved.id), status: saved.status },
+        payload: {
+          hiringRequestId: toId<HiringRequestId>(saved.id),
+          status: saved.status,
+          positionTitle: saved.positionTitle,
+        },
       });
       return { saved, previousStatus };
     };
@@ -294,7 +302,35 @@ export class RecruitmentService {
       // Join the caller's transaction when one is supplied (offer acceptance).
       input.manager,
     );
+
+    // A closed request takes its posting off the air. Postings live in the
+    // caller's workspace (Tethr's, for client requests): on the board path the
+    // platform switch has already unwound, so this queries at home and is a
+    // no-op for a client workspace — a client cancellation is unpublishable by
+    // an operator through the unpublishJobPosting mutation.
+    if (withPosition.status === 'cancelled' || withPosition.status === 'filled') {
+      await this.unpublishPostingsForRequest(withPosition.id);
+    }
     return withPosition;
+  }
+
+  private async unpublishPostingsForRequest(hiringRequestId: string): Promise<void> {
+    const live = await this.postings.find({
+      where: {
+        sourceHiringRequestId: hiringRequestId,
+        isPublished: true,
+      } as FindOptionsWhere<JobPosting>,
+    });
+    for (const posting of live) {
+      posting.isPublished = false;
+      const saved = await this.postings.save(posting);
+      await this.audit.record({
+        action: 'unpublish',
+        resourceType: 'job_posting',
+        resourceId: saved.id,
+        after: { reason: 'hiring request closed', hiringRequestId },
+      });
+    }
   }
 
   // Reconcile with Position, whose status and headcount shadow the request's:

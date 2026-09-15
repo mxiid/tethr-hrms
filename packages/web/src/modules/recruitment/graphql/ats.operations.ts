@@ -74,6 +74,25 @@ export const PUBLISH_HIRING_REQUEST_MUTATION = gql`
   }
 `;
 
+export const POSTING_FOR_REQUEST_QUERY = gql`
+  query PostingForRequest($hiringRequestId: ID!) {
+    postingForRequest(hiringRequestId: $hiringRequestId) {
+      id
+      title
+      isPublished
+    }
+  }
+`;
+
+export const UNPUBLISH_JOB_POSTING_MUTATION = gql`
+  mutation UnpublishJobPosting($postingId: ID!) {
+    unpublishJobPosting(postingId: $postingId) {
+      id
+      isPublished
+    }
+  }
+`;
+
 export const CREATE_CANDIDATE_MUTATION = gql`
   mutation CreateCandidate($input: CreateCandidateInput!) {
     createCandidate(input: $input) {

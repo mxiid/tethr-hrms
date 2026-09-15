@@ -33,7 +33,11 @@ import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { PUBLISH_HIRING_REQUEST_MUTATION } from '../graphql/ats.operations';
+import {
+  POSTING_FOR_REQUEST_QUERY,
+  PUBLISH_HIRING_REQUEST_MUTATION,
+  UNPUBLISH_JOB_POSTING_MUTATION,
+} from '../graphql/ats.operations';
 import { MY_INTERVIEW_OUTCOMES_QUERY } from '../graphql/interview.operations';
 import {
   CLIENT_HIRING_REQUESTS_QUERY,
@@ -54,6 +58,12 @@ type InterviewOutcomeRecord = {
   readonly scheduledAt: string;
   readonly status: 'scheduled' | 'completed' | 'cancelled';
   readonly outcome: 'passed' | 'failed' | 'noShow' | null;
+};
+
+type PostingRecord = {
+  readonly id: string;
+  readonly title: string;
+  readonly isPublished: boolean;
 };
 
 type HiringRequestRecord = {
@@ -316,6 +326,18 @@ export const HiringRequestsPage = () => {
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = requests.find((request) => request.id === selectedId) ?? null;
+  const [unpublishPosting, { loading: unpublishing }] = useMutation(
+    UNPUBLISH_JOB_POSTING_MUTATION,
+  );
+  // The posting's live state, so an operator sees the truth after a reload —
+  // the publish response only carries the id in-session.
+  const { data: postingData, refetch: refetchPosting } = useQuery<{
+    readonly postingForRequest: PostingRecord | null;
+  }>(POSTING_FOR_REQUEST_QUERY, {
+    skip: !isTethr || !selectedId,
+    variables: { hiringRequestId: selectedId },
+  });
+  const livePosting = postingData?.postingForRequest ?? null;
   const view = useListView({ routeKey: '/hiring' });
   const visibleRequests = useMemo(() => {
     const selectedStatuses = view.filters.status ?? [];
@@ -546,8 +568,21 @@ export const HiringRequestsPage = () => {
         },
       });
       setApplyLink(result.data?.publishHiringRequest?.applyPath ?? null);
+      await refetchPosting();
     } catch (caught) {
       setPanelError(caught instanceof Error ? caught.message : 'Could not publish the request');
+    }
+  };
+
+  const onUnpublish = async (): Promise<void> => {
+    if (!livePosting) return;
+    setPanelError(null);
+    try {
+      await unpublishPosting({ variables: { postingId: livePosting.id } });
+      setApplyLink(null);
+      await refetchPosting();
+    } catch (caught) {
+      setPanelError(caught instanceof Error ? caught.message : 'Could not unpublish the posting');
     }
   };
 
@@ -1046,19 +1081,38 @@ export const HiringRequestsPage = () => {
               {selected.status === 'open' ? (
                 <section className="request-note">
                   <div className="field-label">Public application</div>
-                  {applyLink ? (
+                  {livePosting?.isPublished ? (
                     <>
-                      <p>
-                        Live link:{' '}
-                        <code>{`${window.location.origin}${applyLink}`}</code>
-                      </p>
-                      <button
-                        className="button button-secondary"
-                        onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${applyLink}`)}
-                        type="button"
-                      >
-                        Copy link
-                      </button>
+                      <p>This posting is live and accepting applications.</p>
+                      {applyLink ? (
+                        <p>
+                          Live link:{' '}
+                          <code>{`${window.location.origin}${applyLink}`}</code>
+                        </p>
+                      ) : null}
+                      <div className="record-panel-actions">
+                        {applyLink ? (
+                          <button
+                            className="button button-secondary"
+                            onClick={() =>
+                              void navigator.clipboard.writeText(
+                                `${window.location.origin}${applyLink}`,
+                              )
+                            }
+                            type="button"
+                          >
+                            Copy link
+                          </button>
+                        ) : null}
+                        <button
+                          className="button button-secondary"
+                          disabled={unpublishing}
+                          onClick={() => void onUnpublish()}
+                          type="button"
+                        >
+                          {unpublishing ? 'Unpublishing…' : 'Unpublish'}
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <button

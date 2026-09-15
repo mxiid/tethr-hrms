@@ -6,6 +6,7 @@ import {
   type OrganizationId,
 } from '@hrms/shared';
 
+import type { AuditService } from '../../core/audit/audit.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
 import type { MessageQueueService } from '../../core/queue/message-queue.service';
 import type { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
@@ -119,6 +120,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
     }),
     switchTo: jest.fn((_input: unknown, work: () => Promise<unknown>) => work()),
   } as unknown as PlatformScopeService;
+  const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
 
   return {
     service: new AtsService(
@@ -132,6 +134,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
       queue,
       tenantContext,
       platformScope,
+      audit,
     ),
     jobPostings,
     candidates,
@@ -141,6 +144,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
     forms,
     queue,
     platformScope,
+    audit,
   };
 };
 
@@ -306,5 +310,37 @@ describe('AtsService', () => {
         salaryCurrency: null,
       }),
     );
+  });
+});
+
+describe('AtsService posting lifecycle', () => {
+  it('unpublishes a live posting and audits it', async () => {
+    const { service, jobPostings, audit } = buildService();
+
+    const saved = await service.unpublishPosting(POSTING as never);
+
+    expect(jobPostings.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: POSTING, isPublished: false }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'unpublish', resourceId: POSTING }),
+    );
+    expect(saved.isPublished).toBe(false);
+  });
+
+  it('leaves an already unpublished posting alone', async () => {
+    const { service, jobPostings } = buildService();
+    (jobPostings.findById as jest.Mock).mockResolvedValue({ ...posting, isPublished: false });
+
+    await service.unpublishPosting(POSTING as never);
+
+    expect(jobPostings.save).not.toHaveBeenCalled();
+  });
+
+  it('finds the posting born from a request', async () => {
+    const { service, jobPostings } = buildService();
+    (jobPostings.findOne as jest.Mock).mockResolvedValue(posting);
+
+    await expect(service.getPostingForRequest(REQUEST)).resolves.toBe(posting);
   });
 });

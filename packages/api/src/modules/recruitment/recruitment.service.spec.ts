@@ -12,6 +12,7 @@ import type { PositionService } from '../position/position.service';
 
 import type { HiringRequestUpdate } from './entities/hiring-request-update.entity';
 import { HiringRequest } from './entities/hiring-request.entity';
+import type { JobPosting } from './entities/job-posting.entity';
 import { RecruitmentService } from './recruitment.service';
 
 const ORGANIZATION = toId<OrganizationId>('org-1');
@@ -92,12 +93,17 @@ const buildService = (existing: HiringRequest | null = null) => {
     ensureByTitle: jest.fn().mockResolvedValue({ id: 'position-1', status: 'open' }),
     setStatus: jest.fn().mockResolvedValue(undefined),
   } as unknown as PositionService;
+  const postings = {
+    find: jest.fn().mockResolvedValue([]),
+    save: jest.fn((value: unknown) => Promise.resolve(value)),
+  } as unknown as TenantScopedRepository<JobPosting>;
 
   return {
     service: new RecruitmentService(
       repository,
       updates,
       dataSource,
+      postings,
       publisher,
       tenantContext,
       audit,
@@ -112,6 +118,7 @@ const buildService = (existing: HiringRequest | null = null) => {
     platformScope,
     organizations,
     positions,
+    postings,
   };
 };
 
@@ -239,6 +246,45 @@ describe('RecruitmentService', () => {
     });
 
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'frozen');
+  });
+
+  it('unpublishes the linked posting when a request is cancelled', async () => {
+    const { service, postings } = buildService(
+      makeRequest({ status: 'open', positionId: 'position-1' }),
+    );
+    (postings.find as jest.Mock).mockResolvedValue([
+      { id: 'posting-1', sourceHiringRequestId: REQUEST, isPublished: true },
+    ]);
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'cancelled',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(postings.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'posting-1', isPublished: false }),
+    );
+  });
+
+  it('emits the request title with the status update so the notifier can name it', async () => {
+    const { service, publisher } = buildService(makeRequest({ status: 'open' }));
+
+    await service.updateHiringRequest({
+      hiringRequestId: REQUEST,
+      status: 'cancelled',
+      updatedByUserId: USER,
+      actor: 'tethr',
+    });
+
+    expect(publisher.publishWithin).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        name: 'hiringRequest.updated',
+        payload: expect.objectContaining({ status: 'cancelled', positionTitle: 'Senior developer' }),
+      }),
+    );
   });
 
   it('reads the cross-client board under platform scope and labels workspaces', async () => {

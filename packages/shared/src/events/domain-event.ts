@@ -204,6 +204,9 @@ export type DomainEventPayloads = {
   'hiringRequest.updated': {
     readonly hiringRequestId: HiringRequestId;
     readonly status: string;
+    // Carried so the notification consumer can name the request without a
+    // second lookup in another aggregate.
+    readonly positionTitle: string;
   };
   'form.submitted': {
     readonly formId: FormId;

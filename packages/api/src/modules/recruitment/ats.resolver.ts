@@ -98,6 +98,30 @@ export class AtsResolver {
     return { jobPostingId: posting.id, title: posting.title, applyPath: `/apply/${token}` };
   }
 
+  // Takes a live posting off the air without touching its request. Closing the
+  // request does this automatically; this is the manual lever (and the only one
+  // for a client-cancelled request, whose posting lives in Tethr's workspace).
+  @Mutation(() => JobPostingView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.hiringRequestManage)
+  async unpublishJobPosting(
+    @Args('postingId', { type: () => ID }) postingId: string,
+  ): Promise<JobPostingView> {
+    return this.toPostingView(await this.ats.unpublishPosting(toId<JobPostingId>(postingId)));
+  }
+
+  // Live posting state for a request (null when it was never published), so the
+  // operator panel shows the truth after a reload.
+  @Query(() => JobPostingView, { nullable: true })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.hiringRequestManage)
+  async postingForRequest(
+    @Args('hiringRequestId', { type: () => ID }) hiringRequestId: string,
+  ): Promise<JobPostingView | null> {
+    const posting = await this.ats.getPostingForRequest(toId<HiringRequestId>(hiringRequestId));
+    return posting ? this.toPostingView(posting) : null;
+  }
+
   @Mutation(() => CandidateView)
   @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
