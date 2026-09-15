@@ -5,6 +5,7 @@ import { AuthModule } from '../../core/auth/auth.module';
 import { AuthzModule } from '../../core/authz/authz.module';
 import { provideTenantScopedRepository } from '../../core/tenancy/tenant-repository.provider';
 import { EmployeeModule } from '../employee/employee.module';
+import { CompensationModule } from '../finance/compensation/compensation.module';
 import { FormsModule } from '../forms/forms.module';
 import { OrganizationModule } from '../organization/organization.module';
 import { PositionModule } from '../position/position.module';
@@ -78,6 +79,7 @@ import { ShortlistService } from './shortlist.service';
     OrganizationModule,
     PositionModule,
     EmployeeModule,
+    CompensationModule,
     FormsModule,
   ],
   providers: [

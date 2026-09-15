@@ -184,6 +184,7 @@ const buildService = (links: EmployeeDocumentLink[] = []) => {
     publisher,
     employeeService,
     onboardingTasks,
+    hrRecords,
     documents,
   };
 };
@@ -321,6 +322,32 @@ describe('EmployeeRecordsService', () => {
         completedByUserId: USER,
       }),
     );
+  });
+
+  it('seeds the seven checklist tasks for a new hire idempotently', async () => {
+    const { service, onboardingTasks } = buildService();
+
+    const created = await service.seedOnboardingChecklist(EMPLOYEE);
+
+    expect(created).toBe(7);
+    expect(onboardingTasks.save).toHaveBeenCalledTimes(7);
+
+    // A retry finds every row and creates nothing.
+    (onboardingTasks.findOne as jest.Mock).mockResolvedValue({ id: 'existing' });
+    await expect(service.seedOnboardingChecklist(EMPLOYEE)).resolves.toBe(0);
+  });
+
+  it('derives aggregate onboarding progress including the bank-details task', async () => {
+    const { service, onboardingTasks, hrRecords } = buildService();
+    (onboardingTasks.find as jest.Mock).mockResolvedValue([
+      { taskKey: 'profile', status: 'completed', title: 'Profile' },
+    ]);
+    (hrRecords.findOne as jest.Mock).mockResolvedValue({ bankAccountNumber: 'PK00-1234' });
+
+    const progress = await service.getOnboardingProgress(EMPLOYEE);
+
+    // profile + the derived bank-details completion.
+    expect(progress).toEqual({ completed: 2, total: 7, allComplete: false });
   });
 
   it('creates the Tethr HR private record for sensitive employee data', async () => {

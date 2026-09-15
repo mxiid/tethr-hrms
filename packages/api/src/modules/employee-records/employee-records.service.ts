@@ -445,6 +445,53 @@ export class EmployeeRecordsService {
     });
   }
 
+  // Seeds the standard checklist for a new hire. Idempotent per (employee,
+  // taskKey): the employee.created consumer may be retried by the outbox, and
+  // the rows may already have been created by an operator.
+  async seedOnboardingChecklist(employeeId: EmployeeId): Promise<number> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    let created = 0;
+    for (const definition of ONBOARDING_TASK_DEFINITIONS) {
+      const existing = await this.onboardingTasks.findOne({
+        where: {
+          employeeId,
+          taskKey: definition.taskKey,
+        } as FindOptionsWhere<EmployeeOnboardingTask>,
+      });
+      if (existing) continue;
+      await this.onboardingTasks.save(
+        this.onboardingTasks.create({
+          organizationId,
+          employeeId,
+          taskKey: definition.taskKey,
+          title: definition.title,
+          status: 'notStarted',
+          dueDate: null,
+          notes: null,
+        }),
+      );
+      created += 1;
+    }
+    return created;
+  }
+
+  // The aggregate read the checklist never had: everything complete, with the
+  // derived bank-details task included. Surfaces and later workflows gate on
+  // this instead of re-counting in each client.
+  async getOnboardingProgress(employeeId: EmployeeId): Promise<{
+    readonly completed: number;
+    readonly total: number;
+    readonly allComplete: boolean;
+  }> {
+    const tasks = await this.listOnboardingTasks(employeeId);
+    const completed = tasks.filter((task) => task.status === 'completed').length;
+    return {
+      completed,
+      total: tasks.length,
+      allComplete: tasks.length > 0 && completed === tasks.length,
+    };
+  }
+
   async updateOnboardingTask(
     input: UpdateEmployeeOnboardingTaskData,
   ): Promise<EmployeeOnboardingTaskRecord> {

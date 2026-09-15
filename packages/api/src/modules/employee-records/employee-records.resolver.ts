@@ -33,6 +33,7 @@ import { EmployeeAssessmentView } from './dto/employee-assessment.output';
 import { EmployeeDocumentSignatureRequestView } from './dto/employee-document-signature-request.output';
 import { EmployeeDocumentView } from './dto/employee-document.output';
 import { EmployeeHrRecordView } from './dto/employee-hr-record.output';
+import { EmployeeOnboardingProgressView } from './dto/employee-onboarding-progress.output';
 import { EmployeeOnboardingTaskView } from './dto/employee-onboarding-task.output';
 import { PrepareEmployeeDocumentUploadInput } from './dto/prepare-employee-document-upload.input';
 import { RecordEmployeeAssessmentInput } from './dto/record-employee-assessment.input';
@@ -177,6 +178,20 @@ export class EmployeeRecordsResolver {
     return (await this.employeeRecords.listOnboardingTasks(toId<EmployeeId>(employeeId))).map(
       toOnboardingTaskView,
     );
+  }
+
+  // The aggregate gate: complete / total / allComplete, derived from the same
+  // checklist (bank details included) so surfaces never re-count.
+  @Query(() => EmployeeOnboardingProgressView)
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(PERMISSIONS.employeeSensitiveRead)
+  async employeeOnboardingProgress(
+    @Args('employeeId', { type: () => ID }) employeeId: string,
+  ): Promise<EmployeeOnboardingProgressView> {
+    return {
+      employeeId,
+      ...(await this.employeeRecords.getOnboardingProgress(toId<EmployeeId>(employeeId))),
+    };
   }
 
   @Mutation(() => EmployeeHrRecordView)

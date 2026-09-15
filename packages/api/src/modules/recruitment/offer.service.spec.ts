@@ -4,6 +4,7 @@ import type { PlatformScopeService } from '../../core/tenancy/platform-scope.ser
 import type { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 import type { EmployeeService } from '../employee/employee.service';
+import type { CompensationService } from '../finance/compensation/compensation.service';
 import type { PositionService } from '../position/position.service';
 
 import { Application } from './entities/application.entity';
@@ -107,6 +108,9 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
     ensureByTitle: jest.fn().mockResolvedValue({ id: 'position-1', status: 'open' }),
     setStatus: jest.fn().mockResolvedValue(undefined),
   } as unknown as PositionService;
+  const compensation = {
+    recordHireSalary: jest.fn().mockResolvedValue({ id: 'revision-1' }),
+  } as unknown as CompensationService;
   const recruitment = {
     updateHiringRequest: jest.fn().mockResolvedValue(undefined),
   } as unknown as RecruitmentService;
@@ -126,6 +130,7 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
       postings,
       employees,
       positions,
+      compensation,
       recruitment,
       platformScope,
       dataSource as never,
@@ -138,6 +143,7 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
     postings,
     employees,
     positions,
+    compensation,
     recruitment,
     platformScope,
   };
@@ -217,6 +223,7 @@ describe('OfferService', () => {
       manager,
       employees,
       positions,
+      compensation,
       recruitment,
       platformScope,
     } = buildService();
@@ -235,7 +242,19 @@ describe('OfferService', () => {
         workEmail: 'grace@example.com',
         roleTitle: 'Staff Engineer',
         hireDate: '2026-10-01',
+        // Offer probationDays 90 from a 2026-10-01 start.
+        probationEndDate: '2026-12-30',
         workerType: 'permanent',
+      }),
+      expect.anything(),
+    );
+    expect(compensation.recordHireSalary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        employeeId: 'employee-1',
+        annualAmount: 100000,
+        currency: 'USD',
+        effectiveDate: '2026-10-01',
+        approvedByUserId: USER,
       }),
       expect.anything(),
     );
@@ -258,5 +277,15 @@ describe('OfferService', () => {
     const { service } = buildService({ offer: { status: 'draft' } });
 
     await expect(service.accept(OFFER_ID, USER)).rejects.toThrow('Only a sent offer can be accepted');
+  });
+
+  it('still hires when the workspace has no matching salary structure', async () => {
+    const { service, compensation } = buildService();
+    (compensation.recordHireSalary as jest.Mock).mockResolvedValue(null);
+
+    const accepted = await service.accept(OFFER_ID, USER);
+
+    expect(accepted.employeeId).toBe('employee-1');
+    expect(compensation.recordHireSalary).toHaveBeenCalled();
   });
 });

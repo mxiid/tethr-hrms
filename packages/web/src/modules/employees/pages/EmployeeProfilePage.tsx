@@ -691,6 +691,8 @@ export const EmployeeProfilePage = () => {
   const onboardingCompletedCount = onboardingTasks.filter(
     (task) => task.status === 'completed',
   ).length;
+  const onboardingAllComplete =
+    onboardingTasks.length > 0 && onboardingCompletedCount === onboardingTasks.length;
   const offboardingCompletedCount = offboardingTasks.filter(
     (task) => task.status === 'completed',
   ).length;
@@ -2538,6 +2540,7 @@ export const EmployeeProfilePage = () => {
                 badge={
                   <span className="table-density">
                     {onboardingCompletedCount}/{onboardingTasks.length || 7} complete
+                    {onboardingAllComplete ? ' · all done' : ''}
                   </span>
                 }
                 title="Onboarding"

@@ -1,4 +1,4 @@
-import { toId, type HiringRequestId, type OrganizationId, type UserId } from '@hrms/shared';
+import { addIsoDays, toId, type EmployeeId, type HiringRequestId, type OrganizationId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
@@ -9,6 +9,7 @@ import { PlatformScopeService } from '../../core/tenancy/platform-scope.service'
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 import { EmployeeService } from '../employee/employee.service';
+import { CompensationService } from '../finance/compensation/compensation.service';
 import { PositionService } from '../position/position.service';
 
 import { APPLICATION_REPOSITORY, CANDIDATE_REPOSITORY, JOB_POSTING_REPOSITORY, OFFER_REPOSITORY } from './ats.tokens';
@@ -51,6 +52,7 @@ export class OfferService {
     @Inject(JOB_POSTING_REPOSITORY) private readonly postings: TenantScopedRepository<JobPosting>,
     private readonly employees: EmployeeService,
     private readonly positions: PositionService,
+    private readonly compensation: CompensationService,
     private readonly recruitment: RecruitmentService,
     private readonly platformScope: PlatformScopeService,
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -200,7 +202,24 @@ export class OfferService {
           resourceType: 'offer',
           resourceId: offer.id,
         },
-        () => this.hireEmployee(candidate, posting.title, offer, manager),
+        async () => {
+          const hired = await this.hireEmployee(candidate, posting.title, offer, manager);
+          // The offer's salary becomes the first revision (when the client
+          // workspace has a structure in the offered currency) in the same
+          // transaction; otherwise payroll readiness flags the missing
+          // assignment.
+          await this.compensation.recordHireSalary(
+            {
+              employeeId: toId<EmployeeId>(hired.id),
+              annualAmount: Number(offer.baseSalary),
+              currency: offer.salaryCurrency,
+              effectiveDate: offer.startDate,
+              approvedByUserId: hiredByUserId,
+            },
+            manager,
+          );
+          return hired;
+        },
         manager,
       );
 
@@ -304,6 +323,12 @@ export class OfferService {
               workEmail: candidate.email,
               roleTitle,
               hireDate: offer.startDate,
+              // The offer's probation length becomes a concrete end date on the
+              // employee record.
+              probationEndDate:
+                offer.probationDays !== null && offer.probationDays >= 0
+                  ? addIsoDays(offer.startDate, offer.probationDays)
+                  : undefined,
               noticePeriodDays: offer.noticePeriodDays,
               workerType: 'permanent',
             },

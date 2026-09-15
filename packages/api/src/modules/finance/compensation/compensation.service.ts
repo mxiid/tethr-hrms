@@ -433,72 +433,9 @@ export class CompensationService {
       });
     }
 
-    const annualAmount = toAmount(input.annualAmount);
-    const organizationId = this.tenantContext.getOrganizationId();
-    const saved = await this.dataSource.transaction(async (manager) => {
-      const existing = await manager.find(SalaryRevision, {
-        where: {
-          organizationId,
-          employeeId: input.employeeId,
-        } as FindOptionsWhere<SalaryRevision>,
-        order: { validFrom: 'ASC' },
-      });
-
-      const sameDay = existing.find((revision) => revision.validFrom === input.effectiveDate);
-      if (sameDay) {
-        throw new ConflictError('Salary revision already exists for effective date', {
-          effectiveDate: input.effectiveDate,
-        });
-      }
-
-      const future = existing.find(
-        (revision) => compareIsoDate(revision.validFrom, input.effectiveDate) > 0,
-      );
-      if (future) {
-        throw new ConflictError('Cannot insert salary revision before a future revision', {
-          futureEffectiveDate: future.validFrom,
-        });
-      }
-
-      const active = existing.find((revision) => rangeContains(revision, input.effectiveDate));
-      if (active && active.validTo !== null) {
-        throw new ConflictError('Cannot revise a closed historical salary range', {
-          validFrom: active.validFrom,
-          validTo: active.validTo,
-        });
-      }
-      if (active) {
-        active.validTo = input.effectiveDate;
-        await manager.save(active);
-      }
-
-      const revision = manager.create(SalaryRevision, {
-        organizationId,
-        employeeId: input.employeeId,
-        salaryStructureId: input.salaryStructureId,
-        validFrom: input.effectiveDate,
-        validTo: null,
-        currency: structure.currency,
-        annualAmount,
-        reason: input.reason ?? (existing.length === 0 ? 'hire' : 'merit'),
-        approvedByUserId: input.approvedByUserId ?? null,
-        note: input.note ?? null,
-      });
-      const persisted = await manager.save(revision);
-
-      await this.publisher.publishWithin(manager, {
-        name: 'compensation.revised',
-        payload: {
-          salaryRevisionId: toId<SalaryRevisionId>(persisted.id),
-          employeeId: input.employeeId,
-          salaryStructureId: input.salaryStructureId,
-          effectiveDate: input.effectiveDate,
-          currency: persisted.currency,
-          annualAmount: Number(persisted.annualAmount),
-        },
-      });
-      return persisted;
-    });
+    const saved = await this.dataSource.transaction((manager) =>
+      this.persistRevision(manager, input, structure),
+    );
 
     await this.audit.record({
       action: 'revise',
@@ -511,6 +448,133 @@ export class CompensationService {
       },
     });
     return saved;
+  }
+
+  // Hire handoff: the offer's salary becomes the employee's first revision when
+  // the client workspace has an active structure in the offered currency. Runs
+  // in the caller's transaction (offer acceptance) so the hire and its salary
+  // commit together. Returns null when no matching structure exists — finance
+  // still has to configure payroll, and readiness flags the missing assignment.
+  async recordHireSalary(
+    input: {
+      readonly employeeId: EmployeeId;
+      readonly annualAmount: number;
+      readonly currency: string;
+      readonly effectiveDate: string;
+      readonly approvedByUserId?: UserId | null;
+    },
+    manager: EntityManager,
+  ): Promise<SalaryRevision | null> {
+    const currency = normalizeCurrency(input.currency);
+    const structures = await this.salaryStructures.find({ order: { code: 'ASC' } });
+    const structure = structures.find(
+      (candidate) => candidate.isActive && candidate.currency === currency,
+    );
+    if (!structure) {
+      return null;
+    }
+    const revision = await this.persistRevision(
+      manager,
+      {
+        employeeId: input.employeeId,
+        salaryStructureId: toId<SalaryStructureId>(structure.id),
+        annualAmount: input.annualAmount,
+        effectiveDate: input.effectiveDate,
+        reason: 'hire',
+        approvedByUserId: input.approvedByUserId ?? null,
+        note: 'Hired from offer',
+      },
+      structure,
+    );
+    await this.audit.record(
+      {
+        action: 'revise',
+        resourceType: 'salary_revision',
+        resourceId: revision.id,
+        after: {
+          employeeId: revision.employeeId,
+          validFrom: revision.validFrom,
+          annualAmount: Number(revision.annualAmount),
+          source: 'offer acceptance',
+        },
+      },
+      manager,
+    );
+    return revision;
+  }
+
+  // The one place revisions are written: closes the open range and inserts the
+  // new revision in the caller's transaction, with the revised event in the
+  // same unit of work.
+  private async persistRevision(
+    manager: EntityManager,
+    input: ReviseSalaryData,
+    structure: SalaryStructure,
+  ): Promise<SalaryRevision> {
+    const annualAmount = toAmount(input.annualAmount);
+    const organizationId = this.tenantContext.getOrganizationId();
+    const existing = await manager.find(SalaryRevision, {
+      where: {
+        organizationId,
+        employeeId: input.employeeId,
+      } as FindOptionsWhere<SalaryRevision>,
+      order: { validFrom: 'ASC' },
+    });
+
+    const sameDay = existing.find((revision) => revision.validFrom === input.effectiveDate);
+    if (sameDay) {
+      throw new ConflictError('Salary revision already exists for effective date', {
+        effectiveDate: input.effectiveDate,
+      });
+    }
+
+    const future = existing.find(
+      (revision) => compareIsoDate(revision.validFrom, input.effectiveDate) > 0,
+    );
+    if (future) {
+      throw new ConflictError('Cannot insert salary revision before a future revision', {
+        futureEffectiveDate: future.validFrom,
+      });
+    }
+
+    const active = existing.find((revision) => rangeContains(revision, input.effectiveDate));
+    if (active && active.validTo !== null) {
+      throw new ConflictError('Cannot revise a closed historical salary range', {
+        validFrom: active.validFrom,
+        validTo: active.validTo,
+      });
+    }
+    if (active) {
+      active.validTo = input.effectiveDate;
+      await manager.save(active);
+    }
+
+    const revision = manager.create(SalaryRevision, {
+      organizationId,
+      employeeId: input.employeeId,
+      salaryStructureId: input.salaryStructureId,
+      validFrom: input.effectiveDate,
+      validTo: null,
+      currency: structure.currency,
+      annualAmount,
+      reason: input.reason ?? (existing.length === 0 ? 'hire' : 'merit'),
+      approvedByUserId: input.approvedByUserId ?? null,
+      note: input.note ?? null,
+    });
+    const persisted = await manager.save(revision);
+
+    await this.publisher.publishWithin(manager, {
+      name: 'compensation.revised',
+      payload: {
+        salaryRevisionId: toId<SalaryRevisionId>(persisted.id),
+        employeeId: input.employeeId,
+        salaryStructureId: input.salaryStructureId,
+        effectiveDate: input.effectiveDate,
+        currency: persisted.currency,
+        annualAmount: Number(persisted.annualAmount),
+      },
+    });
+    return persisted;
   }
 
   listSalaryRevisions(employeeId: EmployeeId): Promise<SalaryRevision[]> {

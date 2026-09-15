@@ -129,7 +129,7 @@ const buildService = (options: {
       audit,
     );
 
-  return { service, publisher, payComponents };
+  return { service, publisher, payComponents, salaryStructures, manager, audit };
 };
 
 const existingRevision = (overrides: Partial<SalaryRevision> = {}): SalaryRevision => ({
@@ -270,5 +270,65 @@ describe('CompensationService.createAdjustment', () => {
     await expect(
       service.createAdjustment({ ...base, kind: 'bonus', sourceType: 'expenseClaim' }),
     ).rejects.toThrow(/provided together/);
+  });
+});
+
+describe('CompensationService.recordHireSalary', () => {
+  it('records the offer salary as the hire revision when a matching structure exists', async () => {
+    const { service, salaryStructures, manager, publisher, audit } = buildService({});
+    (salaryStructures.find as jest.Mock).mockResolvedValue([
+      { id: 'structure-1', code: 'STD', currency: 'USD', isActive: true },
+    ]);
+
+    const revision = await service.recordHireSalary(
+      {
+        employeeId: EMPLOYEE,
+        annualAmount: 120000,
+        currency: 'usd',
+        effectiveDate: '2026-10-01',
+        approvedByUserId: undefined,
+      },
+      manager,
+    );
+
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        employeeId: EMPLOYEE,
+        salaryStructureId: 'structure-1',
+        validFrom: '2026-10-01',
+        currency: 'USD',
+        reason: 'hire',
+      }),
+    );
+    expect(publisher.publishWithin).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({ name: 'compensation.revised' }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'revise', resourceId: 'revision-1' }),
+      manager,
+    );
+    expect(revision).not.toBeNull();
+  });
+
+  it('skips the revision when no active structure matches the offered currency', async () => {
+    const { service, salaryStructures, manager } = buildService({});
+    (salaryStructures.find as jest.Mock).mockResolvedValue([
+      { id: 'structure-1', code: 'STD', currency: 'PKR', isActive: true },
+      { id: 'structure-2', code: 'OLD', currency: 'USD', isActive: false },
+    ]);
+
+    const revision = await service.recordHireSalary(
+      {
+        employeeId: EMPLOYEE,
+        annualAmount: 120000,
+        currency: 'USD',
+        effectiveDate: '2026-10-01',
+      },
+      manager,
+    );
+
+    expect(revision).toBeNull();
+    expect(manager.save).not.toHaveBeenCalled();
   });
 });
