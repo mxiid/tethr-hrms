@@ -9,6 +9,7 @@ import type { PositionService } from '../position/position.service';
 
 import { Application } from './entities/application.entity';
 import { Candidate } from './entities/candidate.entity';
+import { HiringRequest } from './entities/hiring-request.entity';
 import { JobPosting } from './entities/job-posting.entity';
 import { Offer } from './entities/offer.entity';
 import { OfferService } from './offer.service';
@@ -334,6 +335,35 @@ describe('OfferService', () => {
       },
       manager,
     );
+  });
+
+  it('fills the request’s actual position when the fallback link loses the race', async () => {
+    const { service, positions, recruitment, manager } = buildService();
+    (recruitment.updateHiringRequest as jest.Mock).mockResolvedValue({
+      id: 'request-1',
+      status: 'filled',
+      positionId: null,
+    });
+    // A competing transaction linked the request to another position first.
+    (recruitment.linkPositionForRequest as jest.Mock).mockResolvedValue(false);
+    const routeToFixtures = (manager.findOne as jest.Mock).getMockImplementation() as (
+      entity: unknown,
+    ) => unknown;
+    (manager.findOne as jest.Mock).mockImplementation((entity: unknown) =>
+      entity === HiringRequest
+        ? Promise.resolve({ id: 'request-1', status: 'filled', positionId: 'position-9' })
+        : routeToFixtures(entity),
+    );
+
+    await service.accept(OFFER_ID, USER);
+
+    // The title-resolved position is never filled; the request's actual link is.
+    expect(positions.setStatus).not.toHaveBeenCalledWith(
+      'position-1',
+      'filled',
+      expect.anything(),
+    );
+    expect(positions.setStatus).toHaveBeenCalledWith('position-9', 'filled', expect.anything());
   });
 
   it('reads the offer under a write lock in every status transition', async () => {

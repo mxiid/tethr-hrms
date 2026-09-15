@@ -15,6 +15,7 @@ import { PositionService } from '../position/position.service';
 import { APPLICATION_REPOSITORY, CANDIDATE_REPOSITORY, JOB_POSTING_REPOSITORY, OFFER_REPOSITORY } from './ats.tokens';
 import { Application } from './entities/application.entity';
 import { Candidate } from './entities/candidate.entity';
+import { HiringRequest } from './entities/hiring-request.entity';
 import { JobPosting } from './entities/job-posting.entity';
 import { Offer } from './entities/offer.entity';
 import { RecruitmentService } from './recruitment.service';
@@ -316,11 +317,10 @@ export class OfferService {
             await this.positions.setStatus(filled.positionId, 'filled', manager);
           } else {
             const position = await this.positions.ensureByTitle(posting.title, manager);
-            await this.positions.setStatus(position.id, 'filled', manager);
-            // Record the link too, through recruitment's conditional link so
-            // only positionId is written and the linkPosition audit commits in
-            // this transaction — otherwise the request would stay permanently
-            // unlinked while its position is filled, with no audit of the link.
+            // Link before filling: if a competing transaction linked the request
+            // elsewhere (or changed its state), the conditional link loses and
+            // the title-matched position must not be filled — filling is only
+            // ever applied to the request's authoritative link.
             const linked = await this.recruitment.linkPositionForRequest(
               {
                 hiringRequestId: filled.id,
@@ -331,6 +331,20 @@ export class OfferService {
             );
             if (linked) {
               filled.positionId = position.id;
+              await this.positions.setStatus(position.id, 'filled', manager);
+            } else {
+              // A competing link won: fill the request's actual position, and
+              // touch nothing when there is none (the durable consumer
+              // reconciles it).
+              const current = await manager.findOne(HiringRequest, {
+                where: {
+                  id: filled.id,
+                  organizationId: this.tenantContext.getOrganizationId(),
+                } as FindOptionsWhere<HiringRequest>,
+              });
+              if (current?.positionId) {
+                await this.positions.setStatus(current.positionId, 'filled', manager);
+              }
             }
           }
         },
