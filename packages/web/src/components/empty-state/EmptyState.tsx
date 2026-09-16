@@ -18,7 +18,7 @@ export const EmptyState = ({ icon: Icon, title, description, action }: EmptyStat
   return (
     <div className="empty-state">
       <Icon size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
-      <h3 className="empty-state-title">{title}</h3>
+      <h2 className="empty-state-title">{title}</h2>
       {description ? <p className="empty-state-copy">{description}</p> : null}
       {action ? <div className="empty-state-action">{action}</div> : null}
     </div>

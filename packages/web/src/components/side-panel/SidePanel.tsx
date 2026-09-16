@@ -134,7 +134,7 @@ export const SidePanel = ({
             onClick={onClose}
             type="button"
           >
-            <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           </button>
         </div>
         <div className="side-panel-content">

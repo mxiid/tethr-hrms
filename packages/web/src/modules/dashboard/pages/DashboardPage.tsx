@@ -2,7 +2,7 @@ import { DashboardGettingStarted } from '../components/DashboardGettingStarted';
 import { DashboardWidgetBoard } from '../components/DashboardWidgetBoard';
 
 export const DashboardPage = () => (
-  <main className="employees-content" style={{ display: 'block' }}>
+  <section className="employees-content" style={{ display: 'block' }}>
     <header className="page-header">
       <div>
         <h1 className="page-title">Dashboard</h1>
@@ -12,5 +12,5 @@ export const DashboardPage = () => (
 
     <DashboardGettingStarted />
     <DashboardWidgetBoard />
-  </main>
+  </section>
 );

@@ -1,6 +1,18 @@
 # Foundation Status
 
-> As of 2026-09-16 (`feat/ui-motion-overhaul`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
+> As of 2026-09-16 (`feat/guidelines-a11y-sweep`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
+
+## Accessibility and forms sweep: first half of the guidelines round (2026-09-16, PR A)
+
+The accessibility floor is now enforced by tooling, every form control is named and typed, invalid submissions validate instead of disabling their buttons, and the client gained a skip link, a single main landmark, live regions, keyboard menus, and decorative-icon hiding. The side panel's header also latches through its close transition — a review find: the panel swapped to its generic "Employee" title while collapsing, because only the body was latched.
+
+**Tooling and contracts.** `eslint-plugin-jsx-a11y` runs a curated ruleset over the web client (labels, ARIA validity, keyboard handlers, native semantics; `control-has-associated-label` stays off because it cannot resolve `htmlFor`/`id`). `@hrms/shared` gained Intl-backed `formatDate`/`formatDateTime`/`formatMoney` with UTC-safe date-only parsing, asserted by spec. CLAUDE.md records the live-guidelines review practice and its two documented deviations.
+
+**Forms.** Every input/select/textarea carries a `name` (FieldRow derives a slug from its label; existing ids are reused); identity and contact fields gained `autocomplete` (name/email/tel/address/postal/country), phones are `type="tel"`, emails `type="email"` with spellcheck off, codes/identifiers `autocomplete="off"`, and numeric fields use `inputMode`. Eleven forms that disabled their submit on validity now stay enabled and validate on submit — a specific inline message and the first invalid control focused through a shared helper.
+
+**Semantics and keyboard.** A skip link leads the tab order to the shell main; the shell is the only `<main>` (the settings surface and the two public routes stand alone); Settings subpages and EmptyState/OnboardingCard headings re-leveled; async warnings announce via `role="status"`/`role="alert"`; `:focus-visible` with real rings replaces `outline: none` on record panels, with scroll padding for sticky chrome; the Modal traps Tab; DataTable rows activate on Enter/Space without invalid `aria-selected`; the ActionMenu, ColumnHeaderMenu, and ViewBar menus rove with arrow keys and focus their first item on open; the dashboard view tablist supports arrow keys; chart bars are labelled buttons; `autoFocus` is skipped on coarse pointers; 218 decorative icons are `aria-hidden`; record-field checkboxes share their label hit target.
+
+**Verification.** New static `verify-guidelines` **5/5** (names, aria-hidden, `transition: all`, skip link, single main) and browser `verify-a11y-sweep` **5/5** (skip-link order, modal trap + named controls, menu arrows, row Enter). Battery green: panel latch 6/6, motion 13/13, subnav 5/5 + 6/6, zoom 8/8, org chart 7/7, hiring nav 11/11, color UI 4/4. Gates **272 API / 29 shared / 9 UI tests**, lint 0 errors, typecheck and build clean.
 
 ## UI motion overhaul: tokens, press feedback, origin-aware surfaces (2026-09-16, local — not pushed)
 

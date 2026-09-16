@@ -143,6 +143,7 @@ export const WorkspaceUsersPage = () => {
       <div className="access-role-control">
         <select
           aria-label={`Access role for ${workspaceUser.email}`}
+          name={`workspace-user-role-${workspaceUser.id}`}
           value={selectedRole}
           onChange={(event) =>
             setRoleDrafts((current) => ({
@@ -160,6 +161,7 @@ export const WorkspaceUsersPage = () => {
         {selectedRole === 'employee' ? (
           <select
             aria-label={`Employee record for ${workspaceUser.email}`}
+            name={`workspace-user-employee-${workspaceUser.id}`}
             value={selectedEmployeeId}
             onChange={(event) =>
               setEmployeeLinkDrafts((current) => ({
@@ -186,7 +188,7 @@ export const WorkspaceUsersPage = () => {
           onClick={() => void onUpdateRole(workspaceUser)}
           type="button"
         >
-          <IconKey size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          <IconKey aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           Save
         </button>
       </div>
@@ -330,7 +332,7 @@ export const WorkspaceUsersPage = () => {
   };
 
   return (
-    <main className="workspace-users-page">
+    <section className="workspace-users-page">
       <section className="workspace-users-content" aria-labelledby="workspace-users-title">
         <header className="page-header">
           <div>
@@ -347,7 +349,7 @@ export const WorkspaceUsersPage = () => {
             }}
             type="button"
           >
-            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             Add user
           </button>
         </header>
@@ -369,6 +371,9 @@ export const WorkspaceUsersPage = () => {
                 <label htmlFor="workspace-user-email">Email</label>
                 <input
                   id="workspace-user-email"
+                  name="workspace-user-email"
+                  autoComplete="email"
+                  spellCheck={false}
                   required
                   type="email"
                   value={form.email}
@@ -381,6 +386,8 @@ export const WorkspaceUsersPage = () => {
                 <label htmlFor="workspace-user-password">Initial password</label>
                 <input
                   id="workspace-user-password"
+                  name="workspace-user-password"
+                  autoComplete="new-password"
                   required
                   minLength={8}
                   type="password"
@@ -394,6 +401,7 @@ export const WorkspaceUsersPage = () => {
                 <label htmlFor="workspace-user-role">Access role</label>
                 <select
                   id="workspace-user-role"
+                  name="workspace-user-role"
                   disabled={assignableRoles.length === 0}
                   value={form.roleKey}
                   onChange={(event) =>
@@ -420,6 +428,7 @@ export const WorkspaceUsersPage = () => {
                 <label htmlFor="workspace-user-employee">Employee record</label>
                 <select
                   id="workspace-user-employee"
+                  name="workspace-user-employee"
                   required={form.roleKey === 'employee'}
                   disabled={form.roleKey !== 'employee'}
                   value={form.employeeId}
@@ -444,7 +453,7 @@ export const WorkspaceUsersPage = () => {
                 disabled={creating || assignableRoles.length === 0}
                 type="submit"
               >
-                <IconKey size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconKey aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 {creating ? 'Adding...' : 'Add user'}
               </button>
             </div>
@@ -467,7 +476,7 @@ export const WorkspaceUsersPage = () => {
                   onClick={() => void refetch()}
                   type="button"
                 >
-                  <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 </button>
               </Tooltip>
             }
@@ -516,6 +525,6 @@ export const WorkspaceUsersPage = () => {
           />
         </section>
       </section>
-    </main>
+    </section>
   );
 };

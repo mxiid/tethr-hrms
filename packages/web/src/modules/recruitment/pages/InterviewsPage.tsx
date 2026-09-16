@@ -290,7 +290,7 @@ export const InterviewsPage = () => {
   };
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="hiring-content" aria-labelledby="interviews-title">
         <header className="page-header">
           <div>
@@ -309,7 +309,7 @@ export const InterviewsPage = () => {
                 onClick={() => void refetch()}
                 type="button"
               >
-                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               </button>
             </Tooltip>
             <button
@@ -320,7 +320,7 @@ export const InterviewsPage = () => {
               }}
               type="button"
             >
-              <IconCalendarPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconCalendarPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Schedule interview
             </button>
           </div>
@@ -383,6 +383,7 @@ export const InterviewsPage = () => {
               <label htmlFor="interview-application">Application</label>
               <select
                 id="interview-application"
+                name="interview-application"
                 value={scheduleForm.applicationId}
                 onChange={(event) =>
                   setScheduleForm((current) => ({ ...current, applicationId: event.target.value }))
@@ -401,6 +402,7 @@ export const InterviewsPage = () => {
               <label htmlFor="interview-round">Round</label>
               <select
                 id="interview-round"
+                name="interview-round"
                 value={scheduleForm.interviewRoundId}
                 onChange={(event) =>
                   setScheduleForm((current) => ({
@@ -421,6 +423,7 @@ export const InterviewsPage = () => {
               <label htmlFor="interview-time">Scheduled at</label>
               <input
                 id="interview-time"
+                name="interview-time"
                 type="datetime-local"
                 value={scheduleForm.scheduledAt}
                 onChange={(event) =>
@@ -433,6 +436,7 @@ export const InterviewsPage = () => {
                 <label htmlFor={`interview-panel-${index}`}>Panellist {index + 1} (external name)</label>
                 <input
                   id={`interview-panel-${index}`}
+                  name={`interview-panel-${index}`}
                   value={member}
                   onChange={(event) =>
                     setScheduleForm((current) => ({
@@ -458,6 +462,7 @@ export const InterviewsPage = () => {
               <label htmlFor="interview-notes">Notes</label>
               <textarea
                 id="interview-notes"
+                name="interview-notes"
                 value={scheduleForm.notes}
                 onChange={(event) =>
                   setScheduleForm((current) => ({ ...current, notes: event.target.value }))
@@ -532,6 +537,7 @@ export const InterviewsPage = () => {
                 <select
                   aria-label="Outcome"
                   className="record-field-control"
+                  name="interview-outcome"
                   value={selected.outcome ?? ''}
                   onChange={(event) =>
                     void onOutcome(selected, event.target.value as InterviewOutcome)
@@ -593,8 +599,10 @@ export const InterviewsPage = () => {
                               <label htmlFor={`score-${member.id}-${skill}`}>{skill}</label>
                               <input
                                 id={`score-${member.id}-${skill}`}
+                                inputMode="numeric"
                                 max={5}
                                 min={1}
+                                name={`score-${member.id}-${skill}`}
                                 type="number"
                                 value={scoreDrafts[`${member.id}:${skill}`] ?? ''}
                                 onChange={(event) =>
@@ -610,6 +618,7 @@ export const InterviewsPage = () => {
                             <label htmlFor={`note-${member.id}`}>Overall note</label>
                             <textarea
                               id={`note-${member.id}`}
+                              name={`note-${member.id}`}
                               value={feedbackNote}
                               onChange={(event) => setFeedbackNote(event.target.value)}
                             />
@@ -662,6 +671,6 @@ export const InterviewsPage = () => {
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

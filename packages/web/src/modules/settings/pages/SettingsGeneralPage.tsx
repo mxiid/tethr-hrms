@@ -100,7 +100,7 @@ export const SettingsGeneralPage = () => {
       <div className="employees-content">
         <header className="page-header">
           <div>
-            <h1 className="page-title">General</h1>
+            <h2 className="page-title">General</h2>
             <p className="page-subtitle">How this workspace looks and identifies itself.</p>
           </div>
         </header>
@@ -143,7 +143,7 @@ export const SettingsGeneralPage = () => {
                 </span>
                 <span className="brand-name">{workspaceName}</span>
                 <span aria-hidden="true" className="brand-preview-search">
-                  <IconSearch size={16} stroke={2} />
+                  <IconSearch aria-hidden="true" size={16} stroke={2} />
                   Search
                 </span>
               </div>

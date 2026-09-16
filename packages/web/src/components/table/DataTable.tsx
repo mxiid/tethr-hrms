@@ -1,4 +1,4 @@
-import { useMemo, type MouseEvent, type ReactNode } from 'react';
+import { useMemo, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 
 import { SkeletonRows } from '../skeleton/Skeleton';
 import type { ListSort } from '../view-bar/useListView';
@@ -134,6 +134,13 @@ export const DataTable = <TRow,>({
     onRowClick(row);
   };
 
+  const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, row: TRow): void => {
+    if (onRowClick === undefined || isInteractiveTarget(event.target)) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    onRowClick(row);
+  };
+
   return (
     <div
       className={tableClassName === 'employee-table' ? 'employee-table-wrap' : 'data-table-wrap'}
@@ -206,10 +213,11 @@ export const DataTable = <TRow,>({
                 .join(' ');
               return (
                 <tr
-                  aria-selected={onRowClick !== undefined ? selectedRowKey === rowKey : undefined}
                   className={classes}
                   key={rowKey}
                   onClick={(event) => onRowClickEvent(event, row)}
+                  onKeyDown={(event) => onRowKeyDown(event, row)}
+                  tabIndex={onRowClick !== undefined ? 0 : undefined}
                 >
                   {visibleColumns.map((column) => (
                     <td

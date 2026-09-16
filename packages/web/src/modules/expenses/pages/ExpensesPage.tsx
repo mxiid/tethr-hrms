@@ -284,7 +284,7 @@ export const ExpensesPage = () => {
   const isOpenDraft = selected?.status === 'draft';
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <div className="page-frame">
         <div className="employees-content">
           <header className="page-header">
@@ -446,7 +446,7 @@ export const ExpensesPage = () => {
             {selected.billedInvoiceId && isTethr ? (
               <p className="employee-secondary">
                 <Link className="table-link" to={`/billing/${selected.billedInvoiceId}`}>
-                  On the client expenses invoice <IconExternalLink size={14} />
+                  On the client expenses invoice <IconExternalLink aria-hidden="true" size={14} />
                 </Link>
               </p>
             ) : null}
@@ -460,6 +460,7 @@ export const ExpensesPage = () => {
                   <label htmlFor="claim-decision-note">Decision note</label>
                   <textarea
                     id="claim-decision-note"
+                    name="claim-decision-note"
                     value={decisionNote}
                     onChange={(event) => setDecisionNote(event.target.value)}
                   />
@@ -491,6 +492,7 @@ export const ExpensesPage = () => {
                   <label htmlFor="claim-pay-method">Reimbursement</label>
                   <select
                     id="claim-pay-method"
+                    name="claim-pay-method"
                     value={payMethod}
                     onChange={(event) => setPayMethod(event.target.value as 'direct' | 'payroll')}
                   >
@@ -503,7 +505,10 @@ export const ExpensesPage = () => {
                     <label htmlFor="claim-pay-reference">Payment reference</label>
                     <input
                       id="claim-pay-reference"
+                      autoComplete="off"
+                      name="claim-pay-reference"
                       placeholder="Cash / bank transfer reference"
+                      spellCheck={false}
                       value={payReference}
                       onChange={(event) => setPayReference(event.target.value)}
                     />
@@ -514,6 +519,7 @@ export const ExpensesPage = () => {
                       <label htmlFor="claim-pay-component">Pay component</label>
                       <select
                         id="claim-pay-component"
+                        name="claim-pay-component"
                         value={payComponentId}
                         onChange={(event) => setPayComponentId(event.target.value)}
                       >
@@ -530,9 +536,11 @@ export const ExpensesPage = () => {
                         <label htmlFor="claim-pay-year">Year</label>
                         <input
                           id="claim-pay-year"
-                          type="number"
-                          min={2000}
+                          inputMode="numeric"
                           max={2100}
+                          min={2000}
+                          name="claim-pay-year"
+                          type="number"
                           value={payYear}
                           onChange={(event) => setPayYear(Number(event.target.value))}
                         />
@@ -541,9 +549,11 @@ export const ExpensesPage = () => {
                         <label htmlFor="claim-pay-month">Month</label>
                         <input
                           id="claim-pay-month"
-                          type="number"
-                          min={1}
+                          inputMode="numeric"
                           max={12}
+                          min={1}
+                          name="claim-pay-month"
+                          type="number"
                           value={payMonth}
                           onChange={(event) => setPayMonth(Number(event.target.value))}
                         />
@@ -572,9 +582,11 @@ export const ExpensesPage = () => {
                     <label htmlFor="claim-bill-year">Bill year</label>
                     <input
                       id="claim-bill-year"
-                      type="number"
-                      min={2000}
+                      inputMode="numeric"
                       max={2100}
+                      min={2000}
+                      name="claim-bill-year"
+                      type="number"
                       value={billYear}
                       onChange={(event) => setBillYear(Number(event.target.value))}
                     />
@@ -583,9 +595,11 @@ export const ExpensesPage = () => {
                     <label htmlFor="claim-bill-month">Bill month</label>
                     <input
                       id="claim-bill-month"
-                      type="number"
-                      min={1}
+                      inputMode="numeric"
                       max={12}
+                      min={1}
+                      name="claim-bill-month"
+                      type="number"
                       value={billMonth}
                       onChange={(event) => setBillMonth(Number(event.target.value))}
                     />
@@ -610,6 +624,6 @@ export const ExpensesPage = () => {
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

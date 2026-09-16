@@ -165,7 +165,7 @@ export const PayrollPage = () => {
       description="Is the API running, and are you still signed in?"
       action={
         <button className="button button-secondary" onClick={() => void refetch()} type="button">
-          <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           Try again
         </button>
       }
@@ -177,7 +177,7 @@ export const PayrollPage = () => {
       description="Create the first run to compute pay for the period."
       action={
         <button className="button button-secondary" onClick={openNewRun} type="button">
-          <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           New run
         </button>
       }
@@ -196,7 +196,7 @@ export const PayrollPage = () => {
   );
 
   return (
-    <main className="page-frame page-frame-single">
+    <section className="page-frame page-frame-single">
       <div className="employees-content">
         <header className="page-header">
           <div>
@@ -205,11 +205,11 @@ export const PayrollPage = () => {
           </div>
           <div className="page-actions">
             <Link className="button button-secondary" to="/settings/payroll">
-              <IconAdjustments size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconAdjustments aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Manage tax slabs
             </Link>
             <button className="button button-primary" type="button" onClick={openNewRun}>
-              <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               New run
             </button>
             <Tooltip label="Refresh">
@@ -219,7 +219,7 @@ export const PayrollPage = () => {
                 onClick={() => refetch()}
                 type="button"
               >
-                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               </button>
             </Tooltip>
           </div>
@@ -277,8 +277,10 @@ export const PayrollPage = () => {
             <label htmlFor="run-year">Year</label>
             <input
               id="run-year"
+              inputMode="numeric"
               max={2100}
               min={2000}
+              name="run-year"
               required
               type="number"
               value={periodYear}
@@ -289,6 +291,7 @@ export const PayrollPage = () => {
             <label htmlFor="run-month">Month</label>
             <select
               id="run-month"
+              name="run-month"
               value={periodMonth}
               onChange={(event) => setPeriodMonth(Number(event.target.value))}
             >
@@ -304,12 +307,12 @@ export const PayrollPage = () => {
             disabled={creating}
             type="submit"
           >
-            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {creating ? 'Computing…' : 'Create draft run'}
           </button>
         </form>
       </Modal>
 
-    </main>
+    </section>
   );
 };

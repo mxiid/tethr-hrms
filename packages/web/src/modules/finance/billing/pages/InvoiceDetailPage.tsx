@@ -1,4 +1,4 @@
-ï»¿import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import { IconCheck, IconFileInvoice, IconLock, IconPlus, IconX } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom';
 import { downloadBase64File } from '../../../../app/download';
 import { StatusChip } from '../../../../components/chip/StatusChip';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
+import { focusFirstByName } from '../../../../components/form/validation';
 import { FieldGroup } from '../../../../components/record-panel/FieldGroup';
 import { FieldRow } from '../../../../components/record-panel/FieldRow';
 import { useInlineCreate } from '../../../../components/record-panel/useInlineCreate';
@@ -178,6 +179,9 @@ export const InvoiceDetailPage = () => {
   const create = useInlineCreate<LineDraft, InvoiceLineRecord>({
     createEmptyDraft: emptyLineDraft,
     isComplete: isLineDraftComplete,
+    requiredFieldNames: ['line-quantity', 'line-unit-price'],
+    incompleteMessage:
+      'Enter a quantity greater than zero and a unit price before adding the line.',
     createRecord: async (draft) => {
       const previousIds = new Set(lines.map((line) => line.id));
       await addLine({
@@ -257,17 +261,17 @@ export const InvoiceDetailPage = () => {
       render: (line) =>
         line.employeeId ? (
           <Link className="table-link" to={`/employees/${line.employeeId}`}>
-            {line.employeeName ?? 'â€”'}
+            {line.employeeName ?? '—'}
           </Link>
         ) : (
-          <span className="employee-primary">{line.employeeName ?? 'â€”'}</span>
+          <span className="employee-primary">{line.employeeName ?? '—'}</span>
         ),
     },
     {
       key: 'month',
       header: 'Month',
       width: '12%',
-      render: (line) => line.monthLabel ?? 'â€”',
+      render: (line) => line.monthLabel ?? '—',
     },
     {
       key: 'description',
@@ -313,7 +317,7 @@ export const InvoiceDetailPage = () => {
                 onClick={() => void onDeleteLine(line.id)}
                 type="button"
               >
-                <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               </button>
             </Tooltip>
           ),
@@ -347,17 +351,17 @@ export const InvoiceDetailPage = () => {
 
   if (loadError) {
     return (
-      <main className="page-frame">
+      <section className="page-frame">
         <div className="employees-content">
           <p className="auth-error" role="alert">Could not load this invoice.</p>
           <Link className="link-button" to="/billing">Back to billing</Link>
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <div className="page-frame">
         <div className="employees-content">
           <header className="page-header">
@@ -365,7 +369,7 @@ export const InvoiceDetailPage = () => {
               <h1 className="page-title">{invoice?.number ?? 'Draft invoice'}</h1>
               <p className="page-subtitle">
                 {invoice
-                  ? `${invoice.groupName ?? ''} Â· ${invoice.type} Â· covers ${MONTH_NAMES[invoice.serviceMonth - 1]} ${invoice.serviceYear} (${invoice.periodStart} â†’ ${invoice.periodEndExclusive})`
+                  ? `${invoice.groupName ?? ''} · ${invoice.type} · covers ${MONTH_NAMES[invoice.serviceMonth - 1]} ${invoice.serviceYear} (${invoice.periodStart} ? ${invoice.periodEndExclusive})`
                   : ''}
               </p>
             </div>
@@ -378,7 +382,7 @@ export const InvoiceDetailPage = () => {
                   void downloadDocument(loadInvoicePdf, 'invoicePdf', '');
                 }}
               >
-                {loadingPdf ? 'Renderingâ€¦' : 'Download invoice'}
+                {loadingPdf ? 'Rendering…' : 'Download invoice'}
               </button>
               <button
                 className="button button-secondary"
@@ -388,17 +392,26 @@ export const InvoiceDetailPage = () => {
                   void downloadDocument(loadAddendumPdf, 'invoiceAddendumPdf', '-addendum');
                 }}
               >
-                {loadingAddendum ? 'Renderingâ€¦' : 'Download addendum'}
+                {loadingAddendum ? 'Rendering…' : 'Download addendum'}
               </button>
               {isDraft ? (
                 <button
                   className="button button-primary"
-                  disabled={issuing || lines.length === 0}
+                  disabled={issuing}
                   type="button"
-                  onClick={() => void run(() => issueInvoice({ variables: { invoiceId } }), 'Invoice issued. It is now locked.')}
+                  onClick={() => {
+                    if (lines.length === 0) {
+                      setError('Add at least one line before issuing the invoice.');
+                      focusFirstByName(document.querySelector<HTMLElement>('.table-shell'), [
+                        'add-line',
+                      ]);
+                      return;
+                    }
+                    void run(() => issueInvoice({ variables: { invoiceId } }), 'Invoice issued. It is now locked.');
+                  }}
                 >
-                  <IconLock size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  {issuing ? 'Issuingâ€¦' : 'Approve & issue'}
+                  <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  {issuing ? 'Issuing…' : 'Approve & issue'}
                 </button>
               ) : null}
               {isDraft ? (
@@ -413,15 +426,15 @@ export const InvoiceDetailPage = () => {
                     )
                   }
                 >
-                  <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  {voiding ? 'Voidingâ€¦' : 'Void draft'}
+                  <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  {voiding ? 'Voiding…' : 'Void draft'}
                 </button>
               ) : null}
               {invoice?.isStale ? (
                 <StatusChip color="amber" label={invoice.staleReason ?? 'Stale draft'} />
               ) : null}
               {!isDraft && invoice?.status === 'issued' ? (
-                <StatusChip color="blue" label={`Due ${invoice.dueDate ?? 'â€”'}`} />
+                <StatusChip color="blue" label={`Due ${invoice.dueDate ?? '—'}`} />
               ) : null}
               {invoice && invoice.reconciliationStatus !== 'pending' ? (
                 <StatusChip
@@ -436,7 +449,7 @@ export const InvoiceDetailPage = () => {
                     invoice.reconciliationStatus === 'matched'
                       ? 'Reconciled'
                       : invoice.reconciliationStatus === 'variance'
-                        ? `Cost variance${invoice.payrollCostAmount === null ? '' : ` Â· ${formatMoney(invoice.payrollCostAmount, invoice.currency)} cost`}`
+                        ? `Cost variance${invoice.payrollCostAmount === null ? '' : ` · ${formatMoney(invoice.payrollCostAmount, invoice.currency)} cost`}`
                         : 'No FX rate'
                   }
                 />
@@ -458,12 +471,17 @@ export const InvoiceDetailPage = () => {
               <div className="panel-actions">
                 <div className="table-density">
                   {loading
-                    ? 'â€¦'
+                    ? '…'
                     : `${formatMoney(invoice?.totalAmount ?? 0, currency)} total`}
                 </div>
                 {isDraft ? (
-                  <button className="button button-secondary" type="button" onClick={startCreate}>
-                    <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <button
+                    className="button button-secondary"
+                    name="add-line"
+                    type="button"
+                    onClick={startCreate}
+                  >
+                    <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     Add line
                   </button>
                 ) : null}
@@ -502,16 +520,16 @@ export const InvoiceDetailPage = () => {
               <div className="panel-kicker">Finance operations</div>
               <h2 className="panel-title">{invoice?.status === 'paid' ? 'Settled' : isDraft ? 'Draft review' : 'Awaiting payment'}</h2>
             </div>
-            {invoice?.status === 'paid' ? <IconCheck size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} /> : <IconLock size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />}
+            {invoice?.status === 'paid' ? <IconCheck aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} /> : <IconLock aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />}
           </div>
 
           {invoice ? (
             <ul className="field-list">
               <li className="field-row"><span>Status</span><span className="field-value">{invoice.status}</span></li>
-              <li className="field-row"><span>Receiver</span><span className="field-value truncate">{invoice.receiverName ?? 'â€”'}</span></li>
+              <li className="field-row"><span>Receiver</span><span className="field-value truncate">{invoice.receiverName ?? '—'}</span></li>
               <li className="field-row"><span>Sub-total</span><span className="field-value">{formatMoney(invoice.subTotal, invoice.currency)}</span></li>
-              <li className="field-row"><span>Issue date</span><span className="field-value">{invoice.issueDate ?? 'â€”'}</span></li>
-              <li className="field-row"><span>Due date</span><span className="field-value">{invoice.dueDate ?? 'â€”'}</span></li>
+              <li className="field-row"><span>Issue date</span><span className="field-value">{invoice.issueDate ?? '—'}</span></li>
+              <li className="field-row"><span>Due date</span><span className="field-value">{invoice.dueDate ?? '—'}</span></li>
               {invoice.paymentReference ? (
                 <li className="field-row"><span>Payment ref</span><span className="field-value">{invoice.paymentReference}</span></li>
               ) : null}
@@ -528,7 +546,7 @@ export const InvoiceDetailPage = () => {
             >
               <h3 className="section-title">Record settlement</h3>
               <div className="field"><label htmlFor="pay-ref">Payment reference</label>
-                <input id="pay-ref" placeholder="Wire / cheque reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} />
+                <input id="pay-ref" autoComplete="off" name="pay-ref" placeholder="Wire / cheque reference" spellCheck={false} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} />
               </div>
               <button className="button button-primary button-full" disabled={paying} type="submit">Mark paid</button>
             </form>
@@ -554,6 +572,7 @@ export const InvoiceDetailPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Description"
+                name="line-description"
                 onChange={(value) => create.patchDraft({ description: value })}
                 placeholder="Laptop reimbursement"
                 type="text"
@@ -561,16 +580,20 @@ export const InvoiceDetailPage = () => {
               />
               <FieldRow
                 alwaysEditing
+                inputMode="decimal"
                 label="Quantity"
                 min={0.01}
+                name="line-quantity"
                 onChange={(value) => create.patchDraft({ quantity: value })}
                 type="number"
                 value={create.draft.quantity}
               />
               <FieldRow
                 alwaysEditing
+                inputMode="decimal"
                 label="Unit price"
                 min={0}
+                name="line-unit-price"
                 onChange={(value) => create.patchDraft({ unitPrice: value })}
                 required
                 type="number"
@@ -585,12 +608,12 @@ export const InvoiceDetailPage = () => {
             <div className="record-panel-actions">
               <button
                 className="button button-primary"
-                disabled={!create.canCreate || create.isSaving}
+                disabled={create.isSaving}
                 onClick={() => void create.commit()}
                 type="button"
               >
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                {create.isSaving ? 'Addingâ€¦' : 'Add line'}
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                {create.isSaving ? 'Adding…' : 'Add line'}
               </button>
               <button className="button button-secondary" onClick={create.discard} type="button">
                 Cancel
@@ -602,6 +625,7 @@ export const InvoiceDetailPage = () => {
             <FieldGroup title="Line">
               <FieldRow
                 label="Description"
+                name="invoice-line-description"
                 onCommit={(value) =>
                   void commitLineField(selectedLine.id, 'description', value)
                 }
@@ -609,16 +633,20 @@ export const InvoiceDetailPage = () => {
                 value={selectedLine.description}
               />
               <FieldRow
+                inputMode="decimal"
                 label="Quantity"
                 min={0.01}
+                name="invoice-line-quantity"
                 onCommit={(value) => void commitLineField(selectedLine.id, 'quantity', value)}
                 type="number"
                 value={String(selectedLine.quantity)}
               />
               <FieldRow
                 display={formatMoney(selectedLine.unitPrice, currency)}
+                inputMode="decimal"
                 label="Unit price"
                 min={0}
+                name="invoice-line-unit-price"
                 onCommit={(value) => void commitLineField(selectedLine.id, 'unitPrice', value)}
                 type="number"
                 value={String(selectedLine.unitPrice)}
@@ -638,13 +666,13 @@ export const InvoiceDetailPage = () => {
                 onClick={() => void onDeleteLine(selectedLine.id)}
                 type="button"
               >
-                <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Delete line
               </button>
             </div>
           </div>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

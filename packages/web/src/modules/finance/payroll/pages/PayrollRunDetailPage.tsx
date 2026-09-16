@@ -1,4 +1,4 @@
-ï»¿import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import { IconAlertTriangle, IconLock, IconRefresh, IconTable, IconX } from '@tabler/icons-react';
 import { Fragment, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom';
 import { downloadBase64File } from '../../../../app/download';
 import { StatusChip } from '../../../../components/chip/StatusChip';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
+import { focusFirstByName } from '../../../../components/form/validation';
 import { Modal } from '../../../../components/modal/Modal';
 import { SkeletonRows } from '../../../../components/skeleton/Skeleton';
 import { Tooltip } from '../../../../components/tooltip/Tooltip';
@@ -190,7 +191,7 @@ export const PayrollRunDetailPage = () => {
   const submitFinalize = async (overrideReason?: string): Promise<void> => {
     const ok = await runAction(
       () => finalizeRun({ variables: { runId, overrideReason } }),
-      'Run finalized â€” payslips are locked and the billing handoff event was emitted.',
+      'Run finalized — payslips are locked and the billing handoff event was emitted.',
     );
     if (!ok) return;
     setFinalizeOpen(false);
@@ -236,7 +237,7 @@ export const PayrollRunDetailPage = () => {
             },
           },
         }),
-      value === '' ? 'Tax override cleared â€” engine value restored.' : 'Tax override saved.',
+      value === '' ? 'Tax override cleared — engine value restored.' : 'Tax override saved.',
     );
   };
 
@@ -256,7 +257,7 @@ export const PayrollRunDetailPage = () => {
 
   if (loadError) {
     return (
-      <main className="page-frame">
+      <section className="page-frame">
         <div className="employees-content">
           <EmptyState
             icon={IconAlertTriangle}
@@ -269,7 +270,7 @@ export const PayrollRunDetailPage = () => {
             }
           />
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -278,7 +279,7 @@ export const PayrollRunDetailPage = () => {
   const totalNet = lines.reduce((sum, line) => sum + line.netPayAmount, 0);
 
   return (
-    <main className="page-frame">
+    <section className="page-frame">
       <div className="employees-content">
         <header className="page-header">
           <div>
@@ -287,7 +288,7 @@ export const PayrollRunDetailPage = () => {
             </h1>
             <p className="page-subtitle">
               {run
-                ? `${lines.length} line${lines.length === 1 ? '' : 's'} Â· ${run.standardWorkingDays} working days Â· ${formatMoney(totalNet, run.currency)} net`
+                ? `${lines.length} line${lines.length === 1 ? '' : 's'} · ${run.standardWorkingDays} working days · ${formatMoney(totalNet, run.currency)} net`
                 : ''}
             </p>
           </div>
@@ -305,18 +306,24 @@ export const PayrollRunDetailPage = () => {
                     );
                   }}
                 >
-                  <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  {regenerating ? 'Recomputingâ€¦' : 'Regenerate'}
+                  <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  {regenerating ? 'Recomputing…' : 'Regenerate'}
                 </button>
                 <button
                   className="button button-primary"
-                  disabled={finalizing || lines.length === 0 || readinessData === undefined}
-                  onClick={requestFinalize}
-                  title={readinessData === undefined ? 'Checking readinessâ€¦' : undefined}
+                  disabled={finalizing || readinessData === undefined}
+                  onClick={() => {
+                    if (lines.length === 0) {
+                      setError('Regenerate the run to add lines before finalizing.');
+                      return;
+                    }
+                    requestFinalize();
+                  }}
+                  title={readinessData === undefined ? 'Checking readiness…' : undefined}
                   type="button"
                 >
-                  <IconLock size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  {finalizing ? 'Finalizingâ€¦' : 'Finalize run'}
+                  <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  {finalizing ? 'Finalizing…' : 'Finalize run'}
                 </button>
               </>
             ) : null}
@@ -336,13 +343,13 @@ export const PayrollRunDetailPage = () => {
                   setPayModalOpen(true);
                 }}
               >
-                {markingPaid ? 'Savingâ€¦' : 'Mark as paid'}
+                {markingPaid ? 'Saving…' : 'Mark as paid'}
               </button>
             ) : null}
             {isFinalized && run?.paidAt ? (
               <StatusChip
                 color="green"
-                label={`Paid${run.paymentReference ? ` Â· ${run.paymentReference}` : ''}`}
+                label={`Paid${run.paymentReference ? ` · ${run.paymentReference}` : ''}`}
               />
             ) : null}
             <Link className="button button-secondary" to="/payroll">
@@ -360,7 +367,7 @@ export const PayrollRunDetailPage = () => {
 
         {run?.isStale && !isFinalized ? (
           <p className="field-hint-warning" role="status">
-            Salary changed since this draft{run.staleReason ? `: ${run.staleReason}` : ''} â€”
+            Salary changed since this draft{run.staleReason ? `: ${run.staleReason}` : ''} —
             regenerate before finalizing.
           </p>
         ) : null}
@@ -374,7 +381,7 @@ export const PayrollRunDetailPage = () => {
               {isFinalized ? 'Locked lines (as disbursed)' : 'Draft lines'}
             </div>
             <div className="table-density">
-              {loading ? 'â€¦' : `${lines.length} employee${lines.length === 1 ? '' : 's'}`}
+              {loading ? '…' : `${lines.length} employee${lines.length === 1 ? '' : 's'}`}
             </div>
           </div>
           <div className="data-table-wrap">
@@ -429,7 +436,7 @@ export const PayrollRunDetailPage = () => {
                           <div className="employee-secondary">
                             {[line.roleTitle, line.hireDate ? `joined ${line.hireDate}` : null, line.employmentStatus]
                               .filter(Boolean)
-                              .join(' Â· ')}
+                              .join(' · ')}
                           </div>
                           <div className="employee-secondary">
                             <Link className="table-link" to={`/employees/${line.employeeId}`}>
@@ -440,8 +447,8 @@ export const PayrollRunDetailPage = () => {
                         </td>
                         <td className="cell-numeric" data-label="Paid days">{line.payableDays}</td>
                         <td className="cell-numeric" data-label="LOP">{line.lopDays}</td>
-                        <td className="cell-numeric" data-label="Gross">{run ? formatMoney(line.grossAmount, run.currency) : 'â€”'}</td>
-                        <td className="cell-numeric" data-label="Taxable">{run ? formatMoney(line.taxableAmount, run.currency) : 'â€”'}</td>
+                        <td className="cell-numeric" data-label="Gross">{run ? formatMoney(line.grossAmount, run.currency) : '—'}</td>
+                        <td className="cell-numeric" data-label="Taxable">{run ? formatMoney(line.taxableAmount, run.currency) : '—'}</td>
                         <td className="cell-numeric" data-label="Tax">
                           {formatMoney(line.incomeTax, run?.currency ?? 'PKR')}
                           {line.taxOverrideAmount !== null ? (
@@ -465,7 +472,7 @@ export const PayrollRunDetailPage = () => {
                                   );
                                 }}
                               >
-                                <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                                <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                               </button>
                             </Tooltip>
                           </td>
@@ -488,15 +495,15 @@ export const PayrollRunDetailPage = () => {
                                       {component.dependsOnPaymentDays &&
                                       component.defaultAmount !== component.amount ? (
                                         <span className="employee-secondary">
-                                          {formatMoney(component.defaultAmount, run?.currency ?? 'PKR')} Ã—{' '}
+                                          {formatMoney(component.defaultAmount, run?.currency ?? 'PKR')} ×{' '}
                                           {line.payableDays}/{line.standardWorkingDays} ={' '}
                                         </span>
                                       ) : null}
                                       <strong>
                                         {formatMoney(component.amount, run?.currency ?? 'PKR')}
                                       </strong>
-                                      {component.taxable ? '' : ' Â· non-taxable'}
-                                      {component.sourceType ? ` Â· from ${component.sourceType}` : ''}
+                                      {component.taxable ? '' : ' · non-taxable'}
+                                      {component.sourceType ? ` · from ${component.sourceType}` : ''}
                                     </span>
                                   </div>
                                 ))
@@ -505,7 +512,9 @@ export const PayrollRunDetailPage = () => {
                                 <div className="record-inline-actions">
                                   <input
                                     aria-label={`Tax override for ${line.displayName ?? line.employeeId}`}
+                                    inputMode="decimal"
                                     min={0}
+                                    name={`tax-override-${line.id}`}
                                     placeholder="Engine tax"
                                     step="0.01"
                                     type="number"
@@ -645,7 +654,7 @@ export const PayrollRunDetailPage = () => {
             <div className="panel-kicker">Finance operations</div>
             <h2 className="panel-title">{isFinalized ? 'Run locked' : 'Review draft'}</h2>
           </div>
-          <IconLock size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+          <IconLock aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
         </div>
 
         {!isFinalized && run ? (
@@ -662,7 +671,7 @@ export const PayrollRunDetailPage = () => {
               </li>
               <li className="field-row">
                 <span>Status</span>
-                <span className="field-value">Draft â€” editable until you finalize</span>
+                <span className="field-value">Draft — editable until you finalize</span>
               </li>
             </ul>
             <p className="field-hint">
@@ -704,9 +713,12 @@ export const PayrollRunDetailPage = () => {
             <label htmlFor="pay-reference">Payment reference</label>
             <input
               id="pay-reference"
+              autoComplete="off"
               autoFocus
               maxLength={120}
+              name="pay-reference"
               placeholder="e.g. Bank transfer 20260930"
+              spellCheck={false}
               value={payReference}
               onChange={(event) => setPayReference(event.target.value)}
             />
@@ -716,7 +728,7 @@ export const PayrollRunDetailPage = () => {
             disabled={markingPaid}
             type="submit"
           >
-            {markingPaid ? 'Savingâ€¦' : 'Mark as paid'}
+            {markingPaid ? 'Saving…' : 'Mark as paid'}
           </button>
         </form>
       </Modal>
@@ -731,22 +743,31 @@ export const PayrollRunDetailPage = () => {
           {readinessData?.payrollReadiness
             ? `${readinessData.payrollReadiness.hardBlockerCount} employee${
                 readinessData.payrollReadiness.hardBlockerCount === 1 ? '' : 's'
-              } still have hard blockers. Finalizing anyway needs a written reason â€” it is recorded on the run.`
-            : 'Finalizing anyway needs a written reason â€” it is recorded on the run.'}
+              } still have hard blockers. Finalizing anyway needs a written reason — it is recorded on the run.`
+            : 'Finalizing anyway needs a written reason — it is recorded on the run.'}
         </p>
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
         <form
           className="config-form"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            if (!finalizeReason.trim()) return;
-            void submitFinalize(finalizeReason.trim());
+            const reason = finalizeReason.trim();
+            if (!reason) {
+              setError('Enter a reason before finalizing with blockers.');
+              focusFirstByName(document.querySelector<HTMLElement>('.modal-dialog'), [
+                'finalize-reason',
+              ]);
+              return;
+            }
+            void submitFinalize(reason);
           }}
         >
           <div className="field">
             <label htmlFor="finalize-reason">Reason</label>
             <textarea
               id="finalize-reason"
+              name="finalize-reason"
               autoFocus
               placeholder="e.g. Bank details pending for two joiners; paying this cycle and correcting next month."
               required
@@ -755,16 +776,12 @@ export const PayrollRunDetailPage = () => {
               onChange={(event) => setFinalizeReason(event.target.value)}
             />
           </div>
-          <button
-            className="button button-primary button-full"
-            disabled={finalizing || !finalizeReason.trim()}
-            type="submit"
-          >
-            <IconLock size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {finalizing ? 'Finalizingâ€¦' : 'Finalize anyway'}
+          <button className="button button-primary button-full" disabled={finalizing} type="submit">
+            <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            {finalizing ? 'Finalizing…' : 'Finalize anyway'}
           </button>
         </form>
       </Modal>
-    </main>
+    </section>
   );
 };

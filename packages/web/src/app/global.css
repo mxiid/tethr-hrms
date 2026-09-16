@@ -93,6 +93,43 @@ button,
   color-scheme: dark;
 }
 
+/* Keyboard users land here first: parked above the viewport until focused,
+   then a small fixed pill in the top-left, above every layered surface. The
+   shell renders the anchor; this owns its look. */
+.skip-link {
+  position: fixed;
+  top: var(--hrms-space-2);
+  left: var(--hrms-space-2);
+  z-index: var(--hrms-z-index-last-layer);
+  padding: var(--hrms-space-2) var(--hrms-space-3);
+  color: var(--hrms-color-text-primary);
+  background: var(--hrms-color-background-primary);
+  border: 1px solid var(--hrms-color-border-strong);
+  border-radius: var(--hrms-radius-sm);
+  font-size: var(--hrms-font-size-sm);
+  font-weight: var(--hrms-font-weight-medium);
+  text-decoration: none;
+  transform: translateY(calc(-100% - var(--hrms-space-4)));
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* Visually hidden but exposed to assistive tech — for accessible names the
+   sighted layout already conveys. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -507,6 +544,7 @@ button,
   max-height: calc(100vh - var(--hrms-layout-top-bar-height));
   overflow-y: auto;
   padding: var(--hrms-space-3) var(--hrms-space-3) var(--hrms-space-6);
+  padding-bottom: calc(var(--hrms-space-3) + env(safe-area-inset-bottom, 0px));
   background: var(--hrms-color-background-primary);
   border-bottom: 1px solid var(--hrms-color-border-light);
   box-shadow: var(--hrms-box-shadow-strong);
@@ -1563,6 +1601,8 @@ button,
   position: relative;
   min-width: 4px;
   height: 100%;
+  padding: 0;
+  background: transparent;
   cursor: default;
   opacity: 0.92;
   transition: var(--hrms-animation-clickable-background-transition);
@@ -1629,6 +1669,8 @@ button,
   align-items: flex-end;
   justify-content: center;
   height: 100%;
+  padding: 0;
+  background: transparent;
 }
 
 .dashboard-bar-trend-bar {
@@ -1889,6 +1931,7 @@ button,
   overflow: auto;
   max-height: min(72vh, 760px);
   scrollbar-gutter: stable;
+  scroll-padding-top: calc(var(--hrms-layout-table-row-height) + var(--hrms-space-2));
   -webkit-overflow-scrolling: touch;
 }
 
@@ -1906,6 +1949,7 @@ button,
   overflow: auto;
   max-height: min(72vh, 760px);
   scrollbar-gutter: stable;
+  scroll-padding-top: calc(var(--hrms-layout-table-row-height) + var(--hrms-space-2));
 }
 
 /* Horizontal scroll shadow, no JS: the opaque covers use `background-
@@ -4015,8 +4059,8 @@ button,
   font-size: var(--hrms-font-size-sm);
 }
 
-.record-field-control:focus {
-  outline: 2px solid var(--hrms-color-border-blue);
+.record-field-control:focus-visible {
+  outline: 3px solid var(--hrms-color-border-blue);
   outline-offset: 1px;
 }
 
@@ -4059,10 +4103,11 @@ button,
   background: var(--hrms-color-background-tertiary);
 }
 
-.record-panel-name-input:focus {
+.record-panel-name-input:focus-visible {
   background: var(--hrms-color-background-primary);
   border-color: var(--hrms-color-border-medium);
-  outline: none;
+  outline: 3px solid var(--hrms-color-border-blue);
+  outline-offset: 1px;
 }
 
 .record-panel-actions {
@@ -4392,6 +4437,7 @@ button,
   gap: var(--hrms-space-4);
   margin-top: var(--hrms-space-5);
   padding: var(--hrms-space-4) 0;
+  padding-bottom: calc(var(--hrms-space-3) + env(safe-area-inset-bottom, 0px));
   background: var(--hrms-color-background-primary);
   border-top: 1px solid var(--hrms-color-border-light);
 }
@@ -4420,6 +4466,10 @@ button,
 @media (max-width: 760px) {
   .onboarding-page {
     padding: 0 var(--hrms-space-3) var(--hrms-space-3);
+  }
+
+  .onboarding-flow {
+    scroll-padding-bottom: 96px;
   }
 
   .onboarding-field-pair {
@@ -4581,6 +4631,7 @@ button,
 
   .app-content {
     padding: 0;
+    scroll-padding-bottom: 96px;
   }
 
   .employees-content {

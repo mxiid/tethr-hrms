@@ -16,7 +16,11 @@ export const WidgetFieldRow = ({
   error,
 }: WidgetFieldRowProps) => {
   if (error) {
-    return <p className="auth-error">Could not load this widget.</p>;
+    return (
+      <p className="auth-error" role="alert">
+        Could not load this widget.
+      </p>
+    );
   }
 
   const selectedFields = selectedFieldIds

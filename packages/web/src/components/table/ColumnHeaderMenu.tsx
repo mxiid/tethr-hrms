@@ -8,6 +8,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { handleMenuArrowKeys } from '../menu/menuKeyboard';
+
 export type SortDirection = 'asc' | 'desc';
 
 type ColumnHeaderMenuProps = {
@@ -48,6 +50,10 @@ export const ColumnHeaderMenu = ({
 
   useEffect(() => {
     if (!open) return undefined;
+    // Move focus into the menu so arrow keys work without a Tab first.
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    });
     const onPointerDown = (event: MouseEvent): void => {
       const target = event.target as Node;
       if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
@@ -63,6 +69,7 @@ export const ColumnHeaderMenu = ({
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('scroll', onScroll, true);
     return () => {
+      window.cancelAnimationFrame(frame);
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('scroll', onScroll, true);
@@ -81,19 +88,19 @@ export const ColumnHeaderMenu = ({
       >
         <span className="column-header-label">{label}</span>
         {sortDirection === 'asc' ? (
-          <IconSortAscending
+          <IconSortAscending aria-hidden="true"
             className="column-header-caret"
             size={14}
             stroke={2}
           />
         ) : sortDirection === 'desc' ? (
-          <IconSortDescending
+          <IconSortDescending aria-hidden="true"
             className="column-header-caret"
             size={14}
             stroke={2}
           />
         ) : (
-          <IconArrowsSort className="column-header-caret" size={14} stroke={2} />
+          <IconArrowsSort aria-hidden="true" className="column-header-caret" size={14} stroke={2} />
         )}
       </button>
 
@@ -101,6 +108,7 @@ export const ColumnHeaderMenu = ({
         ? createPortal(
             <div
               className="action-menu-panel column-header-panel"
+              onKeyDown={(event) => void handleMenuArrowKeys(event)}
               ref={panelRef}
               role="menu"
               style={{ top: anchor.top, left: anchor.left }}
@@ -116,7 +124,7 @@ export const ColumnHeaderMenu = ({
                       setOpen(false);
                     }}
                   >
-                    <IconSortAscending size={16} stroke={2} />
+                    <IconSortAscending aria-hidden="true" size={16} stroke={2} />
                     <span className="action-menu-item-copy">
                       <span className="action-menu-item-label">Sort ascending</span>
                     </span>
@@ -130,7 +138,7 @@ export const ColumnHeaderMenu = ({
                       setOpen(false);
                     }}
                   >
-                    <IconSortDescending size={16} stroke={2} />
+                    <IconSortDescending aria-hidden="true" size={16} stroke={2} />
                     <span className="action-menu-item-copy">
                       <span className="action-menu-item-label">Sort descending</span>
                     </span>
@@ -145,7 +153,7 @@ export const ColumnHeaderMenu = ({
                         setOpen(false);
                       }}
                     >
-                      <IconX size={16} stroke={2} />
+                      <IconX aria-hidden="true" size={16} stroke={2} />
                       <span className="action-menu-item-copy">
                         <span className="action-menu-item-label">Remove sort</span>
                       </span>
@@ -163,7 +171,7 @@ export const ColumnHeaderMenu = ({
                     setOpen(false);
                   }}
                 >
-                  <IconEyeOff size={16} stroke={2} />
+                  <IconEyeOff aria-hidden="true" size={16} stroke={2} />
                   <span className="action-menu-item-copy">
                     <span className="action-menu-item-label">Hide column</span>
                   </span>

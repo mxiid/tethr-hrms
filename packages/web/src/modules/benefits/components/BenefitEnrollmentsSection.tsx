@@ -115,7 +115,7 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
                   setModalOpen(true);
                 }}
               >
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Enroll
               </button>
             ) : null}
@@ -182,6 +182,7 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
             <label htmlFor="enrollment-plan">Plan</label>
             <select
               id="enrollment-plan"
+              name="enrollment-plan"
               value={planId}
               onChange={(event) => setPlanId(event.target.value)}
             >
@@ -198,6 +199,7 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
             <label htmlFor="enrollment-date">Effective from</label>
             <input
               id="enrollment-date"
+              name="enrollment-date"
               type="date"
               value={effectiveDate}
               onChange={(event) => setEffectiveDate(event.target.value)}
@@ -208,6 +210,7 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
             <input
               id="enrollment-note"
               maxLength={300}
+              name="enrollment-note"
               value={note}
               onChange={(event) => setNote(event.target.value)}
             />

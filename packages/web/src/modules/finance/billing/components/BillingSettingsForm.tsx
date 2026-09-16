@@ -113,16 +113,16 @@ export const BillingSettingsForm = () => {
           <h3 className="section-title">Commercial terms</h3>
           <p className="field-hint">Current: ${config?.feeAmount ?? '—'} PEPM · Net {config?.paymentTermsNetDays ?? '—'} · anchor day {config?.anchorDay ?? '—'}</p>
           <div className="field"><label htmlFor="fee-amount">PEPM fee (USD)</label>
-            <input id="fee-amount" min={0} placeholder={String(config?.feeAmount ?? '')} step="0.01" type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} />
+            <input id="fee-amount" name="fee-amount" inputMode="decimal" min={0} placeholder={String(config?.feeAmount ?? '')} step="0.01" type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} />
           </div>
           <div className="field"><label htmlFor="net-days">Payment terms (net days)</label>
-            <input id="net-days" min={0} placeholder={String(config?.paymentTermsNetDays ?? '')} type="number" value={netDays} onChange={(e) => setNetDays(e.target.value)} />
+            <input id="net-days" name="net-days" inputMode="numeric" min={0} placeholder={String(config?.paymentTermsNetDays ?? '')} type="number" value={netDays} onChange={(e) => setNetDays(e.target.value)} />
           </div>
           <div className="field"><label htmlFor="anchor-day">Anchor day</label>
-            <input id="anchor-day" max={28} min={1} placeholder={String(config?.anchorDay ?? '')} type="number" value={anchorDay} onChange={(e) => setAnchorDay(e.target.value)} />
+            <input id="anchor-day" name="anchor-day" inputMode="numeric" max={28} min={1} placeholder={String(config?.anchorDay ?? '')} type="number" value={anchorDay} onChange={(e) => setAnchorDay(e.target.value)} />
           </div>
           <div className="field"><label htmlFor="receiver-name">Client receiver name</label>
-            <input id="receiver-name" placeholder={config?.receiverName ?? 'SynAck Solutions LLC'} value={receiverName} onChange={(e) => setReceiverName(e.target.value)} />
+            <input id="receiver-name" name="receiver-name" autoComplete="organization" placeholder={config?.receiverName ?? 'SynAck Solutions LLC'} value={receiverName} onChange={(e) => setReceiverName(e.target.value)} />
           </div>
 
           <h3 className="section-title">Letterhead</h3>
@@ -137,6 +137,7 @@ export const BillingSettingsForm = () => {
                 accept="image/*"
                 className="file-input-native"
                 id="invoice-logo"
+                name="invoice-logo"
                 type="file"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
@@ -166,6 +167,7 @@ export const BillingSettingsForm = () => {
                 accept="image/*"
                 className="file-input-native"
                 id="signature-image"
+                name="signature-image"
                 type="file"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
@@ -187,43 +189,43 @@ export const BillingSettingsForm = () => {
 
           <h3 className="section-title">Sender (Tethr) address</h3>
           <div className="field"><label htmlFor="sender-address">Street address</label>
-            <input id="sender-address" placeholder={config?.senderAddress ?? '152, Street 23, G-10/2'} value={addressForm.senderAddress} onChange={(e) => setAddressForm((f) => ({ ...f, senderAddress: e.target.value }))} />
+            <input id="sender-address" name="sender-address" autoComplete="address-line1" placeholder={config?.senderAddress ?? '152, Street 23, G-10/2'} value={addressForm.senderAddress} onChange={(e) => setAddressForm((f) => ({ ...f, senderAddress: e.target.value }))} />
           </div>
           <div className="field-row">
             <div className="field"><label htmlFor="sender-zip">Zip</label>
-              <input id="sender-zip" placeholder={config?.senderZipCode ?? '42201'} value={addressForm.senderZipCode} onChange={(e) => setAddressForm((f) => ({ ...f, senderZipCode: e.target.value }))} />
+              <input id="sender-zip" name="sender-zip" autoComplete="postal-code" placeholder={config?.senderZipCode ?? '42201'} value={addressForm.senderZipCode} onChange={(e) => setAddressForm((f) => ({ ...f, senderZipCode: e.target.value }))} />
             </div>
             <div className="field"><label htmlFor="sender-city">City</label>
-              <input id="sender-city" placeholder={config?.senderCity ?? 'Islamabad'} value={addressForm.senderCity} onChange={(e) => setAddressForm((f) => ({ ...f, senderCity: e.target.value }))} />
+              <input id="sender-city" name="sender-city" autoComplete="address-level2" placeholder={config?.senderCity ?? 'Islamabad'} value={addressForm.senderCity} onChange={(e) => setAddressForm((f) => ({ ...f, senderCity: e.target.value }))} />
             </div>
           </div>
           <div className="field-row">
             <div className="field"><label htmlFor="sender-country">Country</label>
-              <input id="sender-country" placeholder={config?.senderCountry ?? 'Pakistan'} value={addressForm.senderCountry} onChange={(e) => setAddressForm((f) => ({ ...f, senderCountry: e.target.value }))} />
+              <input id="sender-country" name="sender-country" autoComplete="country-name" placeholder={config?.senderCountry ?? 'Pakistan'} value={addressForm.senderCountry} onChange={(e) => setAddressForm((f) => ({ ...f, senderCountry: e.target.value }))} />
             </div>
             <div className="field"><label htmlFor="sender-phone">Phone</label>
-              <input id="sender-phone" placeholder={config?.senderPhone ?? '+92 332 8883847'} value={addressForm.senderPhone} onChange={(e) => setAddressForm((f) => ({ ...f, senderPhone: e.target.value }))} />
+              <input id="sender-phone" name="sender-phone" autoComplete="tel" inputMode="tel" type="tel" placeholder={config?.senderPhone ?? '+92 332 8883847'} value={addressForm.senderPhone} onChange={(e) => setAddressForm((f) => ({ ...f, senderPhone: e.target.value }))} />
             </div>
           </div>
 
           <h3 className="section-title">Receiver (client) address</h3>
           <div className="field"><label htmlFor="receiver-address">Street address</label>
-            <input id="receiver-address" placeholder={config?.receiverAddress ?? '7709 Inwood Ave'} value={addressForm.receiverAddress} onChange={(e) => setAddressForm((f) => ({ ...f, receiverAddress: e.target.value }))} />
+            <input id="receiver-address" name="receiver-address" autoComplete="address-line1" placeholder={config?.receiverAddress ?? '7709 Inwood Ave'} value={addressForm.receiverAddress} onChange={(e) => setAddressForm((f) => ({ ...f, receiverAddress: e.target.value }))} />
           </div>
           <div className="field-row">
             <div className="field"><label htmlFor="receiver-zip">Zip</label>
-              <input id="receiver-zip" placeholder={config?.receiverZipCode ?? '21228'} value={addressForm.receiverZipCode} onChange={(e) => setAddressForm((f) => ({ ...f, receiverZipCode: e.target.value }))} />
+              <input id="receiver-zip" name="receiver-zip" autoComplete="postal-code" placeholder={config?.receiverZipCode ?? '21228'} value={addressForm.receiverZipCode} onChange={(e) => setAddressForm((f) => ({ ...f, receiverZipCode: e.target.value }))} />
             </div>
             <div className="field"><label htmlFor="receiver-city">City</label>
-              <input id="receiver-city" placeholder={config?.receiverCity ?? 'Baltimore'} value={addressForm.receiverCity} onChange={(e) => setAddressForm((f) => ({ ...f, receiverCity: e.target.value }))} />
+              <input id="receiver-city" name="receiver-city" autoComplete="address-level2" placeholder={config?.receiverCity ?? 'Baltimore'} value={addressForm.receiverCity} onChange={(e) => setAddressForm((f) => ({ ...f, receiverCity: e.target.value }))} />
             </div>
           </div>
           <div className="field-row">
             <div className="field"><label htmlFor="receiver-country">Country</label>
-              <input id="receiver-country" placeholder={config?.receiverCountry ?? 'United States'} value={addressForm.receiverCountry} onChange={(e) => setAddressForm((f) => ({ ...f, receiverCountry: e.target.value }))} />
+              <input id="receiver-country" name="receiver-country" autoComplete="country-name" placeholder={config?.receiverCountry ?? 'United States'} value={addressForm.receiverCountry} onChange={(e) => setAddressForm((f) => ({ ...f, receiverCountry: e.target.value }))} />
             </div>
             <div className="field"><label htmlFor="receiver-phone">Phone</label>
-              <input id="receiver-phone" placeholder={config?.receiverPhone ?? '+1 443 805 9476'} value={addressForm.receiverPhone} onChange={(e) => setAddressForm((f) => ({ ...f, receiverPhone: e.target.value }))} />
+              <input id="receiver-phone" name="receiver-phone" autoComplete="tel" inputMode="tel" type="tel" placeholder={config?.receiverPhone ?? '+1 443 805 9476'} value={addressForm.receiverPhone} onChange={(e) => setAddressForm((f) => ({ ...f, receiverPhone: e.target.value }))} />
             </div>
           </div>
 

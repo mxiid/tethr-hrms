@@ -5,9 +5,10 @@ import {
   IconChevronDown,
   IconPencil,
 } from '@tabler/icons-react';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
 import { useTheme } from '../../providers/theme/useTheme';
+import { focusFirstByName } from '../form/validation';
 
 /**
  * The shared chrome for a multi-step intake: a page takeover with a narrow
@@ -66,7 +67,7 @@ export const OnboardingCard = ({
   <section className="onboarding-card">
     <div className="onboarding-card-head">
       <div>
-        <h3 className="onboarding-card-title">{title}</h3>
+        <h2 className="onboarding-card-title">{title}</h2>
         {note ? <p className="onboarding-card-note">{note}</p> : null}
       </div>
       {action}
@@ -93,7 +94,7 @@ export const OnboardingEditButton = ({ onClick }: { readonly onClick: () => void
   const { theme } = useTheme();
   return (
     <button className="onboarding-card-edit" type="button" onClick={onClick}>
-      <IconPencil size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+      <IconPencil aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
       Edit
     </button>
   );
@@ -141,12 +142,46 @@ export const OnboardingFlow = ({
   onSubmit,
 }: OnboardingFlowProps) => {
   const { theme } = useTheme();
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStepError(null);
+  }, [stepIndex]);
+
+  const onFormSubmit = (event: FormEvent): void => {
+    if (!stepValid) {
+      event.preventDefault();
+      const controls = Array.from(
+        formRef.current?.querySelectorAll<
+          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >('input, select, textarea') ?? [],
+      );
+      const names = controls
+        .filter(
+          (control) =>
+            !control.disabled &&
+            (!control.validity.valid || (control.required && control.value.trim() === '')),
+        )
+        .map((control) => control.name)
+        .filter((name) => name !== '');
+      setStepError(
+        isLastStep
+          ? 'Fill in the required fields before submitting.'
+          : 'Fill in the required fields before continuing.',
+      );
+      focusFirstByName(formRef.current, names);
+      return;
+    }
+    setStepError(null);
+    onSubmit(event);
+  };
 
   return (
-    <form className="onboarding-flow" onSubmit={onSubmit}>
+    <form className="onboarding-flow" noValidate onSubmit={onFormSubmit} ref={formRef}>
       <header className="onboarding-flow-header">
         <button className="onboarding-flow-back" type="button" onClick={onCancel}>
-          <IconArrowLeft size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          <IconArrowLeft aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           {backLabel}
         </button>
         <h1 className="onboarding-flow-title">{title}</h1>
@@ -155,9 +190,9 @@ export const OnboardingFlow = ({
 
       <div className="onboarding-flow-body">
         <div className="onboarding-flow-main">
-          {formError ? (
+          {stepError !== null || formError !== null ? (
             <p className="auth-error" role="alert">
-              {formError}
+              {stepError ?? formError}
             </p>
           ) : null}
           {children}
@@ -180,7 +215,7 @@ export const OnboardingFlow = ({
                 >
                   <span className="step-rail-index">
                     {index < stepIndex ? (
-                      <IconCheck size={theme.icon.size.sm} stroke={theme.icon.stroke.md} />
+                      <IconCheck aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.md} />
                     ) : (
                       index + 1
                     )}
@@ -197,7 +232,7 @@ export const OnboardingFlow = ({
           <details className="onboarding-help">
             <summary className="onboarding-help-summary">
               Help and support
-              <IconChevronDown size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconChevronDown aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             </summary>
             <div className="onboarding-help-body">{helpContent}</div>
           </details>
@@ -211,7 +246,7 @@ export const OnboardingFlow = ({
         <div className="page-actions">
           {stepIndex > 0 ? (
             <button className="button button-secondary" type="button" onClick={onBack}>
-              <IconArrowLeft size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconArrowLeft aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Back
             </button>
           ) : (
@@ -219,7 +254,7 @@ export const OnboardingFlow = ({
               Cancel
             </button>
           )}
-          <button className="button button-primary" disabled={!stepValid || submitting} type="submit">
+          <button className="button button-primary" disabled={submitting} type="submit">
             {isLastStep ? (
               submitting ? (
                 'Saving...'
@@ -229,7 +264,7 @@ export const OnboardingFlow = ({
             ) : (
               <>
                 Continue
-                <IconArrowRight size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconArrowRight aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               </>
             )}
           </button>

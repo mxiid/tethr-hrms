@@ -290,7 +290,7 @@ export const ShortlistsPage = () => {
   );
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="hiring-content" aria-labelledby="shortlists-title">
         <header className="page-header">
           <div>
@@ -306,6 +306,7 @@ export const ShortlistsPage = () => {
               aria-label="Posting"
               className="record-field-control"
               disabled={postingsLoading || postingOptions.length === 0}
+              name="posting"
               value={selectedPostingId}
               onChange={(event) => setSelectedPostingId(event.target.value)}
             >
@@ -323,7 +324,7 @@ export const ShortlistsPage = () => {
                 onClick={() => void refetch()}
                 type="button"
               >
-                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               </button>
             </Tooltip>
             <button
@@ -332,7 +333,7 @@ export const ShortlistsPage = () => {
               onClick={openBuilder}
               type="button"
             >
-              <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               New round
             </button>
           </div>
@@ -368,7 +369,7 @@ export const ShortlistsPage = () => {
                   description="Build the first round from the applications received."
                   action={
                     <button className="button button-primary" onClick={openBuilder} type="button">
-                      <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                       New round
                     </button>
                   }
@@ -417,9 +418,11 @@ export const ShortlistsPage = () => {
                   <label className="record-item" key={application.id}>
                     <input
                       checked={rank > 0}
+                      name={`shortlist-candidate-${application.id}`}
                       onChange={() => toggleApplication(application.id)}
                       type="checkbox"
                     />
+                    <span className="sr-only">Select {application.candidateName}</span>
                     <div>
                       <div className="employee-primary">
                         {application.candidateName}
@@ -510,6 +513,6 @@ export const ShortlistsPage = () => {
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

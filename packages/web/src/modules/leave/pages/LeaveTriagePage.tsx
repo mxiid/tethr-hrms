@@ -247,7 +247,7 @@ export const LeaveTriagePage = () => {
   };
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="leave-content" aria-labelledby="leave-title">
         <header className="page-header">
           <div>
@@ -339,7 +339,7 @@ export const LeaveTriagePage = () => {
                 </div>
                 <h2 className="panel-title">{fullName(selectedEmployee)}</h2>
               </div>
-              <IconPlaneDeparture size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              <IconPlaneDeparture aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
 
             <div className="field-list">
@@ -391,13 +391,14 @@ export const LeaveTriagePage = () => {
                   <label htmlFor="leave-decision-note">Decision note</label>
                   <textarea
                     id="leave-decision-note"
+                    name="leave-decision-note"
                     value={note}
                     onChange={(event) => setNote(event.target.value)}
                   />
                 </div>
                 <div className="page-actions">
                   <button className="button button-primary" disabled={approving} type="submit">
-                    <IconCheck size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <IconCheck aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     {approving ? 'Approving...' : 'Approve'}
                   </button>
                   <button
@@ -406,7 +407,7 @@ export const LeaveTriagePage = () => {
                     type="button"
                     onClick={onReject}
                   >
-                    <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     {rejecting ? 'Rejecting...' : 'Reject'}
                   </button>
                 </div>
@@ -415,6 +416,6 @@ export const LeaveTriagePage = () => {
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

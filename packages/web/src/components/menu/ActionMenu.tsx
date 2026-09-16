@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useTheme } from '../../providers/theme/useTheme';
 
+import { handleMenuArrowKeys } from './menuKeyboard';
+
 type ActionMenuItem = {
   readonly key: string;
   readonly label: string;
@@ -36,6 +38,10 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
 
   useEffect(() => {
     if (!open) return undefined;
+    // Move focus into the menu so arrow keys work without a Tab first.
+    const frame = window.requestAnimationFrame(() => {
+      containerRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    });
     const onPointerDown = (event: MouseEvent): void => {
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -45,6 +51,7 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     return () => {
+      window.cancelAnimationFrame(frame);
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
@@ -61,7 +68,7 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
       >
         {Icon ? <Icon size={theme.icon.size.md} stroke={theme.icon.stroke.md} /> : null}
         {label}
-        <IconChevronDown
+        <IconChevronDown aria-hidden="true"
           className={`action-menu-caret${open ? ' is-open' : ''}`}
           size={theme.icon.size.md}
           stroke={theme.icon.stroke.md}
@@ -69,7 +76,11 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
       </button>
 
       {open ? (
-        <div className="action-menu-panel" role="menu">
+        <div
+          className="action-menu-panel"
+          onKeyDown={(event) => void handleMenuArrowKeys(event)}
+          role="menu"
+        >
           {sections.map((section) => (
             <div className="action-menu-section" key={section.key}>
               {section.label ? (
@@ -77,7 +88,7 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
               ) : null}
               {section.items.map((item) => {
                 const ItemIcon = item.icon;
-                return (
+  return (
                   <button
                     className="action-menu-item"
                     key={item.key}
@@ -89,7 +100,7 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
                     }}
                   >
                     {ItemIcon ? (
-                      <ItemIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <ItemIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     ) : null}
                     <span className="action-menu-item-copy">
                       <span className="action-menu-item-label">{item.label}</span>

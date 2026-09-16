@@ -47,14 +47,15 @@ export const BarTrendChart = ({ points, formatValue = defaultFormat }: BarTrendC
             const isLast = index === points.length - 1;
             const isHovered = hoveredIndex === index;
             return (
-              <div
+              <button
+                aria-label={`${point.label}: ${formatValue(point.value)}`}
                 className="dashboard-bar-trend-column"
                 key={point.label}
                 onBlur={() => setHoveredIndex(null)}
                 onFocus={() => setHoveredIndex(index)}
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseLeave={() => setHoveredIndex(null)}
-                tabIndex={0}
+                type="button"
               >
                 {isHovered ? <ChartTooltip label={point.label} value={formatValue(point.value)} /> : null}
                 <div
@@ -65,7 +66,7 @@ export const BarTrendChart = ({ points, formatValue = defaultFormat }: BarTrendC
                     <span className="dashboard-bar-trend-value">{formatValue(point.value)}</span>
                   ) : null}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

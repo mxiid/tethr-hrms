@@ -115,6 +115,7 @@ export const TaxSlabsPanel = () => {
             <label htmlFor="tax-group-name">New group name</label>
             <input
               id="tax-group-name"
+              name="tax-group-name"
               placeholder="e.g. Finance Act 2026"
               value={taxGroupName}
               onChange={(event) => setTaxGroupName(event.target.value)}
@@ -124,6 +125,7 @@ export const TaxSlabsPanel = () => {
             <label htmlFor="tax-group-year">Financial year label</label>
             <input
               id="tax-group-year"
+              name="tax-group-year"
               value={taxGroupYear}
               onChange={(event) => setTaxGroupYear(event.target.value)}
             />

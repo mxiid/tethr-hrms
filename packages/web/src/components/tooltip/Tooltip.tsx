@@ -125,6 +125,7 @@ export const Tooltip = ({ label, children, side = 'bottom' }: TooltipProps) => {
   };
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- hover/focus wrapper for the trigger; the label is supplemental and the trigger keeps its own accessible name.
     <span
       className="tooltip-anchor"
       onBlur={hide}

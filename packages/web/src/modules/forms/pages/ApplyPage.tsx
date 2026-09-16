@@ -184,6 +184,7 @@ export const ApplyPage = () => {
               {field.type === 'textarea' ? (
                 <textarea
                   id={`apply-${field.fieldKey}`}
+                  name={`apply-${field.fieldKey}`}
                   value={answers[field.fieldKey] ?? ''}
                   onChange={(event) =>
                     setAnswers((current) => ({ ...current, [field.fieldKey]: event.target.value }))
@@ -192,6 +193,7 @@ export const ApplyPage = () => {
               ) : field.type === 'select' ? (
                 <select
                   id={`apply-${field.fieldKey}`}
+                  name={`apply-${field.fieldKey}`}
                   value={answers[field.fieldKey] ?? ''}
                   onChange={(event) =>
                     setAnswers((current) => ({ ...current, [field.fieldKey]: event.target.value }))
@@ -209,29 +211,33 @@ export const ApplyPage = () => {
                   <input
                     accept=".pdf,.doc,.docx,.txt,.rtf"
                     id={`apply-${field.fieldKey}`}
+                    name={`apply-${field.fieldKey}`}
                     type="file"
                     onChange={(event) => void onFileSelected(field, event.target.files?.[0] ?? null)}
                   />
                   {uploadingField === field.fieldKey ? (
                     <span className="employee-secondary">
-                      <IconLoader2 size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />{' '}
+                      <IconLoader2 aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />{' '}
                       Uploading…
                     </span>
                   ) : files[field.fieldKey] ? (
                     <span className="employee-secondary">
-                      <IconFileText size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />{' '}
+                      <IconFileText aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />{' '}
                       {files[field.fieldKey].fileName}
                     </span>
                   ) : (
                     <span className="employee-secondary">
-                      <IconUpload size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} /> PDF or
+                      <IconUpload aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} /> PDF or
                       Word, up to 10 MB
                     </span>
                   )}
                 </div>
               ) : (
                 <input
+                  autoComplete={field.type === 'email' ? 'email' : undefined}
                   id={`apply-${field.fieldKey}`}
+                  name={`apply-${field.fieldKey}`}
+                  spellCheck={field.type === 'email' ? false : undefined}
                   type={
                     field.type === 'number'
                       ? 'number'

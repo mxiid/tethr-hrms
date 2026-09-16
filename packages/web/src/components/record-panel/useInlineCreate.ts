@@ -1,9 +1,15 @@
 import { useCallback, useState } from 'react';
 
+import { focusFirstByName } from '../form/validation';
+
 type UseInlineCreateOptions<TDraft extends object, TRecord> = {
   readonly createEmptyDraft: () => TDraft;
-  /** The Create action stays disabled until this says the draft is valid. */
+  /** A commit is attempted only when this says the draft is valid. */
   readonly isComplete: (draft: TDraft) => boolean;
+  /** Form control names focused, in order, when a commit finds the draft incomplete. */
+  readonly requiredFieldNames: readonly string[];
+  /** Shown on an incomplete commit; the Create action never disables for it. */
+  readonly incompleteMessage: string;
   /** Fires the real create mutation once, then returns the created record. */
   readonly createRecord: (draft: TDraft) => Promise<TRecord | null>;
   readonly onCreated?: (record: TRecord) => void | Promise<void>;
@@ -33,6 +39,8 @@ export type InlineCreate<TDraft, TRecord> = {
 export const useInlineCreate = <TDraft extends object, TRecord>({
   createEmptyDraft,
   isComplete,
+  requiredFieldNames,
+  incompleteMessage,
   createRecord,
   onCreated,
 }: UseInlineCreateOptions<TDraft, TRecord>): InlineCreate<TDraft, TRecord> => {
@@ -62,7 +70,12 @@ export const useInlineCreate = <TDraft extends object, TRecord>({
   const clearCreated = useCallback((): void => setCreatedRecord(null), []);
 
   const commit = useCallback(async (): Promise<TRecord | null> => {
-    if (draft === null || !isComplete(draft)) return null;
+    if (draft === null) return null;
+    if (!isComplete(draft)) {
+      setError(incompleteMessage);
+      focusFirstByName(document.querySelector<HTMLElement>('.side-panel'), requiredFieldNames);
+      return null;
+    }
     setIsSaving(true);
     setError(null);
     try {
@@ -79,7 +92,7 @@ export const useInlineCreate = <TDraft extends object, TRecord>({
     } finally {
       setIsSaving(false);
     }
-  }, [createRecord, draft, isComplete, onCreated]);
+  }, [createRecord, draft, incompleteMessage, isComplete, onCreated, requiredFieldNames]);
 
   return {
     draft,

@@ -31,7 +31,7 @@ export const DetailSection = ({
         onClick={() => setOpen((current) => !current)}
       >
         <span className="detail-section-toggle-label">
-          <IconChevronDown
+          <IconChevronDown aria-hidden="true"
             className={`detail-section-chevron${open ? ' is-open' : ''}`}
             size={theme.icon.size.sm}
             stroke={theme.icon.stroke.sm}

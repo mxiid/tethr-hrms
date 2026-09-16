@@ -91,19 +91,19 @@ export const BankDetailsCard = () => {
           </p>
           <div className="field">
             <label htmlFor="bank-name">Bank</label>
-            <input id="bank-name" value={form.bankName} onChange={(e) => setField('bankName', e.target.value)} />
+            <input id="bank-name" name="bank-name" autoComplete="organization" value={form.bankName} onChange={(e) => setField('bankName', e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="bank-title">Account title</label>
-            <input id="bank-title" value={form.bankAccountTitle} onChange={(e) => setField('bankAccountTitle', e.target.value)} />
+            <input id="bank-title" name="bank-title" autoComplete="name" value={form.bankAccountTitle} onChange={(e) => setField('bankAccountTitle', e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="bank-account">Account number</label>
-            <input id="bank-account" value={form.bankAccountNumber} onChange={(e) => setField('bankAccountNumber', e.target.value)} />
+            <input id="bank-account" name="bank-account" autoComplete="off" spellCheck={false} value={form.bankAccountNumber} onChange={(e) => setField('bankAccountNumber', e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="bank-iban">IBAN</label>
-            <input id="bank-iban" value={form.bankIban} onChange={(e) => setField('bankIban', e.target.value)} />
+            <input id="bank-iban" name="bank-iban" autoComplete="off" spellCheck={false} value={form.bankIban} onChange={(e) => setField('bankIban', e.target.value)} />
           </div>
           <button className="button button-secondary button-full" disabled={loading} type="submit">
             {loading ? 'Submitting…' : 'Request change'}

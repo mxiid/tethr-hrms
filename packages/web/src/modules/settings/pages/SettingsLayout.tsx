@@ -54,7 +54,7 @@ export const SettingsLayout = () => {
               onClick={close}
               type="button"
             >
-              <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             </button>
           </Tooltip>
         </div>
@@ -78,7 +78,7 @@ export const SettingsLayout = () => {
 
         <div className="settings-sidebar-footer">
           <button className="settings-nav-item" onClick={toggle} type="button">
-            <ThemeIcon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <ThemeIcon aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             <span>Theme · {theme.name === 'light' ? 'Light' : 'Dark'}</span>
           </button>
           <button
@@ -86,7 +86,7 @@ export const SettingsLayout = () => {
             onClick={() => void onLogout()}
             type="button"
           >
-            <IconLogout size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconLogout aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             <span>Log out</span>
           </button>
         </div>

@@ -20,6 +20,8 @@ import { createPortal } from 'react-dom';
 
 import { useTheme } from '../../providers/theme/useTheme';
 import { FilterBar, type FilterDefinition } from '../filter-bar/FilterBar';
+import { focusFirstByName } from '../form/validation';
+import { handleMenuArrowKeys } from '../menu/menuKeyboard';
 import type { ViewColumnDescriptor } from '../table/DataTable';
 import { Tooltip } from '../tooltip/Tooltip';
 
@@ -62,6 +64,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
   const [optionsStep, setOptionsStep] = useState<'root' | 'fields'>('root');
   const [naming, setNaming] = useState<NamingState>(null);
   const [draftName, setDraftName] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<{
     top: number;
     left: number;
@@ -78,6 +81,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
   const closePanel = (): void => {
     setPanel(null);
     setNaming(null);
+    setNameError(null);
     setOptionsStep('root');
     setAnchor(null);
   };
@@ -138,6 +142,16 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
     };
   }, [panel]);
 
+  // Move focus into the menu so arrow keys work without a Tab first; the naming
+  // form keeps its own autoFocus when it is the reason the panel is open.
+  useEffect(() => {
+    if (panel === null || naming !== null) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [panel, naming]);
+
   useEffect(() => {
     if (!copied) return undefined;
     const timer = window.setTimeout(() => setCopied(false), 1600);
@@ -146,12 +160,14 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
 
   const startCreate = (): void => {
     setDraftName('');
+    setNameError(null);
     setNaming({ mode: 'create' });
     openPanelAt('view', viewTriggerRef.current, 'left');
   };
 
   const startRename = (id: string, name: string): void => {
     setDraftName(name);
+    setNameError(null);
     setNaming({ mode: 'rename', id });
     openPanelAt('view', viewTriggerRef.current, 'left');
   };
@@ -166,8 +182,14 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
 
   const onSubmitName = (event: FormEvent): void => {
     event.preventDefault();
+    if (naming === null) return;
     const name = draftName.trim();
-    if (!name || naming === null) return;
+    if (!name) {
+      setNameError('Enter a view name to save.');
+      focusFirstByName(panelRef.current, ['view-name']);
+      return;
+    }
+    setNameError(null);
     if (naming.mode === 'create') {
       view.createPreset(name);
     } else {
@@ -205,10 +227,10 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
             ref={viewTriggerRef}
             type="button"
           >
-            <IconListDetails size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconListDetails aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             <span className="view-chip-name">{activeViewName}</span>
             <span className="view-chip-count">{count}</span>
-            <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconChevronDown aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           </button>
         </div>
 
@@ -231,7 +253,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
             ref={sortTriggerRef}
             type="button"
           >
-            <IconArrowsSort size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconArrowsSort aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             Sort{view.sorts.length > 0 ? ` · ${view.sorts.length}` : ''}
           </button>
         </div>
@@ -245,7 +267,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
             ref={optionsTriggerRef}
             type="button"
           >
-            <IconAdjustments size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconAdjustments aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             Options
           </button>
         </div>
@@ -257,6 +279,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
         ? createPortal(
             <div
               className="view-menu-panel view-menu-panel-floating"
+              onKeyDown={(event) => void handleMenuArrowKeys(event)}
               ref={panelRef}
               role="menu"
               style={{
@@ -277,7 +300,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                     type="button"
                   >
                     {view.activePreset === null ? (
-                      <IconCheck size={16} stroke={2} />
+                      <IconCheck aria-hidden="true" size={16} stroke={2} />
                     ) : (
                       <span className="view-menu-spacer" />
                     )}
@@ -298,7 +321,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                           type="button"
                         >
                           {isActive ? (
-                            <IconCheck size={16} stroke={2} />
+                            <IconCheck aria-hidden="true" size={16} stroke={2} />
                           ) : (
                             <span className="view-menu-spacer" />
                           )}
@@ -313,7 +336,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                                 onClick={() => startRename(preset.id, preset.name)}
                                 type="button"
                               >
-                                <IconPencil size={14} stroke={2} />
+                                <IconPencil aria-hidden="true" size={14} stroke={2} />
                               </button>
                             </Tooltip>
                             <Tooltip label={`Delete ${preset.name}`}>
@@ -326,7 +349,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                                 }}
                                 type="button"
                               >
-                                <IconTrash size={14} stroke={2} />
+                                <IconTrash aria-hidden="true" size={14} stroke={2} />
                               </button>
                             </Tooltip>
                           </span>
@@ -336,22 +359,29 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                   })}
                   <div className="view-menu-divider" />
                   {naming !== null ? (
-                    <form className="view-menu-form" onSubmit={onSubmitName}>
-                      <input
-                        aria-label={naming.mode === 'create' ? 'New view name' : 'View name'}
-                        autoFocus
-                        onChange={(event) => setDraftName(event.target.value)}
-                        placeholder="View name"
-                        value={draftName}
-                      />
-                      <button
-                        className="button button-primary"
-                        disabled={!draftName.trim()}
-                        type="submit"
-                      >
-                        {naming.mode === 'create' ? 'Create' : 'Save'}
-                      </button>
-                    </form>
+                    <>
+                      <form className="view-menu-form" onSubmit={onSubmitName}>
+                        <input
+                          aria-label={naming.mode === 'create' ? 'New view name' : 'View name'}
+                          autoFocus
+                          name="view-name"
+                          onChange={(event) => {
+                            setDraftName(event.target.value);
+                            setNameError(null);
+                          }}
+                          placeholder="View name"
+                          value={draftName}
+                        />
+                        <button className="button button-primary" type="submit">
+                          {naming.mode === 'create' ? 'Create' : 'Save'}
+                        </button>
+                      </form>
+                      {nameError ? (
+                        <p className="auth-error" role="alert">
+                          {nameError}
+                        </p>
+                      ) : null}
+                    </>
                   ) : (
                     <button
                       className="view-menu-item"
@@ -359,7 +389,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                       role="menuitem"
                       type="button"
                     >
-                      <IconPlus size={16} stroke={2} />
+                      <IconPlus aria-hidden="true" size={16} stroke={2} />
                       <span>Create custom view</span>
                     </button>
                   )}
@@ -389,7 +419,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                           {view.sorts.length > 1 && sort ? (
                             <span className="view-sort-index">{index + 1}</span>
                           ) : (
-                            <SortIcon size={16} stroke={2} />
+                            <SortIcon aria-hidden="true" size={16} stroke={2} />
                           )}
                           <span className="truncate">{column.header}</span>
                           {sort ? <span className="view-menu-meta">{sort.direction}</span> : null}
@@ -403,7 +433,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                                 onClick={() => view.setSort(column.key, null)}
                                 type="button"
                               >
-                                <IconX size={14} stroke={2} />
+                                <IconX aria-hidden="true" size={14} stroke={2} />
                               </button>
                             </Tooltip>
                           </span>
@@ -432,10 +462,10 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                       role="menuitem"
                       type="button"
                     >
-                      <IconColumns size={16} stroke={2} />
+                      <IconColumns aria-hidden="true" size={16} stroke={2} />
                       <span>Fields</span>
                       <span className="view-menu-meta">{visibleColumnCount} shown</span>
-                      <IconChevronRight size={14} stroke={2} />
+                      <IconChevronRight aria-hidden="true" size={14} stroke={2} />
                     </button>
                     <button
                       className="view-menu-item"
@@ -443,7 +473,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                       role="menuitem"
                       type="button"
                     >
-                      <IconLink size={16} stroke={2} />
+                      <IconLink aria-hidden="true" size={16} stroke={2} />
                       <span>{copied ? 'Link copied' : 'Copy link to view'}</span>
                     </button>
                     <button
@@ -452,7 +482,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                       role="menuitem"
                       type="button"
                     >
-                      <IconPlus size={16} stroke={2} />
+                      <IconPlus aria-hidden="true" size={16} stroke={2} />
                       <span>Create custom view</span>
                     </button>
                   </>
@@ -464,7 +494,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                         onClick={() => setOptionsStep('root')}
                         type="button"
                       >
-                        <IconArrowLeft size={16} stroke={2} />
+                        <IconArrowLeft aria-hidden="true" size={16} stroke={2} />
                         <span>Fields</span>
                       </button>
                       <span className="view-menu-meta">{visibleColumnCount} shown</span>
@@ -481,6 +511,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                             <input
                               checked={visible}
                               disabled={!column.hideable}
+                              name={`column-${column.key}`}
                               onChange={(event) => {
                                 if (event.target.checked) view.showColumn(column.key);
                                 else view.hideColumn(column.key);

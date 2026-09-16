@@ -125,8 +125,10 @@ export const LoginPage = () => {
           <label htmlFor="login-email">Work email</label>
           <input
             id="login-email"
+            name="email"
             type="email"
             autoComplete="email"
+            spellCheck={false}
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             required
@@ -136,6 +138,7 @@ export const LoginPage = () => {
           <label htmlFor="login-password">Password</label>
           <input
             id="login-password"
+            name="password"
             type="password"
             autoComplete="current-password"
             value={password}
