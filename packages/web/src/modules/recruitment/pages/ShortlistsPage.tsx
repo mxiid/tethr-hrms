@@ -417,12 +417,12 @@ export const ShortlistsPage = () => {
                 return (
                   <label className="record-item" key={application.id}>
                     <input
+                      aria-label={`Select ${application.candidateName}`}
                       checked={rank > 0}
                       name={`shortlist-candidate-${application.id}`}
                       onChange={() => toggleApplication(application.id)}
                       type="checkbox"
                     />
-                    <span className="sr-only">Select {application.candidateName}</span>
                     <div>
                       <div className="employee-primary">
                         {application.candidateName}

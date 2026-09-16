@@ -203,6 +203,7 @@ export const WorkspaceOnboardingForm = ({
                   name="client-currency"
                   autoComplete="off"
                   spellCheck={false}
+                  minLength={3}
                   maxLength={3}
                   required
                   value={form.defaultCurrency}

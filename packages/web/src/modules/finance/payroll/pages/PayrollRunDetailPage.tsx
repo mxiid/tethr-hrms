@@ -191,7 +191,7 @@ export const PayrollRunDetailPage = () => {
   const submitFinalize = async (overrideReason?: string): Promise<void> => {
     const ok = await runAction(
       () => finalizeRun({ variables: { runId, overrideReason } }),
-      'Run finalized — payslips are locked and the billing handoff event was emitted.',
+      'Run finalized â€” payslips are locked and the billing handoff event was emitted.',
     );
     if (!ok) return;
     setFinalizeOpen(false);
@@ -237,7 +237,7 @@ export const PayrollRunDetailPage = () => {
             },
           },
         }),
-      value === '' ? 'Tax override cleared — engine value restored.' : 'Tax override saved.',
+      value === '' ? 'Tax override cleared â€” engine value restored.' : 'Tax override saved.',
     );
   };
 
@@ -288,7 +288,7 @@ export const PayrollRunDetailPage = () => {
             </h1>
             <p className="page-subtitle">
               {run
-                ? `${lines.length} line${lines.length === 1 ? '' : 's'} · ${run.standardWorkingDays} working days · ${formatMoney(totalNet, run.currency)} net`
+                ? `${lines.length} line${lines.length === 1 ? '' : 's'} Â· ${run.standardWorkingDays} working days Â· ${formatMoney(totalNet, run.currency)} net`
                 : ''}
             </p>
           </div>
@@ -307,7 +307,7 @@ export const PayrollRunDetailPage = () => {
                   }}
                 >
                   <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  {regenerating ? 'Recomputing…' : 'Regenerate'}
+                  {regenerating ? 'Recomputingâ€¦' : 'Regenerate'}
                 </button>
                 <button
                   className="button button-primary"
@@ -319,11 +319,11 @@ export const PayrollRunDetailPage = () => {
                     }
                     requestFinalize();
                   }}
-                  title={readinessData === undefined ? 'Checking readiness…' : undefined}
+                  title={readinessData === undefined ? 'Checking readinessâ€¦' : undefined}
                   type="button"
                 >
                   <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  {finalizing ? 'Finalizing…' : 'Finalize run'}
+                  {finalizing ? 'Finalizingâ€¦' : 'Finalize run'}
                 </button>
               </>
             ) : null}
@@ -343,13 +343,13 @@ export const PayrollRunDetailPage = () => {
                   setPayModalOpen(true);
                 }}
               >
-                {markingPaid ? 'Saving…' : 'Mark as paid'}
+                {markingPaid ? 'Savingâ€¦' : 'Mark as paid'}
               </button>
             ) : null}
             {isFinalized && run?.paidAt ? (
               <StatusChip
                 color="green"
-                label={`Paid${run.paymentReference ? ` · ${run.paymentReference}` : ''}`}
+                label={`Paid${run.paymentReference ? ` Â· ${run.paymentReference}` : ''}`}
               />
             ) : null}
             <Link className="button button-secondary" to="/payroll">
@@ -367,7 +367,7 @@ export const PayrollRunDetailPage = () => {
 
         {run?.isStale && !isFinalized ? (
           <p className="field-hint-warning" role="status">
-            Salary changed since this draft{run.staleReason ? `: ${run.staleReason}` : ''} —
+            Salary changed since this draft{run.staleReason ? `: ${run.staleReason}` : ''} â€”
             regenerate before finalizing.
           </p>
         ) : null}
@@ -381,7 +381,7 @@ export const PayrollRunDetailPage = () => {
               {isFinalized ? 'Locked lines (as disbursed)' : 'Draft lines'}
             </div>
             <div className="table-density">
-              {loading ? '…' : `${lines.length} employee${lines.length === 1 ? '' : 's'}`}
+              {loading ? 'â€¦' : `${lines.length} employee${lines.length === 1 ? '' : 's'}`}
             </div>
           </div>
           <div className="data-table-wrap">
@@ -436,7 +436,7 @@ export const PayrollRunDetailPage = () => {
                           <div className="employee-secondary">
                             {[line.roleTitle, line.hireDate ? `joined ${line.hireDate}` : null, line.employmentStatus]
                               .filter(Boolean)
-                              .join(' · ')}
+                              .join(' Â· ')}
                           </div>
                           <div className="employee-secondary">
                             <Link className="table-link" to={`/employees/${line.employeeId}`}>
@@ -447,8 +447,8 @@ export const PayrollRunDetailPage = () => {
                         </td>
                         <td className="cell-numeric" data-label="Paid days">{line.payableDays}</td>
                         <td className="cell-numeric" data-label="LOP">{line.lopDays}</td>
-                        <td className="cell-numeric" data-label="Gross">{run ? formatMoney(line.grossAmount, run.currency) : '—'}</td>
-                        <td className="cell-numeric" data-label="Taxable">{run ? formatMoney(line.taxableAmount, run.currency) : '—'}</td>
+                        <td className="cell-numeric" data-label="Gross">{run ? formatMoney(line.grossAmount, run.currency) : 'â€”'}</td>
+                        <td className="cell-numeric" data-label="Taxable">{run ? formatMoney(line.taxableAmount, run.currency) : 'â€”'}</td>
                         <td className="cell-numeric" data-label="Tax">
                           {formatMoney(line.incomeTax, run?.currency ?? 'PKR')}
                           {line.taxOverrideAmount !== null ? (
@@ -495,15 +495,15 @@ export const PayrollRunDetailPage = () => {
                                       {component.dependsOnPaymentDays &&
                                       component.defaultAmount !== component.amount ? (
                                         <span className="employee-secondary">
-                                          {formatMoney(component.defaultAmount, run?.currency ?? 'PKR')} ×{' '}
+                                          {formatMoney(component.defaultAmount, run?.currency ?? 'PKR')} Ã—{' '}
                                           {line.payableDays}/{line.standardWorkingDays} ={' '}
                                         </span>
                                       ) : null}
                                       <strong>
                                         {formatMoney(component.amount, run?.currency ?? 'PKR')}
                                       </strong>
-                                      {component.taxable ? '' : ' · non-taxable'}
-                                      {component.sourceType ? ` · from ${component.sourceType}` : ''}
+                                      {component.taxable ? '' : ' Â· non-taxable'}
+                                      {component.sourceType ? ` Â· from ${component.sourceType}` : ''}
                                     </span>
                                   </div>
                                 ))
@@ -671,7 +671,7 @@ export const PayrollRunDetailPage = () => {
               </li>
               <li className="field-row">
                 <span>Status</span>
-                <span className="field-value">Draft — editable until you finalize</span>
+                <span className="field-value">Draft â€” editable until you finalize</span>
               </li>
             </ul>
             <p className="field-hint">
@@ -728,7 +728,7 @@ export const PayrollRunDetailPage = () => {
             disabled={markingPaid}
             type="submit"
           >
-            {markingPaid ? 'Saving…' : 'Mark as paid'}
+            {markingPaid ? 'Savingâ€¦' : 'Mark as paid'}
           </button>
         </form>
       </Modal>
@@ -743,8 +743,8 @@ export const PayrollRunDetailPage = () => {
           {readinessData?.payrollReadiness
             ? `${readinessData.payrollReadiness.hardBlockerCount} employee${
                 readinessData.payrollReadiness.hardBlockerCount === 1 ? '' : 's'
-              } still have hard blockers. Finalizing anyway needs a written reason — it is recorded on the run.`
-            : 'Finalizing anyway needs a written reason — it is recorded on the run.'}
+              } still have hard blockers. Finalizing anyway needs a written reason â€” it is recorded on the run.`
+            : 'Finalizing anyway needs a written reason â€” it is recorded on the run.'}
         </p>
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
         <form
@@ -778,7 +778,7 @@ export const PayrollRunDetailPage = () => {
           </div>
           <button className="button button-primary button-full" disabled={finalizing} type="submit">
             <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {finalizing ? 'Finalizing…' : 'Finalize anyway'}
+            {finalizing ? 'Finalizingâ€¦' : 'Finalize anyway'}
           </button>
         </form>
       </Modal>

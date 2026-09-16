@@ -183,7 +183,7 @@ const INVOICE_COLUMNS: readonly ColumnDefinition<InvoiceRow>[] = [
     header: 'Group / Type',
     width: '22%',
     sortValue: (invoice) => `${invoice.groupName ?? ''} ${invoice.type}`,
-    render: (invoice) => `${invoice.groupName ?? '—'} · ${invoice.type}`,
+    render: (invoice) => `${invoice.groupName ?? 'â€”'} Â· ${invoice.type}`,
   },
   {
     key: 'covers',
@@ -219,7 +219,7 @@ const INVOICE_COLUMNS: readonly ColumnDefinition<InvoiceRow>[] = [
     header: 'Due',
     width: '11%',
     sortValue: (invoice) => invoice.dueDate ?? '',
-    render: (invoice) => invoice.dueDate ?? '—',
+    render: (invoice) => invoice.dueDate ?? 'â€”',
   },
   {
     key: 'open',
@@ -287,7 +287,7 @@ const RECONCILIATION_COLUMNS: readonly ColumnDefinition<ReconciliationPeriodReco
     align: 'right',
     sortValue: (row) => row.payrollCostAmount ?? -1,
     render: (row) =>
-      row.payrollCostAmount === null ? '—' : formatMoney(row.payrollCostAmount, row.currency),
+      row.payrollCostAmount === null ? 'â€”' : formatMoney(row.payrollCostAmount, row.currency),
   },
   {
     key: 'variance',
@@ -296,7 +296,7 @@ const RECONCILIATION_COLUMNS: readonly ColumnDefinition<ReconciliationPeriodReco
     align: 'right',
     sortValue: (row) => row.varianceAmount ?? 0,
     render: (row) =>
-      row.varianceAmount === null ? '—' : formatMoney(row.varianceAmount, row.currency),
+      row.varianceAmount === null ? 'â€”' : formatMoney(row.varianceAmount, row.currency),
   },
   {
     key: 'status',
@@ -318,6 +318,7 @@ export const BillingPage = () => {
   const { data, loading, error, refetch } = useQuery<BillingPageData>(BILLING_PAGE_DATA_QUERY);
   const [formError, setFormError] = useState<string | null>(null);
   const [openModal, setOpenModal] = useState<'group' | 'rate' | 'expenses' | null>(null);
+  const [invalidRateFields, setInvalidRateFields] = useState<readonly string[]>([]);
 
   const groupView = useListView({ routeKey: '/billing/groups', paramKeyPrefix: 'groups' });
   const memberView = useListView({ routeKey: '/billing/rates', paramKeyPrefix: 'rates' });
@@ -411,6 +412,7 @@ export const BillingPage = () => {
 
   const openModalWith = (modal: 'group' | 'rate' | 'expenses'): void => {
     setFormError(null);
+    setInvalidRateFields([]);
     setOpenModal(modal);
   };
 
@@ -582,7 +584,12 @@ export const BillingPage = () => {
     const missing: string[] = [];
     if (!memberEmployeeId) missing.push('member-employee');
     if (!memberGroupId) missing.push('member-group');
-    if (memberRate === '') missing.push('member-rate');
+    // The form sets noValidate, so the native min/required checks are off â€”
+    // validate the parsed value here and never send a negative or NaN rate.
+    const parsedRate = Number(memberRate);
+    if (memberRate.trim() === '' || !Number.isFinite(parsedRate) || parsedRate < 0) {
+      missing.push('member-rate');
+    }
     if (missing.length > 0) {
       setFormError(
         missing.length === 1 && missing[0] === 'member-employee'
@@ -590,20 +597,22 @@ export const BillingPage = () => {
           : missing.length === 1 && missing[0] === 'member-group'
             ? 'Select the group this rate belongs to.'
             : missing.length === 1
-              ? 'Enter a monthly rate before saving.'
-              : 'Choose an employee and a group, and enter a monthly rate before saving.',
+              ? 'Enter a monthly rate of zero or more before saving.'
+              : 'Choose an employee and a group, and enter a monthly rate of zero or more before saving.',
       );
+      setInvalidRateFields(missing);
       focusFirstByName(document.querySelector<HTMLElement>('.modal-dialog'), missing);
       return;
     }
     setFormError(null);
+    setInvalidRateFields([]);
     void run(() =>
       setMember({
         variables: {
           input: {
             employeeId: memberEmployeeId,
             groupId: memberGroupId,
-            monthlyRate: Number(memberRate),
+            monthlyRate: parsedRate,
           },
         },
         refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
@@ -786,24 +795,54 @@ export const BillingPage = () => {
         title="Assign rate"
         width="md"
       >
-        {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
+        {formError ? (
+          <p className="auth-error" id="assign-rate-error" role="alert">
+            {formError}
+          </p>
+        ) : null}
         <form className="config-form" noValidate onSubmit={onAssignMember}>
           <div className="field"><label htmlFor="member-employee">Employee</label>
-            <select id="member-employee" name="member-employee" value={memberEmployeeId} onChange={(e) => setMemberEmployeeId(e.target.value)}>
-              <option value="">Select…</option>
+            <select
+              aria-describedby={invalidRateFields.length > 0 ? 'assign-rate-error' : undefined}
+              aria-invalid={invalidRateFields.includes('member-employee') || undefined}
+              id="member-employee"
+              name="member-employee"
+              value={memberEmployeeId}
+              onChange={(e) => setMemberEmployeeId(e.target.value)}
+            >
+              <option value="">Selectâ€¦</option>
               {employees.map((employee) => (
                 <option key={employee.id} value={employee.id}>{`${employee.firstName} ${employee.lastName} (${employee.employeeNumber})`}</option>
               ))}
             </select>
           </div>
           <div className="field"><label htmlFor="member-group">Group</label>
-            <select id="member-group" name="member-group" value={memberGroupId} onChange={(e) => setMemberGroupId(e.target.value)}>
-              <option value="">Select…</option>
+            <select
+              aria-describedby={invalidRateFields.length > 0 ? 'assign-rate-error' : undefined}
+              aria-invalid={invalidRateFields.includes('member-group') || undefined}
+              id="member-group"
+              name="member-group"
+              value={memberGroupId}
+              onChange={(e) => setMemberGroupId(e.target.value)}
+            >
+              <option value="">Selectâ€¦</option>
               {groups.map((group) => (<option key={group.id} value={group.id}>{group.name}</option>))}
             </select>
           </div>
           <div className="field"><label htmlFor="member-rate">Monthly rate (USD)</label>
-            <input id="member-rate" inputMode="decimal" min={0} name="member-rate" required step="0.01" type="number" value={memberRate} onChange={(e) => setMemberRate(e.target.value)} />
+            <input
+              aria-describedby={invalidRateFields.length > 0 ? 'assign-rate-error' : undefined}
+              aria-invalid={invalidRateFields.includes('member-rate') || undefined}
+              id="member-rate"
+              inputMode="decimal"
+              min={0}
+              name="member-rate"
+              required
+              step="0.01"
+              type="number"
+              value={memberRate}
+              onChange={(e) => setMemberRate(e.target.value)}
+            />
           </div>
           <button className="button button-primary button-full" type="submit">Save rate</button>
         </form>
@@ -842,7 +881,7 @@ export const BillingPage = () => {
         >
           <div className="field"><label htmlFor="expense-group">Group</label>
             <select id="expense-group" name="expense-group" value={expenseGroupId} onChange={(e) => setExpenseGroupId(e.target.value)}>
-              <option value="">Select…</option>
+              <option value="">Selectâ€¦</option>
               {groups.map((group) => (<option key={group.id} value={group.id}>{group.name}</option>))}
             </select>
           </div>

@@ -39,6 +39,10 @@ export const DashboardViewTabs = () => {
       return;
     }
     const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
+    // The rename input lives in the same container; let its caret keys through.
+    if (current === -1) {
+      return;
+    }
     const next =
       event.key === 'Home'
         ? 0

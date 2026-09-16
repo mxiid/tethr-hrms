@@ -48,6 +48,13 @@ export const ColumnHeaderMenu = ({
     setOpen(true);
   };
 
+  // Deliberate dismissals (Escape, choosing an item) return focus to the header
+  // trigger; an outside click closes without stealing focus.
+  const closeMenu = (): void => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
   useEffect(() => {
     if (!open) return undefined;
     // Move focus into the menu so arrow keys work without a Tab first.
@@ -60,7 +67,7 @@ export const ColumnHeaderMenu = ({
       setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') closeMenu();
     };
     // The anchor goes stale the moment the table scrolls; closing is cleaner
     // than chasing the cell with fixed positioning.
@@ -121,7 +128,7 @@ export const ColumnHeaderMenu = ({
                     type="button"
                     onClick={() => {
                       onSort('asc');
-                      setOpen(false);
+                      closeMenu();
                     }}
                   >
                     <IconSortAscending aria-hidden="true" size={16} stroke={2} />
@@ -135,7 +142,7 @@ export const ColumnHeaderMenu = ({
                     type="button"
                     onClick={() => {
                       onSort('desc');
-                      setOpen(false);
+                      closeMenu();
                     }}
                   >
                     <IconSortDescending aria-hidden="true" size={16} stroke={2} />
@@ -150,7 +157,7 @@ export const ColumnHeaderMenu = ({
                       type="button"
                       onClick={() => {
                         onSort(null);
-                        setOpen(false);
+                        closeMenu();
                       }}
                     >
                       <IconX aria-hidden="true" size={16} stroke={2} />
@@ -168,7 +175,7 @@ export const ColumnHeaderMenu = ({
                   type="button"
                   onClick={() => {
                     onHide();
-                    setOpen(false);
+                    closeMenu();
                   }}
                 >
                   <IconEyeOff aria-hidden="true" size={16} stroke={2} />

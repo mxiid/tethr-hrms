@@ -1,7 +1,12 @@
 import type { KeyboardEvent } from 'react';
 
-// Arrow-key roving across a menu's `[role="menuitem"]` children. Call from the
-// menu container's `onKeyDown`; returns true when the event was handled.
+/**
+ * Arrow-key roving across a menu's `[role="menuitem"]` children.
+ *
+ * Call from the menu container's `onKeyDown`; typing targets (input, textarea)
+ * keep their own caret keys, and the return value reports whether the event
+ * was handled.
+ */
 export const handleMenuArrowKeys = (event: KeyboardEvent<HTMLElement>): boolean => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
     return false;

@@ -12,14 +12,23 @@ const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
 // Date-only strings ("2026-09-15") are calendar facts, not instants: parse them
 // at local midnight so a UTC-based `new Date()` can never render the day before
-// in positive-offset zones.
+// in positive-offset zones. Impossible dates (2026-02-31) are rejected rather
+// than silently normalized to the next month.
 const toDate = (value: string | Date): Date => {
   if (value instanceof Date) {
     return value;
   }
   if (dateOnlyPattern.test(value)) {
     const [year, month, day] = value.split('-').map(Number);
-    return new Date(year, month - 1, day);
+    const date = new Date(year, month - 1, day);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return new Date(Number.NaN);
+    }
+    return date;
   }
   return new Date(value);
 };

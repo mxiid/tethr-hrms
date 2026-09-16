@@ -504,7 +504,7 @@ export const MyProfilePage = () => {
               <input
                 id="profile-address-1"
                 name="profile-address-1"
-                autoComplete="address-line1"
+                autoComplete="section-current address-line1"
                 value={form.addressLine1}
                 onChange={(event) => setField('addressLine1', event.target.value)}
               />
@@ -514,7 +514,7 @@ export const MyProfilePage = () => {
               <input
                 id="profile-address-2"
                 name="profile-address-2"
-                autoComplete="address-line2"
+                autoComplete="section-current address-line2"
                 value={form.addressLine2}
                 onChange={(event) => setField('addressLine2', event.target.value)}
               />
@@ -525,7 +525,7 @@ export const MyProfilePage = () => {
                 <input
                   id="profile-city"
                   name="profile-city"
-                  autoComplete="address-level2"
+                  autoComplete="section-current address-level2"
                   value={form.city}
                   onChange={(event) => setField('city', event.target.value)}
                 />
@@ -535,7 +535,7 @@ export const MyProfilePage = () => {
                 <input
                   id="profile-region"
                   name="profile-region"
-                  autoComplete="address-level1"
+                  autoComplete="section-current address-level1"
                   value={form.region}
                   onChange={(event) => setField('region', event.target.value)}
                 />
@@ -592,7 +592,7 @@ export const MyProfilePage = () => {
               <input
                 id="profile-perm-address-1"
                 name="profile-perm-address-1"
-                autoComplete="address-line1"
+                autoComplete="section-permanent address-line1"
                 value={form.permanentAddressLine1}
                 onChange={(event) => setField('permanentAddressLine1', event.target.value)}
               />
@@ -602,7 +602,7 @@ export const MyProfilePage = () => {
               <input
                 id="profile-perm-address-2"
                 name="profile-perm-address-2"
-                autoComplete="address-line2"
+                autoComplete="section-permanent address-line2"
                 value={form.permanentAddressLine2}
                 onChange={(event) => setField('permanentAddressLine2', event.target.value)}
               />
@@ -613,7 +613,7 @@ export const MyProfilePage = () => {
                 <input
                   id="profile-perm-city"
                   name="profile-perm-city"
-                  autoComplete="address-level2"
+                  autoComplete="section-permanent address-level2"
                   value={form.permanentCity}
                   onChange={(event) => setField('permanentCity', event.target.value)}
                 />
@@ -623,7 +623,7 @@ export const MyProfilePage = () => {
                 <input
                   id="profile-perm-region"
                   name="profile-perm-region"
-                  autoComplete="address-level1"
+                  autoComplete="section-permanent address-level1"
                   value={form.permanentRegion}
                   onChange={(event) => setField('permanentRegion', event.target.value)}
                 />

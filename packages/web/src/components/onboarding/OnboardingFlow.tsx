@@ -165,12 +165,21 @@ export const OnboardingFlow = ({
         )
         .map((control) => control.name)
         .filter((name) => name !== '');
+      // A step can fail an application-only rule that no native constraint
+      // expresses; without a signal, focus the first enabled control so the
+      // keyboard user still lands inside the form rather than on Continue.
+      const focusNames =
+        names.length > 0
+          ? names
+          : [controls.find((control) => !control.disabled)?.name ?? ''].filter(
+              (name) => name !== '',
+            );
       setStepError(
         isLastStep
           ? 'Fill in the required fields before submitting.'
           : 'Fill in the required fields before continuing.',
       );
-      focusFirstByName(formRef.current, names);
+      focusFirstByName(formRef.current, focusNames);
       return;
     }
     setStepError(null);

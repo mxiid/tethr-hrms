@@ -85,6 +85,7 @@ export const MyExpensesSection = () => {
   const [amount, setAmount] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [invalidLineFields, setInvalidLineFields] = useState<readonly string[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [createClaim, { loading: creating }] = useMutation(CREATE_MY_EXPENSE_CLAIM_MUTATION);
@@ -165,6 +166,7 @@ export const MyExpensesSection = () => {
           ? 'Attach the receipt this category requires.'
           : 'Fill in the category, amount (greater than zero), and description before adding the line.',
       );
+      setInvalidLineFields(missing);
       focusFirstByName(document.querySelector<HTMLElement>('.side-panel'), missing);
       return;
     }
@@ -203,6 +205,7 @@ export const MyExpensesSection = () => {
       setDescription('');
       setAmount('');
       setReceiptFile(null);
+      setInvalidLineFields([]);
       setSuccessMessage('Line added.');
     } catch (cause) {
       setErrorMessage(cause instanceof Error ? cause.message : 'Could not add the line.');
@@ -299,7 +302,11 @@ export const MyExpensesSection = () => {
 
       <SidePanel isOpen={panelOpen} onClose={() => setPanelOpen(false)} title="Expense claim">
         <section className="self-service-section">
-          {errorMessage ? <p className="auth-error" role="alert">{errorMessage}</p> : null}
+          {errorMessage ? (
+            <p className="auth-error" id="claim-line-error" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
           {successMessage ? (
             <p className="form-success" role="status">
               {successMessage}
@@ -364,6 +371,8 @@ export const MyExpensesSection = () => {
                 <div className="field">
                   <label htmlFor="claim-line-category">Category</label>
                   <select
+                    aria-describedby={invalidLineFields.length > 0 ? 'claim-line-error' : undefined}
+                    aria-invalid={invalidLineFields.includes('claim-line-category') || undefined}
                     id="claim-line-category"
                     name="claim-line-category"
                     value={categoryId}
@@ -392,6 +401,8 @@ export const MyExpensesSection = () => {
                   <div className="field">
                     <label htmlFor="claim-line-amount">Amount (PKR)</label>
                     <input
+                      aria-describedby={invalidLineFields.length > 0 ? 'claim-line-error' : undefined}
+                      aria-invalid={invalidLineFields.includes('claim-line-amount') || undefined}
                       id="claim-line-amount"
                       inputMode="decimal"
                       name="claim-line-amount"
@@ -404,6 +415,8 @@ export const MyExpensesSection = () => {
                 <div className="field">
                   <label htmlFor="claim-line-description">Description</label>
                   <input
+                    aria-describedby={invalidLineFields.length > 0 ? 'claim-line-error' : undefined}
+                    aria-invalid={invalidLineFields.includes('claim-line-description') || undefined}
                     id="claim-line-description"
                     name="claim-line-description"
                     placeholder="Taxi to client site"
@@ -416,6 +429,8 @@ export const MyExpensesSection = () => {
                     Receipt {selectedCategory?.requiresReceipt ? '(required)' : '(optional)'}
                   </label>
                   <input
+                    aria-describedby={invalidLineFields.length > 0 ? 'claim-line-error' : undefined}
+                    aria-invalid={invalidLineFields.includes('claim-line-receipt') || undefined}
                     id="claim-line-receipt"
                     name="claim-line-receipt"
                     type="file"

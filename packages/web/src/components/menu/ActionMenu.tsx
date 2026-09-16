@@ -35,6 +35,14 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
   const { theme } = useTheme();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // Every deliberate dismissal returns focus to the trigger; an outside click
+  // closes without stealing focus from wherever the user went.
+  const closeMenu = (): void => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
 
   useEffect(() => {
     if (!open) return undefined;
@@ -46,7 +54,7 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') closeMenu();
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -65,6 +73,7 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
         className="button button-primary action-menu-trigger"
         type="button"
         onClick={() => setOpen((current) => !current)}
+        ref={triggerRef}
       >
         {Icon ? <Icon size={theme.icon.size.md} stroke={theme.icon.stroke.md} /> : null}
         {label}
@@ -95,7 +104,7 @@ export const ActionMenu = ({ label, icon: Icon, sections }: ActionMenuProps) => 
                     role="menuitem"
                     type="button"
                     onClick={() => {
-                      setOpen(false);
+                      closeMenu();
                       item.onSelect();
                     }}
                   >

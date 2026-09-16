@@ -261,17 +261,17 @@ export const InvoiceDetailPage = () => {
       render: (line) =>
         line.employeeId ? (
           <Link className="table-link" to={`/employees/${line.employeeId}`}>
-            {line.employeeName ?? '—'}
+            {line.employeeName ?? 'â€”'}
           </Link>
         ) : (
-          <span className="employee-primary">{line.employeeName ?? '—'}</span>
+          <span className="employee-primary">{line.employeeName ?? 'â€”'}</span>
         ),
     },
     {
       key: 'month',
       header: 'Month',
       width: '12%',
-      render: (line) => line.monthLabel ?? '—',
+      render: (line) => line.monthLabel ?? 'â€”',
     },
     {
       key: 'description',
@@ -369,7 +369,7 @@ export const InvoiceDetailPage = () => {
               <h1 className="page-title">{invoice?.number ?? 'Draft invoice'}</h1>
               <p className="page-subtitle">
                 {invoice
-                  ? `${invoice.groupName ?? ''} · ${invoice.type} · covers ${MONTH_NAMES[invoice.serviceMonth - 1]} ${invoice.serviceYear} (${invoice.periodStart} ? ${invoice.periodEndExclusive})`
+                  ? `${invoice.groupName ?? ''} Â· ${invoice.type} Â· covers ${MONTH_NAMES[invoice.serviceMonth - 1]} ${invoice.serviceYear} (${invoice.periodStart} â†’ ${invoice.periodEndExclusive})`
                   : ''}
               </p>
             </div>
@@ -382,7 +382,7 @@ export const InvoiceDetailPage = () => {
                   void downloadDocument(loadInvoicePdf, 'invoicePdf', '');
                 }}
               >
-                {loadingPdf ? 'Rendering…' : 'Download invoice'}
+                {loadingPdf ? 'Renderingâ€¦' : 'Download invoice'}
               </button>
               <button
                 className="button button-secondary"
@@ -392,7 +392,7 @@ export const InvoiceDetailPage = () => {
                   void downloadDocument(loadAddendumPdf, 'invoiceAddendumPdf', '-addendum');
                 }}
               >
-                {loadingAddendum ? 'Rendering…' : 'Download addendum'}
+                {loadingAddendum ? 'Renderingâ€¦' : 'Download addendum'}
               </button>
               {isDraft ? (
                 <button
@@ -411,7 +411,7 @@ export const InvoiceDetailPage = () => {
                   }}
                 >
                   <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  {issuing ? 'Issuing…' : 'Approve & issue'}
+                  {issuing ? 'Issuingâ€¦' : 'Approve & issue'}
                 </button>
               ) : null}
               {isDraft ? (
@@ -427,14 +427,14 @@ export const InvoiceDetailPage = () => {
                   }
                 >
                   <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                  {voiding ? 'Voiding…' : 'Void draft'}
+                  {voiding ? 'Voidingâ€¦' : 'Void draft'}
                 </button>
               ) : null}
               {invoice?.isStale ? (
                 <StatusChip color="amber" label={invoice.staleReason ?? 'Stale draft'} />
               ) : null}
               {!isDraft && invoice?.status === 'issued' ? (
-                <StatusChip color="blue" label={`Due ${invoice.dueDate ?? '—'}`} />
+                <StatusChip color="blue" label={`Due ${invoice.dueDate ?? 'â€”'}`} />
               ) : null}
               {invoice && invoice.reconciliationStatus !== 'pending' ? (
                 <StatusChip
@@ -449,7 +449,7 @@ export const InvoiceDetailPage = () => {
                     invoice.reconciliationStatus === 'matched'
                       ? 'Reconciled'
                       : invoice.reconciliationStatus === 'variance'
-                        ? `Cost variance${invoice.payrollCostAmount === null ? '' : ` · ${formatMoney(invoice.payrollCostAmount, invoice.currency)} cost`}`
+                        ? `Cost variance${invoice.payrollCostAmount === null ? '' : ` Â· ${formatMoney(invoice.payrollCostAmount, invoice.currency)} cost`}`
                         : 'No FX rate'
                   }
                 />
@@ -471,7 +471,7 @@ export const InvoiceDetailPage = () => {
               <div className="panel-actions">
                 <div className="table-density">
                   {loading
-                    ? '…'
+                    ? 'â€¦'
                     : `${formatMoney(invoice?.totalAmount ?? 0, currency)} total`}
                 </div>
                 {isDraft ? (
@@ -526,10 +526,10 @@ export const InvoiceDetailPage = () => {
           {invoice ? (
             <ul className="field-list">
               <li className="field-row"><span>Status</span><span className="field-value">{invoice.status}</span></li>
-              <li className="field-row"><span>Receiver</span><span className="field-value truncate">{invoice.receiverName ?? '—'}</span></li>
+              <li className="field-row"><span>Receiver</span><span className="field-value truncate">{invoice.receiverName ?? 'â€”'}</span></li>
               <li className="field-row"><span>Sub-total</span><span className="field-value">{formatMoney(invoice.subTotal, invoice.currency)}</span></li>
-              <li className="field-row"><span>Issue date</span><span className="field-value">{invoice.issueDate ?? '—'}</span></li>
-              <li className="field-row"><span>Due date</span><span className="field-value">{invoice.dueDate ?? '—'}</span></li>
+              <li className="field-row"><span>Issue date</span><span className="field-value">{invoice.issueDate ?? 'â€”'}</span></li>
+              <li className="field-row"><span>Due date</span><span className="field-value">{invoice.dueDate ?? 'â€”'}</span></li>
               {invoice.paymentReference ? (
                 <li className="field-row"><span>Payment ref</span><span className="field-value">{invoice.paymentReference}</span></li>
               ) : null}
@@ -613,7 +613,7 @@ export const InvoiceDetailPage = () => {
                 type="button"
               >
                 <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                {create.isSaving ? 'Adding…' : 'Add line'}
+                {create.isSaving ? 'Addingâ€¦' : 'Add line'}
               </button>
               <button className="button button-secondary" onClick={create.discard} type="button">
                 Cancel

@@ -16,6 +16,12 @@ describe('formatDate', () => {
     expect(formatDate('not-a-date')).toBe('—');
   });
 
+  it('rejects impossible calendar dates instead of normalizing them', () => {
+    expect(formatDate('2026-02-31')).toBe('—');
+    expect(formatDate('2026-02-30')).toBe('—');
+    expect(formatDate('2026-13-01')).toBe('—');
+  });
+
   it('honours an explicit locale', () => {
     expect(formatDate('2026-09-15', { locale: 'en-GB' })).toBe('15 Sept 2026');
   });

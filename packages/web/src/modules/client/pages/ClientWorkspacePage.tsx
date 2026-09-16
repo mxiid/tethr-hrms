@@ -280,7 +280,7 @@ export const ClientWorkspacePage = () => {
                           </div>
                           <div className="employee-secondary">{employee.employeeNumber}</div>
                         </td>
-                        <td data-label="Work email">{employee.workEmail ?? '—'}</td>
+                        <td data-label="Work email">{employee.workEmail ?? 'â€”'}</td>
                         <td data-label="Joined">{formatDate(employee.hireDate)}</td>
                         <td data-label="Employment">
                           <StatusChip
@@ -410,7 +410,7 @@ function ClientInvoicesSection() {
     <section className="table-shell" aria-labelledby="client-invoices-title">
       <div className="table-title-row">
         <div className="table-title" id="client-invoices-title">Invoices</div>
-        <div className="table-density">{loading ? '…' : `${rows.length}`}</div>
+        <div className="table-density">{loading ? 'â€¦' : `${rows.length}`}</div>
       </div>
       <div className="data-table-wrap">
         <table className="data-table">
@@ -451,7 +451,7 @@ function ClientInvoicesSection() {
               rows.map((invoice) => (
                 <tr key={invoice.id}>
                   <td data-label="Number"><span className="employee-primary">{invoice.number}</span></td>
-                  <td data-label="Covers">{`${invoice.groupName ?? ''} ${invoice.type} · ${invoiceMonthNames[invoice.serviceMonth - 1]} ${invoice.serviceYear}`}</td>
+                  <td data-label="Covers">{`${invoice.groupName ?? ''} ${invoice.type} Â· ${invoiceMonthNames[invoice.serviceMonth - 1]} ${invoice.serviceYear}`}</td>
                   <td data-label="Issued">{invoice.issueDate}</td>
                   <td data-label="Due">{invoice.dueDate}</td>
                   <td className="cell-numeric" data-label="Total"><strong>{money(invoice.totalAmount, invoice.currency)}</strong></td>
@@ -542,7 +542,7 @@ function ClientSpendSection() {
           Spend by employee
         </div>
         <div className="table-density">
-          {loading ? 'Loading…' : `${money(breakdown.totalBilled, breakdown.currency)} total`}
+          {loading ? 'Loadingâ€¦' : `${money(breakdown.totalBilled, breakdown.currency)} total`}
         </div>
       </div>
       <div className="data-table-wrap">

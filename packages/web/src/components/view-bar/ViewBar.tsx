@@ -77,6 +77,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
   const viewTriggerRef = useRef<HTMLButtonElement | null>(null);
   const sortTriggerRef = useRef<HTMLButtonElement | null>(null);
   const optionsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
 
   const closePanel = (): void => {
     setPanel(null);
@@ -86,12 +87,20 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
     setAnchor(null);
   };
 
+  // Deliberate dismissals return focus to the panel's trigger; outside clicks
+  // and scrolls close without stealing focus.
+  const closePanelAndRestore = (): void => {
+    closePanel();
+    lastTriggerRef.current?.focus();
+  };
+
   const openPanelAt = (
     key: PanelKey,
     element: HTMLElement | null,
     align: 'left' | 'right',
   ): void => {
     if (!element) return;
+    lastTriggerRef.current = element;
     const rect = element.getBoundingClientRect();
     setAnchor({
       top: rect.bottom + 4,
@@ -123,7 +132,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
       closePanel();
     };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') closePanel();
+      if (event.key === 'Escape') closePanelAndRestore();
     };
     const onScroll = (event: Event): void => {
       if (panelRef.current?.contains(event.target as Node)) return;
@@ -143,14 +152,15 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
   }, [panel]);
 
   // Move focus into the menu so arrow keys work without a Tab first; the naming
-  // form keeps its own autoFocus when it is the reason the panel is open.
+  // form keeps its own autoFocus, and the fields step focuses its Back button.
   useEffect(() => {
     if (panel === null || naming !== null) return undefined;
     const frame = window.requestAnimationFrame(() => {
-      panelRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+      const selector = optionsStep === 'fields' ? '.view-menu-item' : '[role="menuitem"]';
+      panelRef.current?.querySelector<HTMLElement>(selector)?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [panel, naming]);
+  }, [panel, naming, optionsStep]);
 
   useEffect(() => {
     if (!copied) return undefined;
@@ -195,7 +205,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
     } else {
       view.renamePreset(naming.id, name);
     }
-    closePanel();
+    closePanelAndRestore();
   };
 
   const onCopyLink = async (): Promise<void> => {
@@ -294,7 +304,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                     className={`view-menu-item${view.activePreset === null ? ' is-active' : ''}`}
                     onClick={() => {
                       view.applyPreset(null);
-                      closePanel();
+                      closePanelAndRestore();
                     }}
                     role="menuitem"
                     type="button"
@@ -315,7 +325,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                           className={`view-menu-item${isActive ? ' is-active' : ''}`}
                           onClick={() => {
                             view.applyPreset(preset.id);
-                            closePanel();
+                            closePanelAndRestore();
                           }}
                           role="menuitem"
                           type="button"
@@ -345,7 +355,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                                 className="icon-button view-menu-icon"
                                 onClick={() => {
                                   view.deletePreset(preset.id);
-                                  closePanel();
+                                  closePanelAndRestore();
                                 }}
                                 type="button"
                               >
