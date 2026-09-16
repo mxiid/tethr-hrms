@@ -73,6 +73,19 @@ const statusLabels: Record<EmploymentStatus, string> = {
   terminated: 'Terminated',
 };
 
+// Smooth scrolling is motion too — reduced-motion users get an instant jump.
+const scrollMatchIntoView = (match: Element | null | undefined): void => {
+  if (!(match instanceof HTMLElement)) {
+    return;
+  }
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  match.scrollIntoView({
+    behavior: reduceMotion ? 'auto' : 'smooth',
+    block: 'center',
+    inline: 'center',
+  });
+};
+
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
 const ZOOM_STEP = 0.1;
@@ -264,10 +277,7 @@ export const EmployeeOrgChart = ({
   useEffect(() => {
     if (!isSearching || matchedIds.size === 0) return undefined;
     const timer = window.setTimeout(() => {
-      const match = scrollRef.current?.querySelector('.org-node.is-match');
-      if (match instanceof HTMLElement) {
-        match.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-      }
+      scrollMatchIntoView(scrollRef.current?.querySelector('.org-node.is-match'));
     }, 250);
     return () => window.clearTimeout(timer);
   }, [isSearching, matchedIds]);
@@ -606,10 +616,7 @@ export const EmployeeOrgChart = ({
             aria-label="Centre on the first match"
             disabled={!isSearching || !hasMatches}
             onClick={() => {
-              const match = scrollRef.current?.querySelector('.org-node.is-match');
-              if (match instanceof HTMLElement) {
-                match.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-              }
+              scrollMatchIntoView(scrollRef.current?.querySelector('.org-node.is-match'));
             }}
             type="button"
           >

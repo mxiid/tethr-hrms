@@ -66,6 +66,25 @@ button {
   border: 0;
 }
 
+/* Touch: kill the 300ms double-tap-zoom delay on controls, and let our own
+   press feedback replace the grey tap flash on things that have one. */
+button,
+[role='button'],
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+button,
+[role='button'],
+.nav-pill,
+.subnav-tab,
+.mobile-nav-item,
+.bottom-nav-item {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .hrms-theme-root {
   color-scheme: light;
 }
@@ -883,8 +902,10 @@ button {
   transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
-.color-swatch:hover:not(:disabled) .color-swatch-dot {
-  transform: scale(1.15);
+@media (hover: hover) and (pointer: fine) {
+  .color-swatch:hover:not(:disabled) .color-swatch-dot {
+    transform: scale(1.15);
+  }
 }
 
 .color-swatch:focus-visible {
@@ -1371,6 +1392,7 @@ button {
 
 .dashboard-widget.is-dragging {
   opacity: 0.6;
+  user-select: none;
 }
 
 .dashboard-widget.is-resizing {
@@ -2275,6 +2297,7 @@ button {
 .org-node.is-dragging {
   opacity: 0.45;
   cursor: grabbing;
+  user-select: none;
 }
 
 .org-node.is-drop-target {
@@ -2301,11 +2324,20 @@ button {
   border: 1px solid var(--hrms-color-border-medium);
   border-radius: var(--hrms-radius-rounded);
   cursor: pointer;
-  opacity: 0;
   transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
-.org-node-wrap:hover .org-node-edit,
+/* Hover-revealed affordances stay visible on touch, where there is no hover. */
+@media (hover: hover) {
+  .org-node-edit {
+    opacity: 0;
+  }
+
+  .org-node-wrap:hover .org-node-edit {
+    opacity: 1;
+  }
+}
+
 .org-node-edit:focus-visible {
   opacity: 1;
 }
@@ -3344,11 +3376,20 @@ button {
 
 .column-header-caret {
   flex-shrink: 0;
-  opacity: 0;
   transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
-.column-header-trigger:hover .column-header-caret,
+/* Hover-revealed affordances stay visible on touch, where there is no hover. */
+@media (hover: hover) {
+  .column-header-caret {
+    opacity: 0;
+  }
+
+  .column-header-trigger:hover .column-header-caret {
+    opacity: 1;
+  }
+}
+
 .column-header-trigger[aria-expanded='true'] .column-header-caret {
   opacity: 1;
 }
