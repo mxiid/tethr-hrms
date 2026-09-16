@@ -2095,6 +2095,14 @@ button,
   gap: var(--hrms-space-3);
 }
 
+/* The stacked primary/secondary cell used by claim and invoice-line tables:
+   two lines that each truncate inside the fixed table layout. */
+.employee-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .employee-avatar {
   width: 28px;
   height: 28px;

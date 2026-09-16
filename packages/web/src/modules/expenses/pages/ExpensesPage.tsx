@@ -285,55 +285,53 @@ export const ExpensesPage = () => {
 
   return (
     <section className="list-with-panel">
-      <div className="page-frame">
-        <div className="employees-content">
-          <header className="page-header">
-            <div>
-              <h1 className="page-title">Expenses</h1>
-              <p className="page-subtitle">
-                Employee expense claims: approve, reimburse, and pass client-billable lines through.
-              </p>
-            </div>
-          </header>
+      <div className="employees-content">
+        <header className="page-header">
+          <div>
+            <h1 className="page-title">Expenses</h1>
+            <p className="page-subtitle">
+              Employee expense claims: approve, reimburse, and pass client-billable lines through.
+            </p>
+          </div>
+        </header>
 
-          {error ? <p className="auth-error" role="alert">Could not load expense claims.</p> : null}
+        {error ? <p className="auth-error" role="alert">Could not load expense claims.</p> : null}
 
-          <section className="table-shell" aria-label="Expense claims">
-            <ViewBar
-              columns={toViewColumns(CLAIM_COLUMNS)}
-              count={visibleClaims.length}
-              filters={filters}
-              view={claimView}
-              viewLabel="All claims"
-            />
-            <DataTable
-              columns={CLAIM_COLUMNS}
-              emptyState={
-                <EmptyState
-                  icon={IconReceipt}
-                  title="No expense claims yet"
-                  description="Claims filed by employees show up here for approval and reimbursement."
-                />
-              }
-              loading={loading}
-              rows={visibleClaims}
-              getRowKey={(claim) => claim.id}
-              hiddenColumns={claimView.hiddenColumns}
-              onHideColumn={claimView.hideColumn}
-              onRowClick={(claim) => {
-                setSelectedId(claim.id);
-                setErrorMessage(null);
-                setSuccessMessage(null);
-                setDecisionNote('');
-                setPayReference('');
-                setPayMethod('direct');
-              }}
-              onSort={claimView.setSort}
-              skeletonRows={4}
-              sorts={claimView.sorts}
-            />
-          </section>
-        </div>
+        <section className="table-shell" aria-label="Expense claims">
+          <ViewBar
+            columns={toViewColumns(CLAIM_COLUMNS)}
+            count={visibleClaims.length}
+            filters={filters}
+            view={claimView}
+            viewLabel="All claims"
+          />
+          <DataTable
+            columns={CLAIM_COLUMNS}
+            emptyState={
+              <EmptyState
+                icon={IconReceipt}
+                title="No expense claims yet"
+                description="Claims filed by employees show up here for approval and reimbursement."
+              />
+            }
+            loading={loading}
+            rows={visibleClaims}
+            getRowKey={(claim) => claim.id}
+            hiddenColumns={claimView.hiddenColumns}
+            onHideColumn={claimView.hideColumn}
+            onRowClick={(claim) => {
+              setSelectedId(claim.id);
+              setErrorMessage(null);
+              setSuccessMessage(null);
+              setDecisionNote('');
+              setPayReference('');
+              setPayMethod('direct');
+            }}
+            onSort={claimView.setSort}
+            skeletonRows={4}
+            sorts={claimView.sorts}
+          />
+        </section>
       </div>
 
       <SidePanel
