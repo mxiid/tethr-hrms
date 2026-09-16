@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { InvoiceStatus } from '@hrms/shared';
+import { formatMoney, type InvoiceStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconFileInvoice,
@@ -14,6 +14,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { StatusChip } from '../../../../components/chip/StatusChip';
+import { useConfirm } from '../../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
 import { focusFirstByName } from '../../../../components/form/validation';
 import { Modal } from '../../../../components/modal/Modal';
@@ -139,9 +140,6 @@ const invoiceStatusLabels: Record<InvoiceStatus, string> = {
   paid: 'Paid',
   voided: 'Voided',
 };
-
-const formatMoney = (amount: number, currency: string): string =>
-  new Intl.NumberFormat('en', { currency, style: 'currency' }).format(amount);
 
 const GROUP_COLUMNS: readonly ColumnDefinition<BillingGroupRecord>[] = [
   {
@@ -315,6 +313,7 @@ const RECONCILIATION_COLUMNS: readonly ColumnDefinition<ReconciliationPeriodReco
 
 export const BillingPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, error, refetch } = useQuery<BillingPageData>(BILLING_PAGE_DATA_QUERY);
   const [formError, setFormError] = useState<string | null>(null);
   const [openModal, setOpenModal] = useState<'group' | 'rate' | 'expenses' | null>(null);
@@ -405,7 +404,7 @@ export const BillingPage = () => {
       await refetch();
       return true;
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : 'Operation failed.');
+      setFormError(cause instanceof Error ? cause.message : 'Could not save the change. Refresh and try again.');
       return false;
     }
   };
@@ -416,8 +415,15 @@ export const BillingPage = () => {
     setOpenModal(modal);
   };
 
-  const onRemoveMember = (member: BillingMemberRecord): void => {
-    void run(() =>
+  const onRemoveMember = async (member: BillingMemberRecord): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Remove this membership?',
+      body: 'The employee will no longer be billed under this group.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await run(() =>
       removeMember({
         variables: { employeeId: member.employeeId },
         refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
@@ -451,7 +457,7 @@ export const BillingPage = () => {
       width: '26%',
       align: 'right',
       sortValue: (member) => member.monthlyRate,
-      render: (member) => `$${member.monthlyRate.toLocaleString()} / mo`,
+      render: (member) => `${formatMoney(member.monthlyRate, member.rateCurrency)} / mo`,
     },
     {
       key: 'remove',
@@ -464,7 +470,7 @@ export const BillingPage = () => {
           <button
             aria-label="Remove membership"
             className="icon-button row-hover-action"
-            onClick={() => onRemoveMember(member)}
+            onClick={() => void onRemoveMember(member)}
             type="button"
           >
             <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -502,7 +508,7 @@ export const BillingPage = () => {
     <EmptyState
       icon={IconUsersGroup}
       title="No billing groups yet"
-      description="Groups decide which client entity an employee's work is billed to."
+      description="Groups decide which client entity an employee’s work is billed to."
       action={
         <button className="button button-secondary" onClick={() => openModalWith('group')} type="button">
           <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -517,7 +523,7 @@ export const BillingPage = () => {
       <EmptyState
         icon={IconUsersGroup}
         title="Nobody assigned yet"
-        description="Assign a rate so this client pays for the employee's time."
+        description="Assign a rate so this client pays for the employee’s time."
         action={
           <button className="button button-secondary" onClick={() => openModalWith('rate')} type="button">
             <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />

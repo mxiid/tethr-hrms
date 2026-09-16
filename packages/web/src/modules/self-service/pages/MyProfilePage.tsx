@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatDate, todayDateKey } from '@hrms/shared';
 import {
   IconArrowLeft,
   IconCamera,
@@ -143,11 +144,6 @@ const MAX_PHOTO_BYTES = 300_000;
 
 const titleCase = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
 
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
-
 const formatMoney = (value: number, currency: string): string =>
   new Intl.NumberFormat('en', { style: 'currency', currency, maximumFractionDigits: 0 }).format(
     value,
@@ -172,7 +168,7 @@ export const MyProfilePage = () => {
   // `myCurrentSalaryRevision` is effective-dated, so the query has to say which
   // day it is asking about — without it the whole document fails validation and
   // the page renders every field empty.
-  const asOf = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const asOf = useMemo(() => todayDateKey(), []);
   const { data, loading, refetch } = useQuery<MyProfileData>(MY_PROFILE_QUERY, {
     variables: { asOf },
   });
@@ -224,7 +220,7 @@ export const MyProfilePage = () => {
 
   const onChangePhoto = (file: File): void => {
     if (file.size > MAX_PHOTO_BYTES) {
-      setError('Image must be under 300 KB.');
+      setError('Image must be under 300\u00A0KB.');
       return;
     }
     setError(null);
@@ -262,7 +258,7 @@ export const MyProfilePage = () => {
   if (loading && !employee) {
     return (
       <section className="profile-page">
-        <p className="page-subtitle">Loading your profile...</p>
+        <p className="page-subtitle">Loading your profile…</p>
       </section>
     );
   }
@@ -278,7 +274,14 @@ export const MyProfilePage = () => {
         <aside className="profile-identity" aria-label="Your identity">
           <div className="employee-photo-slot">
             {profile?.photoUrl ? (
-              <img alt="Your profile" className="employee-identity-photo" src={profile.photoUrl} />
+              <img
+                alt="Your profile"
+                className="employee-identity-photo"
+                fetchPriority="high"
+                height={40}
+                src={profile.photoUrl}
+                width={40}
+              />
             ) : (
               <span className="employee-avatar" style={{ '--chip-color': 'var(--hrms-color-tag-violet)' } as React.CSSProperties}>
                 {initials}
@@ -287,7 +290,7 @@ export const MyProfilePage = () => {
             <label
               className={`employee-photo-edit${savingPhoto ? ' is-saving' : ''}`}
               htmlFor="my-photo-input"
-              title={savingPhoto ? 'Saving photo...' : 'Change photo'}
+              title={savingPhoto ? 'Saving photo…' : 'Change photo'}
             >
               {savingPhoto ? (
                 <IconLoader2 aria-hidden="true"
@@ -719,7 +722,7 @@ export const MyProfilePage = () => {
           </Link>
           <button className="button button-primary" disabled={saving} type="submit">
             <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {saving ? 'Saving...' : 'Save profile'}
+            {saving ? 'Saving…' : 'Save profile'}
           </button>
         </div>
       </footer>

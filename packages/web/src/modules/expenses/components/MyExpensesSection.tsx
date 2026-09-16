@@ -1,10 +1,12 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatMoney, todayDateKey } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import { IconPlus, IconReceipt, IconTrash } from '@tabler/icons-react';
 import { useState, type FormEvent } from 'react';
 
 import { uploadToSignedUrl } from '../../../app/upload';
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { focusFirstByName } from '../../../components/form/validation';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -62,13 +64,11 @@ const STATUS_LABELS: Record<string, string> = {
   paid: 'Paid',
 };
 
-const formatMoney = (amount: number, currency: string): string =>
-  new Intl.NumberFormat('en', { currency, style: 'currency' }).format(amount);
-
 // The employee's own expense claims on their workspace home: the last few plus
 // the filing flow (draft → lines with receipts → submit).
 export const MyExpensesSection = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, refetch } = useQuery<{ readonly myExpenseClaims: readonly MyExpenseClaim[] }>(
     MY_EXPENSE_CLAIMS_QUERY,
   );
@@ -80,7 +80,7 @@ export const MyExpensesSection = () => {
   const [draftClaimId, setDraftClaimId] = useState<string | null>(null);
   const [purpose, setPurpose] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [expenseDate, setExpenseDate] = useState(() => todayDateKey());
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -101,7 +101,7 @@ export const MyExpensesSection = () => {
 
   const resetLineEntry = (): void => {
     setCategoryId('');
-    setExpenseDate(new Date().toISOString().slice(0, 10));
+    setExpenseDate(todayDateKey());
     setDescription('');
     setAmount('');
     setReceiptFile(null);
@@ -214,6 +214,13 @@ export const MyExpensesSection = () => {
 
   const onRemoveLine = async (lineId: string): Promise<void> => {
     if (!draftClaimId) return;
+    const confirmed = await confirm({
+      title: 'Remove this line?',
+      body: 'The line and its receipt will be removed from the draft claim.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setErrorMessage(null);
     try {
       await removeLine({ variables: { lineId, claimId: draftClaimId } });

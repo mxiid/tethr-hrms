@@ -138,7 +138,7 @@ export const TaxSlabsPanel = () => {
             {creatingTaxGroup ? 'Adding…' : 'Add slab group'}
           </button>
           <p className="field-hint">
-            Configure the band rows from the group&apos;s detail once created; the last band stays
+            Configure the band rows from the group&rsquo;s detail once created; the last band stays
             open-ended.
           </p>
         </form>

@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { AnnouncementAudience } from '@hrms/shared';
+import { formatDate, formatDateTime, type AnnouncementAudience } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import { IconDeviceFloppy, IconFilterOff, IconPin, IconPlus, IconSpeakerphone } from '@tabler/icons-react';
 import { useMemo, useState, type FormEvent } from 'react';
@@ -57,22 +57,6 @@ const audienceColor: Record<AnnouncementAudience, MainColorName> = {
   client: 'green',
   employee: 'amber',
 };
-
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
-
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
 
 export const AnnouncementsPage = () => {
   const { theme } = useTheme();
@@ -159,11 +143,11 @@ export const AnnouncementsPage = () => {
         <div className="metric-strip metric-strip-2 employee-metrics">
           <div className="metric-card">
             <div className="metric-label">Visible posts</div>
-            <div className="metric-value">{loading ? '...' : announcements.length}</div>
+            <div className="metric-value">{loading ? '…' : announcements.length}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Pinned</div>
-            <div className="metric-value">{loading ? '...' : pinnedCount}</div>
+            <div className="metric-value">{loading ? '…' : pinnedCount}</div>
           </div>
         </div>
 
@@ -344,7 +328,7 @@ export const AnnouncementsPage = () => {
             </label>
             <button className="button button-primary" disabled={publishing} type="submit">
               <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              {publishing ? 'Publishing...' : 'Publish'}
+              {publishing ? 'Publishing…' : 'Publish'}
             </button>
           </form>
         </Modal>

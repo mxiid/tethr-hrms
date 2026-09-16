@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatDate } from '@hrms/shared';
 import { IconAlertTriangle, IconBuildingCommunity, IconFilterOff, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 
@@ -50,11 +51,6 @@ const emptyForm: WorkspaceOnboardingFormValues = {
   hrAdminEmail: '',
   hrAdminPassword: '',
 };
-
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(value),
-  );
 
 export const ClientPortfolioPage = () => {
   const { theme } = useTheme();
@@ -218,20 +214,20 @@ export const ClientPortfolioPage = () => {
         <div className="metric-strip employee-metrics">
           <div className="metric-card">
             <div className="metric-label">Clients</div>
-            <div className="metric-value">{loading ? '...' : clients.length}</div>
+            <div className="metric-value">{loading ? '…' : clients.length}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Workspaces</div>
-            <div className="metric-value">{loading ? '...' : totalWorkspaces}</div>
+            <div className="metric-value">{loading ? '…' : totalWorkspaces}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Currencies</div>
-            <div className="metric-value">{loading ? '...' : currencyList.length}</div>
+            <div className="metric-value">{loading ? '…' : currencyList.length}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Newest</div>
             <div className="metric-value">
-              {loading ? '...' : newestClient ? formatDate(newestClient.createdAt) : '-'}
+              {loading ? '…' : newestClient ? formatDate(newestClient.createdAt) : '-'}
             </div>
           </div>
         </div>
@@ -322,26 +318,26 @@ export const ClientPortfolioPage = () => {
             <div className="field-row">
               <span className="field-label">Workspace coverage</span>
               <span className="field-value">
-                {loading ? '...' : `${clientsWithWorkspace} of ${clients.length} clients`}
+                {loading ? '…' : `${clientsWithWorkspace} of ${clients.length} clients`}
               </span>
             </div>
             <div className="field-row">
               <span className="field-label">Live / demo</span>
               <span className="field-value">
-                {loading ? '...' : `${liveClientCount} live · ${demoClientCount} demo`}
+                {loading ? '…' : `${liveClientCount} live · ${demoClientCount} demo`}
               </span>
             </div>
             <div className="field-row">
               <span className="field-label">Currencies</span>
               <span className="field-value">
-                {loading ? '...' : currencyList.join(', ') || '—'}
+                {loading ? '…' : currencyList.join(', ') || '—'}
               </span>
             </div>
             <div className="field-row">
               <span className="field-label">Newest</span>
               <span className="field-value">
                 {loading
-                  ? '...'
+                  ? '…'
                   : newestClient
                     ? `${newestClient.name} · ${formatDate(newestClient.createdAt)}`
                     : '—'}
@@ -360,7 +356,7 @@ export const ClientPortfolioPage = () => {
           {incompleteClients.length === 0 ? (
             <p className="field-hint">
               {loading
-                ? 'Checking clients...'
+                ? 'Checking clients…'
                 : 'Every client has at least one workspace.'}
             </p>
           ) : (

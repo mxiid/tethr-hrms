@@ -1,5 +1,10 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { CompensationChangeReason, PayFrequency } from '@hrms/shared';
+import {
+  formatDate,
+  todayDateKey,
+  type CompensationChangeReason,
+  type PayFrequency,
+} from '@hrms/shared';
 import { IconAlertTriangle, IconCurrencyDollar, IconRefresh, IconSettings } from '@tabler/icons-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
@@ -65,12 +70,10 @@ const reasonLabels: Record<CompensationChangeReason, string> = {
   correction: 'Correction',
 };
 
-const todayIso = (): string => new Date().toISOString().slice(0, 10);
-
 const emptyRevisionForm = {
   employeeId: '',
   salaryStructureId: '',
-  effectiveDate: todayIso(),
+  effectiveDate: todayDateKey(),
   annualAmount: '',
   reason: 'merit' as CompensationChangeReason,
   note: '',
@@ -85,11 +88,6 @@ const formatMoney = (amount: number, currency: string): string =>
     maximumFractionDigits: 0,
     style: 'currency',
   }).format(amount);
-
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
 
 export const CompensationPage = () => {
   const { theme } = useTheme();
@@ -181,7 +179,7 @@ export const CompensationPage = () => {
       setRevisionForm((current) => ({
         ...current,
         annualAmount: '',
-        effectiveDate: todayIso(),
+        effectiveDate: todayDateKey(),
         note: '',
       }));
       setOpenModal(null);

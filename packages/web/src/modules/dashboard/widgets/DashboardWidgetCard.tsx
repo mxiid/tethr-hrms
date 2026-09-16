@@ -5,6 +5,7 @@ import { IconChartBar, IconGripVertical, IconListDetails, IconX } from '@tabler/
 import {
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type RefObject,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -108,6 +109,31 @@ export const DashboardWidgetCard = ({
     window.addEventListener('pointerup', onPointerUp);
   };
 
+  const onResizeKeyDown = (event: KeyboardEvent<HTMLSpanElement>): void => {
+    const grid = gridRef.current;
+    const maxColSpan = grid
+      ? getComputedStyle(grid).gridTemplateColumns.split(' ').length
+      : 4;
+    const step = event.shiftKey ? 2 : 1;
+    let nextColSpan = colSpan;
+    let nextRowSpan = rowSpan;
+    if (event.key === 'ArrowRight') {
+      nextColSpan = Math.min(maxColSpan, colSpan + step);
+    } else if (event.key === 'ArrowLeft') {
+      nextColSpan = Math.max(1, colSpan - step);
+    } else if (event.key === 'ArrowDown') {
+      nextRowSpan = Math.min(MAX_ROW_SPAN, rowSpan + step);
+    } else if (event.key === 'ArrowUp') {
+      nextRowSpan = Math.max(MIN_ROW_SPAN, rowSpan - step);
+    } else {
+      return;
+    }
+    event.preventDefault();
+    if (nextColSpan !== colSpan || nextRowSpan !== rowSpan) {
+      onResize(nextColSpan, nextRowSpan);
+    }
+  };
+
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -185,11 +211,13 @@ export const DashboardWidgetCard = ({
         />
       </div>
       <span
+        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
         aria-label={`Resize ${title} widget`}
         className="dashboard-widget-resize-handle"
+        onKeyDown={onResizeKeyDown}
         onPointerDown={onResizePointerDown}
         role="button"
-        tabIndex={-1}
+        tabIndex={0}
       />
     </div>
   );

@@ -1,10 +1,13 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
-import type {
-  CompensationChangeReason,
-  DocumentSignatureStatus,
-  EmployeeOnboardingTaskStatus,
-  EmploymentStatus,
-  WorkerType,
+import {
+  formatDate,
+  formatDateTime,
+  todayDateKey,
+  type CompensationChangeReason,
+  type DocumentSignatureStatus,
+  type EmployeeOnboardingTaskStatus,
+  type EmploymentStatus,
+  type WorkerType,
 } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
@@ -26,6 +29,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { uploadToSignedUrl } from '../../../app/upload';
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { DetailSection } from '../components/DetailSection';
@@ -414,18 +418,6 @@ const colorFor = (id: string): MainColorName => {
 const chipStyle = (color: MainColorName): ChipStyle => ({
   '--chip-color': `var(--hrms-color-tag-${color})`,
 });
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
 const formatMoney = (value: number, currency: string): string =>
   new Intl.NumberFormat('en', { style: 'currency', currency, maximumFractionDigits: 0 }).format(
     value,
@@ -434,7 +426,6 @@ const daysSince = (value: string): number =>
   Math.max(0, Math.floor((Date.now() - new Date(`${value}T00:00:00`).getTime()) / 86_400_000));
 const daysUntil = (value: string): number =>
   Math.max(0, Math.ceil((new Date(`${value}T00:00:00`).getTime() - Date.now()) / 86_400_000));
-const today = (): string => new Date().toISOString().slice(0, 10);
 const emptyHrRecordForm = {
   roleTitle: '',
   salaryBreakdown: '',
@@ -483,7 +474,7 @@ const emptyBonusForm = {
 };
 const emptySalaryRevisionForm = {
   salaryStructureId: '',
-  effectiveDate: today(),
+  effectiveDate: todayDateKey(),
   annualAmount: '',
   reason: 'merit' as CompensationChangeReason,
   note: '',
@@ -502,6 +493,7 @@ const PROFILE_TABS: ReadonlyArray<{ readonly key: ProfileTabKey; readonly label:
 
 export const EmployeeProfilePage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const { employeeId = '' } = useParams<{ employeeId: string }>();
   const [tab, setTab] = useState<ProfileTabKey>('profile');
@@ -564,7 +556,7 @@ export const EmployeeProfilePage = () => {
   );
   const [managerForm, setManagerForm] = useState({
     reportsToEmployeeId: '',
-    effectiveDate: today(),
+    effectiveDate: todayDateKey(),
   });
 
   const [assessmentForm, setAssessmentForm] = useState(emptyAssessmentForm);
@@ -586,7 +578,7 @@ export const EmployeeProfilePage = () => {
   const [offboardingDrafts, setOffboardingDrafts] = useState<Record<string, { status: string; dueDate: string; notes: string }>>({});
   const [separationForm, setSeparationForm] = useState({
     type: 'resignation' as string,
-    effectiveDate: today(),
+    effectiveDate: todayDateKey(),
     reason: '',
     resignationLetterDate: '',
     relievingDate: '',
@@ -635,7 +627,7 @@ export const EmployeeProfilePage = () => {
       roleKeys.includes('clientAdmin') ||
       roleKeys.includes('clientMember'),
   );
-  const detailVariables = useMemo(() => ({ employeeId, asOf: today() }), [employeeId]);
+  const detailVariables = useMemo(() => ({ employeeId, asOf: todayDateKey() }), [employeeId]);
   const {
     data: detailData,
     loading: detailLoading,
@@ -779,7 +771,7 @@ export const EmployeeProfilePage = () => {
   useEffect(() => {
     setSalaryRevisionForm({
       salaryStructureId: defaultSalaryStructureId,
-      effectiveDate: today(),
+      effectiveDate: todayDateKey(),
       annualAmount: salary ? String(salary.annualAmount) : '',
       reason: 'merit',
       note: '',
@@ -1069,7 +1061,7 @@ export const EmployeeProfilePage = () => {
       setSalaryRevisionForm((current) => ({
         ...current,
         salaryStructureId: revision?.salaryStructureId ?? current.salaryStructureId,
-        effectiveDate: today(),
+        effectiveDate: todayDateKey(),
         annualAmount: revision ? String(revision.annualAmount) : current.annualAmount,
         reason: 'merit',
         note: '',
@@ -1141,6 +1133,13 @@ export const EmployeeProfilePage = () => {
   const onSeparate = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!detailEmployee) return;
+    const confirmed = await confirm({
+      title: 'Separate this employee?',
+      body: 'The employee will be marked as terminated and offboarding tasks will be created.',
+      confirmLabel: 'Separate',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setDetailError(null);
     try {
       await separateEmployee({
@@ -1261,7 +1260,7 @@ export const EmployeeProfilePage = () => {
   const onChangePhoto = (file: File): void => {
     if (!detailEmployee) return;
     if (file.size > 300_000) {
-      setDetailError('Image must be under 300 KB.');
+      setDetailError('Image must be under 300\u00A0KB.');
       return;
     }
     setDetailError(null);
@@ -1358,7 +1357,14 @@ export const EmployeeProfilePage = () => {
         <aside className="profile-identity" aria-label="Employee identity">
               <div className="employee-photo-slot">
                 {profile?.photoUrl ? (
-                  <img alt="" className="employee-identity-photo" src={profile.photoUrl} />
+                  <img
+                    alt=""
+                    className="employee-identity-photo"
+                    fetchPriority="high"
+                    height={40}
+                    src={profile.photoUrl}
+                    width={40}
+                  />
                 ) : (
                   <span className="employee-avatar" style={chipStyle(colorFor(detailEmployee.id))}>
                     {initials(detailEmployee)}
@@ -1368,7 +1374,7 @@ export const EmployeeProfilePage = () => {
                   <label
                     className={`employee-photo-edit${savingPhoto ? ' is-saving' : ''}`}
                     htmlFor="employee-photo-input"
-                    title={savingPhoto ? 'Saving photo...' : 'Change photo'}
+                    title={savingPhoto ? 'Saving photo…' : 'Change photo'}
                   >
                     {savingPhoto ? (
                       <IconLoader2 aria-hidden="true"
@@ -1455,7 +1461,7 @@ export const EmployeeProfilePage = () => {
             ))}
           </nav>
 
-          {detailLoading ? <p className="page-subtitle">Loading employee details...</p> : null}
+          {detailLoading ? <p className="page-subtitle">Loading employee details…</p> : null}
           {detailError ? (
             <p className="auth-error" role="alert">
               {detailError}
@@ -1657,7 +1663,7 @@ export const EmployeeProfilePage = () => {
                   </p>
                   <button className="button button-secondary" disabled={savingManager} type="submit">
                     <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {savingManager ? 'Saving...' : 'Update manager'}
+                    {savingManager ? 'Saving…' : 'Update manager'}
                   </button>
                 </form>
               ) : null}
@@ -1752,7 +1758,7 @@ export const EmployeeProfilePage = () => {
             {canEditHrRecord ? (
               <DetailSection title="Tethr HR record">
                 {hrRecordLoading ? (
-                  <p className="page-subtitle">Loading private HR record...</p>
+                  <p className="page-subtitle">Loading private HR record…</p>
                 ) : null}
                 <form className="config-form compact-form" onSubmit={onSaveHrRecord}>
                   <div className="field">
@@ -1904,7 +1910,7 @@ export const EmployeeProfilePage = () => {
                     type="submit"
                   >
                     <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {savingHrRecord ? 'Saving...' : 'Save HR record'}
+                    {savingHrRecord ? 'Saving…' : 'Save HR record'}
                   </button>
                 </form>
               </DetailSection>
@@ -1950,7 +1956,7 @@ export const EmployeeProfilePage = () => {
                         }
                       >
                         <option value="">
-                          {loadingSalaryStructures ? 'Loading...' : 'Select structure'}
+                          {loadingSalaryStructures ? 'Loading…' : 'Select structure'}
                         </option>
                         {availableSalaryStructures.map((structure) => (
                           <option key={structure.id} value={structure.id}>
@@ -2044,7 +2050,7 @@ export const EmployeeProfilePage = () => {
                     type="submit"
                   >
                     <IconCurrencyDollar aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {revisingSalary ? 'Saving...' : 'Save salary adjustment'}
+                    {revisingSalary ? 'Saving…' : 'Save salary adjustment'}
                   </button>
                 </form>
               ) : null}
@@ -2152,7 +2158,7 @@ export const EmployeeProfilePage = () => {
                     type="submit"
                   >
                     <IconGift aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {awardingBonus ? 'Saving...' : 'Award bonus'}
+                    {awardingBonus ? 'Saving…' : 'Award bonus'}
                   </button>
                 </form>
               ) : null}
@@ -2398,9 +2404,9 @@ export const EmployeeProfilePage = () => {
                   >
                     <IconFileText aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     {uploadingDocument
-                      ? 'Uploading...'
+                      ? 'Uploading…'
                       : addingDocumentVersion
-                        ? 'Adding...'
+                        ? 'Adding…'
                         : 'Add version'}
                   </button>
                 </form>
@@ -2593,9 +2599,9 @@ export const EmployeeProfilePage = () => {
                   >
                     <IconFileText aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     {uploadingDocument
-                      ? 'Uploading...'
+                      ? 'Uploading…'
                       : attachingDocument
-                        ? 'Attaching...'
+                        ? 'Attaching…'
                         : 'Attach document'}
                   </button>
                 </form>
@@ -2617,7 +2623,7 @@ export const EmployeeProfilePage = () => {
                 title="Onboarding"
               >
                 {onboardingLoading ? (
-                  <p className="page-subtitle">Loading onboarding checklist...</p>
+                  <p className="page-subtitle">Loading onboarding checklist…</p>
                 ) : null}
                 <div className="record-list">
                   {onboardingTasks.map((task) => {
@@ -2828,7 +2834,7 @@ export const EmployeeProfilePage = () => {
                     type="submit"
                   >
                     <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {recordingAssessment ? 'Saving...' : 'Record assessment'}
+                    {recordingAssessment ? 'Saving…' : 'Record assessment'}
                   </button>
                 </form>
               ) : null}

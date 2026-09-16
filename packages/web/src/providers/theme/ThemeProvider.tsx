@@ -1,6 +1,6 @@
 import { buildThemeCss, themes, type Theme } from '@hrms/ui';
 import { useAtom } from 'jotai';
-import { createContext, useMemo, type ReactNode } from 'react';
+import { createContext, useEffect, useMemo, type ReactNode } from 'react';
 
 import { themeModeState } from './themeState';
 
@@ -26,6 +26,18 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     }),
     [theme, setMode],
   );
+
+  // Keep the browser chrome in step with the app theme: the scrollbar and form
+  // controls (color-scheme on <html>), the mobile address bar (theme-color), and
+  // the body behind the root wrapper so overscroll never flashes the old mode.
+  useEffect(() => {
+    document.documentElement.style.colorScheme = mode;
+    document.body.style.backgroundColor = theme.color.background.primary;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) {
+      meta.content = theme.color.background.primary;
+    }
+  }, [mode, theme]);
 
   return (
     <ThemeContext.Provider value={value}>

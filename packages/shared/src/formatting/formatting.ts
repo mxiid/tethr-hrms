@@ -83,3 +83,22 @@ export const formatMoney = (
     return `${currency} ${amount.toFixed(2)}`;
   }
 };
+
+/** The local calendar day as YYYY-MM-DD — never shifted by the UTC offset. */
+export const todayDateKey = (now: Date = new Date()): string => {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * The local calendar key `days` before `now` (default today) as YYYY-MM-DD.
+ * Calendar subtraction rather than fixed 24-hour periods: subtracting
+ * milliseconds crosses a DST boundary onto the wrong local date.
+ */
+export const dateKeyDaysAgo = (days: number, now: Date = new Date()): string => {
+  const date = new Date(now);
+  date.setDate(date.getDate() - days);
+  return todayDateKey(date);
+};

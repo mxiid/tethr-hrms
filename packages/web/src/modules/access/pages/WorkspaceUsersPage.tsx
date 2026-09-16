@@ -5,6 +5,7 @@ import { IconAlertTriangle, IconFilterOff, IconKey, IconPlus, IconRefresh, IconU
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { Modal } from '../../../components/modal/Modal';
 import {
@@ -72,6 +73,7 @@ const userStatusLabels: Record<string, string> = {
 
 export const WorkspaceUsersPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, error, refetch } = useQuery<WorkspaceUsersData>(WORKSPACE_USERS_QUERY);
   const { data: assignableRoleData, loading: loadingAssignableRoles } =
     useQuery<AssignableWorkspaceRolesData>(ASSIGNABLE_WORKSPACE_ROLES_QUERY);
@@ -206,7 +208,7 @@ export const WorkspaceUsersPage = () => {
       width: '30%',
       hideable: false,
       sortValue: (workspaceUser) => workspaceUser.email,
-      render: (workspaceUser) => workspaceUser.email,
+      render: (workspaceUser) => <span className="truncate">{workspaceUser.email}</span>,
     },
     {
       key: 'role',
@@ -304,6 +306,13 @@ export const WorkspaceUsersPage = () => {
       setRoleError('Select an employee record before assigning employee access');
       return;
     }
+    const confirmed = await confirm({
+      title: 'Change this access role?',
+      body: `The user will move from ${currentRole === null ? 'no role' : roleLabels[currentRole]} to ${roleLabels[nextRole]}.`,
+      confirmLabel: 'Save',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setRoleError(null);
     try {
       await updateUserRole({
@@ -414,7 +423,7 @@ export const WorkspaceUsersPage = () => {
                 >
                   {assignableRoles.length === 0 ? (
                     <option value={form.roleKey}>
-                      {loadingAssignableRoles ? 'Loading roles...' : 'No assignable roles'}
+                      {loadingAssignableRoles ? 'Loading roles…' : 'No assignable roles'}
                     </option>
                   ) : null}
                   {assignableRoles.map((role) => (
@@ -454,7 +463,7 @@ export const WorkspaceUsersPage = () => {
                 type="submit"
               >
                 <IconKey aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                {creating ? 'Adding...' : 'Add user'}
+                {creating ? 'Adding…' : 'Add user'}
               </button>
             </div>
           </form>

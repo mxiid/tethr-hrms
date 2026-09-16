@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../../app/download';
 import { StatusChip } from '../../../../components/chip/StatusChip';
+import { useConfirm } from '../../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
 import { focusFirstByName } from '../../../../components/form/validation';
 import { Modal } from '../../../../components/modal/Modal';
@@ -126,6 +127,7 @@ const downloadCsv = (filename: string, contents: string): void => {
 
 export const PayrollRunDetailPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const runId = useParams<{ runId: string }>().runId ?? '';
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -183,7 +185,7 @@ export const PayrollRunDetailPage = () => {
       setMessage(successMessage);
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Operation failed.');
+      setError(cause instanceof Error ? cause.message : 'Could not update the run. Refresh and try again.');
       return false;
     }
   };
@@ -211,18 +213,53 @@ export const PayrollRunDetailPage = () => {
     }
   };
 
-  const requestFinalize = (): void => {
+  const requestFinalize = async (): Promise<void> => {
     const readiness = readinessData?.payrollReadiness;
     // While readiness is still loading we can't know whether blockers exist; a
     // reasonless finalize would be rejected by the server, so wait (the button
     // is disabled in that state) rather than guessing.
     if (!readiness) return;
+    const confirmed = await confirm({
+      title: 'Finalize this payroll run?',
+      body: 'The run locks, payslips are created for every employee, and bank advice becomes available.',
+      confirmLabel: 'Finalize',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     if (readiness.hardBlockerCount > 0) {
       setFinalizeReason('');
       setFinalizeOpen(true);
       return;
     }
-    void submitFinalize();
+    await submitFinalize();
+  };
+
+  const onRegenerate = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Regenerate this run?',
+      body: 'Manual line edits and tax overrides will be overwritten with freshly computed values.',
+      confirmLabel: 'Regenerate',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await runAction(
+      () => regenerateRun({ variables: { runId } }),
+      'Draft updated with the latest salaries and leave.',
+    );
+  };
+
+  const onRemoveLine = async (lineId: string): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Remove this line?',
+      body: 'The line will be removed from this draft run.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await runAction(
+      () => removeLine({ variables: { lineId, runId } }),
+      'Line removed.',
+    );
   };
 
   const onUpdateLineTax = async (lineId: string, raw: string): Promise<void> => {
@@ -251,7 +288,7 @@ export const PayrollRunDetailPage = () => {
         result.data.bankAdviceCsv,
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not build bank advice.');
+      setError(cause instanceof Error ? cause.message : 'Could not build the bank advice. Refresh the run and try again.');
     }
   };
 
@@ -299,12 +336,7 @@ export const PayrollRunDetailPage = () => {
                   className="button button-secondary"
                   disabled={regenerating}
                   type="button"
-                  onClick={() => {
-                    void runAction(
-                      () => regenerateRun({ variables: { runId } }),
-                      'Draft updated with the latest salaries and leave.',
-                    );
-                  }}
+                  onClick={() => void onRegenerate()}
                 >
                   <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   {regenerating ? 'Recomputing…' : 'Regenerate'}
@@ -317,7 +349,7 @@ export const PayrollRunDetailPage = () => {
                       setError('Regenerate the run to add lines before finalizing.');
                       return;
                     }
-                    requestFinalize();
+                    void requestFinalize();
                   }}
                   title={readinessData === undefined ? 'Checking readiness…' : undefined}
                   type="button"
@@ -465,12 +497,7 @@ export const PayrollRunDetailPage = () => {
                                 aria-label="Remove line"
                                 className="icon-button row-hover-action"
                                 type="button"
-                                onClick={() => {
-                                  void runAction(
-                                    () => removeLine({ variables: { lineId: line.id, runId } }),
-                                    'Line removed.',
-                                  );
-                                }}
+                                onClick={() => void onRemoveLine(line.id)}
                               >
                                 <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                               </button>
@@ -630,7 +657,7 @@ export const PayrollRunDetailPage = () => {
                                 );
                               } catch (cause) {
                                 setError(
-                                  cause instanceof Error ? cause.message : 'Could not render PDF.',
+                                  cause instanceof Error ? cause.message : 'Could not render the PDF. Refresh and try again.',
                                 );
                               }
                             })();

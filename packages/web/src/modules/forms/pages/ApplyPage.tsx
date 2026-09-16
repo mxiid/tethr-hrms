@@ -228,7 +228,7 @@ export const ApplyPage = () => {
                   ) : (
                     <span className="employee-secondary">
                       <IconUpload aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} /> PDF or
-                      Word, up to 10 MB
+                      Word, up to {'10\u00A0MB'}
                     </span>
                   )}
                 </div>

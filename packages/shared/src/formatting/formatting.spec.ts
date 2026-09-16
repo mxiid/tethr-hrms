@@ -1,4 +1,4 @@
-import { formatDate, formatDateTime, formatMoney } from './formatting';
+import { dateKeyDaysAgo, formatDate, formatDateTime, formatMoney, todayDateKey } from './formatting';
 
 describe('formatDate', () => {
   it('formats date-only strings as calendar dates without a UTC shift', () => {
@@ -36,6 +36,36 @@ describe('formatDateTime', () => {
 
   it('degrades to an em dash for invalid values', () => {
     expect(formatDateTime(null)).toBe('—');
+  });
+});
+
+describe('todayDateKey', () => {
+  it('renders the local calendar day as YYYY-MM-DD', () => {
+    expect(todayDateKey(new Date(2026, 8, 5, 10, 30))).toBe('2026-09-05');
+  });
+
+  it('keeps a late local time on the same calendar day', () => {
+    expect(todayDateKey(new Date(2026, 8, 15, 23, 59))).toBe('2026-09-15');
+  });
+});
+
+describe('dateKeyDaysAgo', () => {
+  it('walks back whole calendar days', () => {
+    expect(dateKeyDaysAgo(7, new Date(2026, 8, 15))).toBe('2026-09-08');
+  });
+
+  it('stays on the calendar day when starting just after local midnight', () => {
+    // The DST case the fixed-millisecond version got wrong: 00:30 must walk
+    // back to the expected calendar day, never to the one before it.
+    expect(dateKeyDaysAgo(7, new Date(2026, 2, 15, 0, 30))).toBe('2026-03-08');
+  });
+
+  it('crosses month boundaries correctly', () => {
+    expect(dateKeyDaysAgo(30, new Date(2026, 8, 5))).toBe('2026-08-06');
+  });
+
+  it('returns today for zero days', () => {
+    expect(dateKeyDaysAgo(0, new Date(2026, 8, 15, 23, 59))).toBe('2026-09-15');
   });
 });
 

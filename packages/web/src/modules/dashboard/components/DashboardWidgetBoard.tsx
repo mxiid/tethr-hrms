@@ -16,6 +16,7 @@ import {
 import { useAtom, useSetAtom } from 'jotai';
 import { useEffect, useRef } from 'react';
 
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
   activeViewWidgetsAtom,
@@ -42,6 +43,7 @@ type DashboardWidgetBoardProps = {
 // default layout from the same shared atoms.
 export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoardProps) => {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [layout, setLayout] = useAtom(activeViewWidgetsAtom);
   const [seeded, setSeeded] = useAtom(dashboardSeededAtom);
   const setViews = useSetAtom(dashboardViewsState);
@@ -70,7 +72,14 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
     .filter((entry) => entry.definition.isVisible(user));
 
-  const removeWidget = (id: WidgetId): void => {
+  const removeWidget = async (id: WidgetId): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Remove this widget?',
+      body: 'The widget will be removed from this dashboard view.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setLayout((current) => current.filter((widget) => widget.id !== id));
   };
 
@@ -149,7 +158,7 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
                   gridRef={gridRef}
                   id={widget.id}
                   key={widget.id}
-                  onRemove={() => removeWidget(widget.id)}
+                  onRemove={() => void removeWidget(widget.id)}
                   onResize={(colSpan, rowSpan) => resizeWidget(widget.id, colSpan, rowSpan)}
                   onToggleDisplayMode={() => toggleDisplayMode(widget.id)}
                   onToggleField={(fieldId, enabled) => toggleWidgetField(widget.id, fieldId, enabled)}
