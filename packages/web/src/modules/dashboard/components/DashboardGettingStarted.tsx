@@ -6,29 +6,70 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { atom, useAtom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { useTheme } from '../../../providers/theme/useTheme';
+import { useAuth } from '../../auth/hooks/useAuth';
 
 import { useGettingStartedSteps } from './gettingStartedSteps';
 
-// Session-only: the panel is a persistent onboarding nudge that clears itself
-// once every step is done, so dismiss/collapse reset on refresh by design.
-const dismissedAtom = atom(false);
+// Collapsing is a glance-level choice and stays session-only; dismissal is
+// permanent per workspace once the user confirms it.
 const collapsedAtom = atom(false);
 
 export const DashboardGettingStarted = () => {
   const { theme } = useTheme();
+  const { user } = useAuth();
+  const confirm = useConfirm();
   const { steps, loading, error } = useGettingStartedSteps();
-  const [dismissed, setDismissed] = useAtom(dismissedAtom);
   const [collapsed, setCollapsed] = useAtom(collapsedAtom);
+  const [sessionDismissed, setSessionDismissed] = useState(false);
+  const [askedThisSession, setAskedThisSession] = useState(false);
+
+  const organizationId = user?.organizationId ?? 'none';
+  const dismissedAtom = useMemo(
+    () =>
+      atomWithStorage(`hrms.dashboard.gettingStartedDismissed.${organizationId}`, false, undefined, {
+        getOnInit: true,
+      }),
+    [organizationId],
+  );
+  const [dismissed, setDismissed] = useAtom(dismissedAtom);
 
   const done = steps.filter((step) => step.complete).length;
   const total = steps.length;
 
-  // Nothing to show: still loading the first time, dismissed, unsupported role,
-  // or the user has finished the whole walkthrough.
-  if (dismissed) return null;
+  // Closing it (or crossing the last step) always hides it now; the dialog only
+  // decides whether that hiding is permanent for this workspace.
+  const promptDismiss = async (): Promise<void> => {
+    setSessionDismissed(true);
+    setAskedThisSession(true);
+    const keepHidden = await confirm({
+      title: "Don't show getting started again?",
+      body: 'It stays hidden for this workspace.',
+      confirmLabel: "Don't show again",
+      cancelLabel: 'Not now',
+    });
+    if (keepHidden) {
+      setDismissed(true);
+    }
+  };
+
+  // Crossing the whole checklist asks the same question, once per session.
+  // promptDismiss is intentionally not a dependency: it is rebuilt per render
+  // and the state it sets (askedThisSession) is what stops the loop.
+  useEffect(() => {
+    if (total > 0 && done === total && !dismissed && !askedThisSession) {
+      void promptDismiss();
+    }
+  }, [total, done, dismissed, askedThisSession]);
+
+  // Nothing to show: still loading the first time, dismissed permanently or for
+  // this session, unsupported role, or the whole walkthrough is done.
+  if (dismissed || sessionDismissed) return null;
   if (loading && total === 0) return null;
   if (error) return null;
   if (total === 0 || done === total) return null;
@@ -57,7 +98,7 @@ export const DashboardGettingStarted = () => {
         <button
           aria-label="Dismiss getting started"
           className="icon-button"
-          onClick={() => setDismissed(true)}
+          onClick={() => void promptDismiss()}
           type="button"
         >
           <IconX aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
