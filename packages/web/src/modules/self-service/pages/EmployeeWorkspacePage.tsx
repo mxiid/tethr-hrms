@@ -262,7 +262,11 @@ const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
       </h1>
       <p className="me-hero-status">{status}</p>
 
-      {clock.notice ? <p className="form-success">{clock.notice}</p> : null}
+      {clock.notice ? (
+        <p className="form-success" role="status">
+          {clock.notice}
+        </p>
+      ) : null}
       {clock.error ? (
         <p className="auth-error" role="alert">
           {clock.error}
@@ -715,7 +719,11 @@ export const EmployeeWorkspacePage = () => {
               <IconMessageCircle size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
             <form className="config-form" onSubmit={onFeedbackSubmit}>
-              {feedbackNotice ? <p className="form-success">{feedbackNotice}</p> : null}
+              {feedbackNotice ? (
+                <p className="form-success" role="status">
+                  {feedbackNotice}
+                </p>
+              ) : null}
               {feedbackError ? (
                 <p className="auth-error" role="alert">
                   {feedbackError}

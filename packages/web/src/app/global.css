@@ -66,6 +66,25 @@ button {
   border: 0;
 }
 
+/* Touch: kill the 300ms double-tap-zoom delay on controls, and let our own
+   press feedback replace the grey tap flash on things that have one. */
+button,
+[role='button'],
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+button,
+[role='button'],
+.nav-pill,
+.subnav-tab,
+.mobile-nav-item,
+.bottom-nav-item {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .hrms-theme-root {
   color-scheme: light;
 }
@@ -177,7 +196,7 @@ button {
   font-family: inherit;
   font-size: var(--hrms-font-size-xxs);
   line-height: 1.4;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
 /* Only fades once there's actual text — not on a bare click/focus, so
@@ -404,7 +423,7 @@ button {
   white-space: nowrap;
   transition:
     var(--hrms-animation-clickable-background-transition),
-    border-radius 0.15s ease;
+    border-radius var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
 .nav-pill:hover {
@@ -635,7 +654,7 @@ button {
     color-mix(in srgb, var(--chip-color, var(--hrms-color-tag-gray)) 10%, var(--hrms-color-background-primary)) 0%,
     var(--hrms-color-background-primary) 100%
   );
-  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+  transition: grid-template-rows var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-in-out);
 }
 
 .app-subnav.is-open {
@@ -657,23 +676,10 @@ button {
   padding: var(--hrms-space-1) var(--hrms-space-10);
   border-bottom: 1px solid var(--hrms-color-border-light);
   overflow-x: auto;
-  animation: subnav-tabs-in 240ms cubic-bezier(0.2, 0, 0, 1);
-}
-
-/* Switching groups swaps the tab row (keyed remount); this is the crossfade. */
-@keyframes subnav-tabs-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 .nav-pill-caret {
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .nav-pill-group.is-open .nav-pill-caret {
@@ -682,12 +688,9 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .app-subnav,
-  .nav-pill-caret {
-    transition: none;
-  }
-
+  .nav-pill-caret,
   .app-subnav-tabs {
-    animation: none;
+    transition: none;
   }
 }
 
@@ -896,11 +899,13 @@ button {
   border-radius: var(--hrms-radius-rounded);
   /* Pale hues (yellow, lime, mint, sky) would otherwise vanish on the card. */
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hrms-color-text-primary) 12%, transparent);
-  transition: transform var(--hrms-animation-duration-instant) ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
-.color-swatch:hover:not(:disabled) .color-swatch-dot {
-  transform: scale(1.15);
+@media (hover: hover) and (pointer: fine) {
+  .color-swatch:hover:not(:disabled) .color-swatch-dot {
+    transform: scale(1.15);
+  }
 }
 
 .color-swatch:focus-visible {
@@ -986,6 +991,7 @@ button {
   margin: 0;
   font-size: var(--hrms-font-size-sm);
   font-weight: var(--hrms-font-weight-semi-bold);
+  text-wrap: balance;
 }
 
 .settings-sidebar-nav {
@@ -1216,6 +1222,7 @@ button {
   margin: 0;
   font-size: var(--hrms-font-size-lg);
   font-weight: var(--hrms-font-weight-semi-bold);
+  text-wrap: balance;
 }
 
 .modal-body {
@@ -1252,6 +1259,7 @@ button {
   font-weight: var(--hrms-font-weight-semi-bold);
   letter-spacing: 0;
   line-height: var(--hrms-line-height-md);
+  text-wrap: balance;
 }
 
 .page-subtitle {
@@ -1348,6 +1356,7 @@ button {
   color: var(--hrms-color-text-primary);
   font-size: var(--hrms-font-size-xl);
   font-weight: var(--hrms-font-weight-semi-bold);
+  font-variant-numeric: tabular-nums;
   line-height: var(--hrms-line-height-md);
 }
 
@@ -1383,6 +1392,7 @@ button {
 
 .dashboard-widget.is-dragging {
   opacity: 0.6;
+  user-select: none;
 }
 
 .dashboard-widget.is-resizing {
@@ -1866,11 +1876,13 @@ button {
 
 .table-title {
   font-weight: var(--hrms-font-weight-semi-bold);
+  text-wrap: balance;
 }
 
 .table-density {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .employee-table-wrap {
@@ -2006,7 +2018,7 @@ button {
   .data-table .row-hover-action,
   .employee-table .row-hover-action {
     opacity: 0;
-    transition: opacity 0.12s ease;
+    transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
   }
 
   .data-table tbody tr:hover .row-hover-action,
@@ -2185,7 +2197,7 @@ button {
 .org-children {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+  transition: grid-template-rows var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-in-out);
 }
 
 .org-children:not(.is-open) {
@@ -2285,6 +2297,7 @@ button {
 .org-node.is-dragging {
   opacity: 0.45;
   cursor: grabbing;
+  user-select: none;
 }
 
 .org-node.is-drop-target {
@@ -2311,11 +2324,20 @@ button {
   border: 1px solid var(--hrms-color-border-medium);
   border-radius: var(--hrms-radius-rounded);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
-.org-node-wrap:hover .org-node-edit,
+/* Hover-revealed affordances stay visible on touch, where there is no hover. */
+@media (hover: hover) {
+  .org-node-edit {
+    opacity: 0;
+  }
+
+  .org-node-wrap:hover .org-node-edit {
+    opacity: 1;
+  }
+}
+
 .org-node-edit:focus-visible {
   opacity: 1;
 }
@@ -2417,9 +2439,9 @@ button {
   cursor: pointer;
   transition:
     var(--hrms-animation-clickable-background-transition),
-    opacity 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft),
+    border-color var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft),
+    box-shadow var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
 .org-node:hover {
@@ -2564,6 +2586,7 @@ button {
   font-size: var(--hrms-font-size-lg);
   font-weight: var(--hrms-font-weight-semi-bold);
   line-height: var(--hrms-line-height-md);
+  text-wrap: balance;
 }
 
 .panel-actions {
@@ -2596,7 +2619,7 @@ button {
 
 .detail-section-chevron {
   color: var(--hrms-color-text-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .detail-section-chevron.is-open {
@@ -3245,7 +3268,7 @@ button {
 }
 
 .action-menu-caret {
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .action-menu-caret.is-open {
@@ -3353,11 +3376,20 @@ button {
 
 .column-header-caret {
   flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
-.column-header-trigger:hover .column-header-caret,
+/* Hover-revealed affordances stay visible on touch, where there is no hover. */
+@media (hover: hover) {
+  .column-header-caret {
+    opacity: 0;
+  }
+
+  .column-header-trigger:hover .column-header-caret {
+    opacity: 1;
+  }
+}
+
 .column-header-trigger[aria-expanded='true'] .column-header-caret {
   opacity: 1;
 }
@@ -4333,7 +4365,7 @@ button {
 .onboarding-help-summary svg {
   flex: 0 0 auto;
   color: var(--hrms-color-text-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .onboarding-help-body {
@@ -5033,7 +5065,7 @@ button {
   width: 0;
   overflow: hidden;
   outline: none;
-  transition: width var(--hrms-animation-duration-normal) ease;
+  transition: width var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-in-out);
 }
 
 .side-panel.is-open {
@@ -5200,6 +5232,7 @@ button {
   font-size: var(--hrms-font-size-md);
   font-weight: var(--hrms-font-weight-semi-bold);
   line-height: var(--hrms-line-height-md);
+  text-wrap: balance;
 }
 
 .empty-state-copy {
@@ -5502,7 +5535,7 @@ button {
 
 .collapse-chevron {
   color: var(--hrms-color-text-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .collapse-chevron.is-open {
@@ -5612,13 +5645,13 @@ button {
   height: 100%;
   border-radius: 999px;
   background: var(--chip-color, var(--hrms-color-tag-blue));
-  transition: width 0.3s ease;
+  transition: width var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-in-out);
 }
 
 .dashboard-getting-started-chevron {
   display: inline-flex;
   color: var(--hrms-color-text-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .dashboard-getting-started.is-open .dashboard-getting-started-chevron {
@@ -5834,4 +5867,325 @@ button {
 
 .record-inline-actions input[type='number'] {
   width: 150px;
+}
+
+/* ---------------------------------------------------------------------------
+   Motion. Press feedback, origin-aware popovers, overlay entrances. Only
+   transform/opacity animate; durations and curves come from the motion tokens
+   (design.md 2.3). @starting-style gives entries without JS state, and the
+   reduced-motion block at the bottom removes every movement.
+   --------------------------------------------------------------------------- */
+
+.button,
+.icon-button,
+.nav-pill,
+.subnav-tab,
+.mobile-nav-toggle,
+.mobile-nav-item,
+.dropdown-nav-item,
+.action-menu-item,
+.topbar-search-result,
+.filter-add-button,
+.view-bar-button,
+.filter-menu-option-button,
+.view-chip,
+.workspace-chip-button {
+  transition:
+    var(--hrms-animation-clickable-background-transition),
+    color var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft),
+    border-color var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft),
+    transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
+}
+
+.button:active,
+.icon-button:active,
+.nav-pill:active,
+.subnav-tab:active,
+.mobile-nav-toggle:active,
+.mobile-nav-item:active,
+.dropdown-nav-item:active,
+.action-menu-item:active,
+.topbar-search-result:active,
+.filter-add-button:active,
+.view-bar-button:active,
+.filter-menu-option-button:active,
+.view-chip:active,
+.workspace-chip-button:active {
+  transform: scale(0.97);
+}
+
+.button:disabled:active,
+.icon-button:disabled:active {
+  transform: none;
+}
+
+/* Popovers grow from the corner they are anchored to, never from the center.
+   ViewBar overrides the origin inline for right-aligned panels. */
+.dropdown-panel,
+.action-menu-panel,
+.filter-menu-panel,
+.view-menu-panel {
+  transform-origin: top left;
+  transition:
+    opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out),
+    transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
+}
+
+@starting-style {
+  .dropdown-panel,
+  .action-menu-panel,
+  .filter-menu-panel,
+  .view-menu-panel {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+}
+
+/* Modals stay centered — no anchor corner — and scale from 0.97 so they never
+   appear out of nothing. The backdrop only fades. */
+.modal-backdrop {
+  overscroll-behavior: contain;
+  transition: opacity var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out);
+}
+
+.modal-dialog {
+  transform-origin: center;
+  transition:
+    opacity var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out),
+    transform var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out);
+}
+
+.modal-backdrop.is-closing {
+  opacity: 0;
+}
+
+.modal-backdrop.is-closing .modal-dialog {
+  opacity: 0;
+  transform: scale(0.97);
+}
+
+.modal-body {
+  overscroll-behavior: contain;
+}
+
+.modal-dialog:focus-visible,
+.side-panel:focus-visible {
+  outline: 3px solid var(--hrms-color-border-blue);
+  outline-offset: 2px;
+}
+
+@starting-style {
+  .modal-backdrop {
+    opacity: 0;
+  }
+
+  .modal-dialog {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+/* The mobile drawer drops out of the header it belongs to. */
+.mobile-nav {
+  overscroll-behavior: contain;
+  transform-origin: top center;
+  transition:
+    opacity var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-drawer),
+    transform var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-drawer);
+}
+
+.mobile-nav-scrim {
+  transition: opacity var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-soft);
+}
+
+@starting-style {
+  .mobile-nav {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  .mobile-nav-scrim {
+    opacity: 0;
+  }
+}
+
+/* Notices and the swapped subnav tab row are conditional renders, so they
+   enter through @starting-style rather than a keyframe. */
+.form-success,
+.app-subnav-tabs {
+  transition:
+    opacity var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out),
+    transform var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out);
+}
+
+@starting-style {
+  .form-success,
+  .app-subnav-tabs {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Tooltips: a 350ms intent delay for the first one in a session, instant after
+   that (the `data-instant` flag the component sets). Portaled and fixed, so no
+   scroll container can clip a label. */
+.tooltip-anchor {
+  display: inline-flex;
+}
+
+.tooltip {
+  position: fixed;
+  /* Above every layered surface, modals included (same layer as the top-most
+     overlay: the tooltip mounts later, so it paints on top). */
+  z-index: var(--hrms-z-index-last-layer);
+  padding: var(--hrms-space-1) var(--hrms-space-2);
+  color: var(--hrms-color-text-inverted);
+  background: var(--hrms-color-background-inverted-primary);
+  border-radius: var(--hrms-radius-sm);
+  box-shadow: var(--hrms-box-shadow-light);
+  font-size: var(--hrms-font-size-xxs);
+  font-weight: var(--hrms-font-weight-medium);
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transform-origin: top center;
+  transition:
+    opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out),
+    transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
+}
+
+.tooltip-top {
+  transform-origin: bottom center;
+}
+
+.tooltip[data-instant] {
+  transition-duration: 0s;
+}
+
+@starting-style {
+  .tooltip {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.97);
+  }
+}
+
+/* Rare surfaces — first login, onboarding, the dashboard's first paint — earn a
+   short cascading entrance. Opacity-only on widgets, whose transform is owned
+   by the drag layer; nothing here blocks interaction. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.auth-card,
+.onboarding-card {
+  animation: rise-in var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out) backwards;
+}
+
+.onboarding-card:nth-of-type(2) {
+  animation-delay: var(--hrms-animation-stagger);
+}
+
+.onboarding-card:nth-of-type(3) {
+  animation-delay: calc(var(--hrms-animation-stagger) * 2);
+}
+
+.onboarding-card:nth-of-type(4) {
+  animation-delay: calc(var(--hrms-animation-stagger) * 3);
+}
+
+.dashboard-widget {
+  animation: fade-in var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out) backwards;
+}
+
+.dashboard-widget:nth-child(2) {
+  animation-delay: var(--hrms-animation-stagger);
+}
+
+.dashboard-widget:nth-child(3) {
+  animation-delay: calc(var(--hrms-animation-stagger) * 2);
+}
+
+.dashboard-widget:nth-child(4) {
+  animation-delay: calc(var(--hrms-animation-stagger) * 3);
+}
+
+.dashboard-widget:nth-child(n + 5) {
+  animation-delay: calc(var(--hrms-animation-stagger) * 4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .icon-button,
+  .nav-pill,
+  .subnav-tab,
+  .mobile-nav-toggle,
+  .mobile-nav-item,
+  .dropdown-nav-item,
+  .action-menu-item,
+  .topbar-search-result,
+  .filter-add-button,
+  .view-bar-button,
+  .filter-menu-option-button,
+  .view-chip,
+  .workspace-chip-button,
+  .dropdown-panel,
+  .action-menu-panel,
+  .filter-menu-panel,
+  .view-menu-panel,
+  .modal-backdrop,
+  .modal-dialog,
+  .mobile-nav,
+  .mobile-nav-scrim,
+  .form-success,
+  .app-subnav-tabs,
+  .app-subnav,
+  .side-panel,
+  .nav-pill-caret,
+  .action-menu-caret,
+  .color-swatch-dot,
+  .org-children,
+  .detail-section-chevron,
+  .onboarding-help-summary svg,
+  .collapse-chevron,
+  .dashboard-getting-started-bar span,
+  .dashboard-getting-started-chevron,
+  .column-header-caret,
+  .org-node-edit,
+  .topbar-search-kbd,
+  .tooltip {
+    transition: none;
+  }
+
+  .auth-card,
+  .onboarding-card,
+  .dashboard-widget {
+    animation: none;
+  }
+
+  .button:active,
+  .icon-button:active,
+  .nav-pill:active,
+  .subnav-tab:active,
+  .mobile-nav-toggle:active,
+  .mobile-nav-item:active,
+  .dropdown-nav-item:active,
+  .action-menu-item:active,
+  .topbar-search-result:active,
+  .filter-add-button:active,
+  .view-bar-button:active,
+  .filter-menu-option-button:active,
+  .view-chip:active,
+  .workspace-chip-button:active {
+    transform: none;
+  }
 }

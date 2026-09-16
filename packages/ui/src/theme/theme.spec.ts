@@ -47,3 +47,35 @@ describe('token contract', () => {
     expect(vars['--hrms-animation-clickable-background-transition']).toBeDefined();
   });
 });
+
+describe('motion tokens', () => {
+  it('exposes the named easing curves as CSS variables', () => {
+    const vars = themeToCssVariables(lightTheme);
+    expect(vars['--hrms-animation-easing-out']).toBe('cubic-bezier(0.23, 1, 0.32, 1)');
+    expect(vars['--hrms-animation-easing-in-out']).toBe('cubic-bezier(0.77, 0, 0.175, 1)');
+    expect(vars['--hrms-animation-easing-drawer']).toBe('cubic-bezier(0.32, 0.72, 0, 1)');
+    expect(vars['--hrms-animation-easing-soft']).toBe('cubic-bezier(0.4, 0, 0.2, 1)');
+  });
+
+  it('keeps every UI duration under the 300ms budget', () => {
+    const durations = lightTheme.animation.duration;
+    for (const [name, value] of Object.entries(durations)) {
+      const seconds = Number.parseFloat(value);
+      if (name === 'slow') {
+        continue;
+      }
+      expect(seconds).toBeLessThanOrEqual(0.3);
+    }
+  });
+
+  it('ships the gentle duration for modals and drawers', () => {
+    expect(lightTheme.animation.duration.gentle).toBe('0.24s');
+  });
+
+  it('exposes delay, stagger, and layer tokens', () => {
+    const vars = themeToCssVariables(lightTheme);
+    expect(vars['--hrms-animation-delay-tooltip']).toBe('350ms');
+    expect(vars['--hrms-animation-stagger']).toBe('40ms');
+    expect(vars['--hrms-z-index-last-layer']).toBe('2147483647');
+  });
+});

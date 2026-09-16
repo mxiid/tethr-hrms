@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom';
 import { useTheme } from '../../providers/theme/useTheme';
 import { FilterBar, type FilterDefinition } from '../filter-bar/FilterBar';
 import type { ViewColumnDescriptor } from '../table/DataTable';
+import { Tooltip } from '../tooltip/Tooltip';
 
 import type { ListViewController } from './useListView';
 
@@ -61,7 +62,11 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
   const [optionsStep, setOptionsStep] = useState<'root' | 'fields'>('root');
   const [naming, setNaming] = useState<NamingState>(null);
   const [draftName, setDraftName] = useState('');
-  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [anchor, setAnchor] = useState<{
+    top: number;
+    left: number;
+    align: 'left' | 'right';
+  } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -87,6 +92,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
     setAnchor({
       top: rect.bottom + 4,
       left: align === 'left' ? Math.max(8, rect.left) : clampPanelLeft(rect),
+      align,
     });
     setPanel(key);
   };
@@ -253,7 +259,11 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
               className="view-menu-panel view-menu-panel-floating"
               ref={panelRef}
               role="menu"
-              style={{ top: anchor.top, left: anchor.left }}
+              style={{
+                top: anchor.top,
+                left: anchor.left,
+                transformOrigin: anchor.align === 'right' ? 'top right' : 'top left',
+              }}
             >
               {panel === 'view' ? (
                 <>
@@ -296,27 +306,29 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                         </button>
                         {isActive ? (
                           <span className="view-menu-row-actions">
-                            <button
-                              aria-label={`Rename ${preset.name}`}
-                              className="icon-button view-menu-icon"
-                              onClick={() => startRename(preset.id, preset.name)}
-                              title="Rename view"
-                              type="button"
-                            >
-                              <IconPencil size={14} stroke={2} />
-                            </button>
-                            <button
-                              aria-label={`Delete ${preset.name}`}
-                              className="icon-button view-menu-icon"
-                              onClick={() => {
-                                view.deletePreset(preset.id);
-                                closePanel();
-                              }}
-                              title="Delete view"
-                              type="button"
-                            >
-                              <IconTrash size={14} stroke={2} />
-                            </button>
+                            <Tooltip label={`Rename ${preset.name}`}>
+                              <button
+                                aria-label={`Rename ${preset.name}`}
+                                className="icon-button view-menu-icon"
+                                onClick={() => startRename(preset.id, preset.name)}
+                                type="button"
+                              >
+                                <IconPencil size={14} stroke={2} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip label={`Delete ${preset.name}`}>
+                              <button
+                                aria-label={`Delete ${preset.name}`}
+                                className="icon-button view-menu-icon"
+                                onClick={() => {
+                                  view.deletePreset(preset.id);
+                                  closePanel();
+                                }}
+                                type="button"
+                              >
+                                <IconTrash size={14} stroke={2} />
+                              </button>
+                            </Tooltip>
                           </span>
                         ) : null}
                       </div>
@@ -384,15 +396,16 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                         </button>
                         {sort ? (
                           <span className="view-menu-row-actions">
-                            <button
-                              aria-label={`Remove sort on ${column.header}`}
-                              className="icon-button view-menu-icon"
-                              onClick={() => view.setSort(column.key, null)}
-                              title="Remove sort"
-                              type="button"
-                            >
-                              <IconX size={14} stroke={2} />
-                            </button>
+                            <Tooltip label={`Remove sort on ${column.header}`}>
+                              <button
+                                aria-label={`Remove sort on ${column.header}`}
+                                className="icon-button view-menu-icon"
+                                onClick={() => view.setSort(column.key, null)}
+                                type="button"
+                              >
+                                <IconX size={14} stroke={2} />
+                              </button>
+                            </Tooltip>
                           </span>
                         ) : null}
                       </div>

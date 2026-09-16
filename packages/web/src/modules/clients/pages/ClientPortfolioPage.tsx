@@ -9,6 +9,7 @@ import {
   toViewColumns,
   type ColumnDefinition,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -235,19 +236,25 @@ export const ClientPortfolioPage = () => {
           </div>
         </div>
 
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
 
         <section className="table-shell" aria-label="Clients">
           <ViewBar
             actions={
-              <button
-                className="icon-button"
-                onClick={() => void refetch()}
-                title="Refresh clients"
-                type="button"
-              >
-                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              </button>
+              <Tooltip label="Refresh clients">
+                <button
+                  aria-label="Refresh clients"
+                  className="icon-button"
+                  onClick={() => void refetch()}
+                  type="button"
+                >
+                  <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                </button>
+              </Tooltip>
             }
             columns={toViewColumns(columns)}
             count={visibleClients.length}

@@ -17,6 +17,7 @@ import { StatusChip } from '../../../../components/chip/StatusChip';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
 import { Modal } from '../../../../components/modal/Modal';
 import { DataTable, toViewColumns, type ColumnDefinition } from '../../../../components/table/DataTable';
+import { Tooltip } from '../../../../components/tooltip/Tooltip';
 import { useListView } from '../../../../components/view-bar/useListView';
 import { ViewBar } from '../../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../../providers/theme/useTheme';
@@ -456,14 +457,16 @@ export const BillingPage = () => {
       width: '12%',
       hideable: false,
       render: (member) => (
-        <button
-          className="icon-button row-hover-action"
-          onClick={() => onRemoveMember(member)}
-          title="Remove membership"
-          type="button"
-        >
-          <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-        </button>
+        <Tooltip label="Remove membership" side="top">
+          <button
+            aria-label="Remove membership"
+            className="icon-button row-hover-action"
+            onClick={() => onRemoveMember(member)}
+            type="button"
+          >
+            <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          </button>
+        </Tooltip>
       ),
     },
   ];
@@ -605,9 +608,16 @@ export const BillingPage = () => {
               <IconSettings size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Billing settings
             </Link>
-            <button className="icon-button" onClick={() => void refetch()} title="Refresh" type="button">
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
+            <Tooltip label="Refresh">
+              <button
+                aria-label="Refresh"
+                className="icon-button"
+                onClick={() => void refetch()}
+                type="button"
+              >
+                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            </Tooltip>
           </div>
         </header>
 

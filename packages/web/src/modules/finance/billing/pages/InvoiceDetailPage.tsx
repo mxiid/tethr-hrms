@@ -15,6 +15,7 @@ import {
   type ColumnDefinition,
   type DraftRow,
 } from '../../../../components/table/DataTable';
+import { Tooltip } from '../../../../components/tooltip/Tooltip';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   ADD_INVOICE_LINE_MUTATION,
@@ -305,14 +306,16 @@ export const InvoiceDetailPage = () => {
           label: 'Actions',
           width: '7%',
           render: (line) => (
-            <button
-              className="icon-button row-hover-action"
-              onClick={() => void onDeleteLine(line.id)}
-              title="Remove line"
-              type="button"
-            >
-              <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
+            <Tooltip label="Remove line" side="top">
+              <button
+                aria-label="Remove line"
+                className="icon-button row-hover-action"
+                onClick={() => void onDeleteLine(line.id)}
+                type="button"
+              >
+                <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            </Tooltip>
           ),
         },
       ]
@@ -443,7 +446,11 @@ export const InvoiceDetailPage = () => {
           </header>
 
           {error ? <p className="auth-error" role="alert">{error}</p> : null}
-          {message ? <p className="form-success">{message}</p> : null}
+          {message ? (
+            <p className="form-success" role="status">
+              {message}
+            </p>
+          ) : null}
 
           <section className="table-shell" aria-label="Invoice lines">
             <div className="table-title-row">

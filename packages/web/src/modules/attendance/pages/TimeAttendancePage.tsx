@@ -251,7 +251,11 @@ export const TimeAttendancePage = () => {
           </span>
         </div>
 
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
         {actionError ? (
           <p className="auth-error" role="alert">
             {actionError}

@@ -8,6 +8,7 @@ import { StatusChip } from '../../../../components/chip/StatusChip';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
 import { Modal } from '../../../../components/modal/Modal';
 import { SkeletonRows } from '../../../../components/skeleton/Skeleton';
+import { Tooltip } from '../../../../components/tooltip/Tooltip';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   PayrollReadinessBanner,
@@ -351,7 +352,11 @@ export const PayrollRunDetailPage = () => {
         </header>
 
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
-        {message ? <p className="form-success">{message}</p> : null}
+        {message ? (
+          <p className="form-success" role="status">
+            {message}
+          </p>
+        ) : null}
 
         {run?.isStale && !isFinalized ? (
           <p className="field-hint-warning" role="status">
@@ -448,19 +453,21 @@ export const PayrollRunDetailPage = () => {
                         </td>
                         {!isFinalized ? (
                           <td data-label="Actions">
-                            <button
-                              className="icon-button row-hover-action"
-                              title="Remove line"
-                              type="button"
-                              onClick={() => {
-                                void runAction(
-                                  () => removeLine({ variables: { lineId: line.id, runId } }),
-                                  'Line removed.',
-                                );
-                              }}
-                            >
-                              <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                            </button>
+                            <Tooltip label="Remove line" side="top">
+                              <button
+                                aria-label="Remove line"
+                                className="icon-button row-hover-action"
+                                type="button"
+                                onClick={() => {
+                                  void runAction(
+                                    () => removeLine({ variables: { lineId: line.id, runId } }),
+                                    'Line removed.',
+                                  );
+                                }}
+                              >
+                                <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                              </button>
+                            </Tooltip>
                           </td>
                         ) : null}
                       </tr>

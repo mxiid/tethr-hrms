@@ -343,7 +343,11 @@ export const MyProfilePage = () => {
         </aside>
 
         <section className="profile-content">
-          {notice ? <p className="form-success">{notice}</p> : null}
+          {notice ? (
+            <p className="form-success" role="status">
+              {notice}
+            </p>
+          ) : null}
           {error ? (
             <p className="auth-error" role="alert">
               {error}

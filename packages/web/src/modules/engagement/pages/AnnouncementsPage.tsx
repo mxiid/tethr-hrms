@@ -150,7 +150,11 @@ export const AnnouncementsPage = () => {
           ) : null}
         </header>
 
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
 
         <div className="metric-strip metric-strip-2 employee-metrics">
           <div className="metric-card">

@@ -1,12 +1,18 @@
 import {
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
 import { useAtom, useSetAtom } from 'jotai';
 import { useEffect, useRef } from 'react';
 
@@ -39,7 +45,10 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
   const [layout, setLayout] = useAtom(activeViewWidgetsAtom);
   const [seeded, setSeeded] = useAtom(dashboardSeededAtom);
   const setViews = useSetAtom(dashboardViewsState);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   // Seed the active view once per session from the portal's default layout.

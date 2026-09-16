@@ -1401,7 +1401,11 @@ export const EmployeeProfilePage = () => {
             label={statusLabels[detailEmployee.employmentStatus]}
           />
 
-          {photoNotice ? <p className="form-success">{photoNotice}</p> : null}
+          {photoNotice ? (
+            <p className="form-success" role="status">
+              {photoNotice}
+            </p>
+          ) : null}
 
           <div className="field-list profile-identity-facts">
             <div className="field-row">

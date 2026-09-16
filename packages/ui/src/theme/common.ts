@@ -38,8 +38,24 @@ export const animation = {
   duration: {
     instant: '0.075s',
     fast: '0.15s',
+    gentle: '0.24s',
     normal: '0.3s',
     slow: '1.5s',
+  },
+  // The intent wait before the first tooltip, and the per-item stagger for
+  // entrance cascades. Both are consumed in JS and CSS.
+  delay: {
+    tooltip: '350ms',
+  },
+  stagger: '40ms',
+  // Strong custom curves — the built-in CSS easings are too weak to feel
+  // intentional (design.md §2.3). `out` is the default for UI entrances,
+  // `inOut` for on-screen movement, `drawer` for sheets, `soft` for fades.
+  easing: {
+    out: 'cubic-bezier(0.23, 1, 0.32, 1)',
+    inOut: 'cubic-bezier(0.77, 0, 0.175, 1)',
+    drawer: 'cubic-bezier(0.32, 0.72, 0, 1)',
+    soft: 'cubic-bezier(0.4, 0, 0.2, 1)',
   },
   // Default transition for clickable elements (design.md §2.3).
   clickableBackgroundTransition: 'background 0.1s ease',

@@ -70,7 +70,11 @@ export const TaxSlabsPanel = () => {
             {formError}
           </p>
         ) : null}
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
         <p className="field-hint">
           Active ladder:{' '}
           <strong>

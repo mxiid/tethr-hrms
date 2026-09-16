@@ -12,6 +12,7 @@ import {
   toViewColumns,
   type ColumnDefinition,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -459,14 +460,16 @@ export const WorkspaceUsersPage = () => {
         <section className="table-shell" aria-label="Workspace users">
           <ViewBar
             actions={
-              <button
-                className="icon-button"
-                onClick={() => void refetch()}
-                title="Refresh users"
-                type="button"
-              >
-                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              </button>
+              <Tooltip label="Refresh users">
+                <button
+                  aria-label="Refresh users"
+                  className="icon-button"
+                  onClick={() => void refetch()}
+                  type="button"
+                >
+                  <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                </button>
+              </Tooltip>
             }
             columns={toViewColumns(columns)}
             count={visibleUsers.length}

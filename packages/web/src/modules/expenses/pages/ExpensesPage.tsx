@@ -359,7 +359,11 @@ export const ExpensesPage = () => {
             </div>
 
             {errorMessage ? <p className="auth-error" role="alert">{errorMessage}</p> : null}
-            {successMessage ? <p className="form-success">{successMessage}</p> : null}
+            {successMessage ? (
+              <p className="form-success" role="status">
+                {successMessage}
+              </p>
+            ) : null}
 
             <div className="field-list">
               <div className="field-row">

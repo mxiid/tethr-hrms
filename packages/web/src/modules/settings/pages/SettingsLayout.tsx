@@ -2,6 +2,7 @@ import { IconLogout, IconMoon, IconSun, IconX } from '@tabler/icons-react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { portalHome } from '../../../app/portal';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { visibleSettingsTabs } from '../settingsTabs';
@@ -46,15 +47,16 @@ export const SettingsLayout = () => {
       <aside className="settings-sidebar">
         <div className="settings-sidebar-header">
           <h1 className="settings-sidebar-title">Settings</h1>
-          <button
-            aria-label="Close settings"
-            className="icon-button"
-            onClick={close}
-            title="Close settings"
-            type="button"
-          >
-            <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-          </button>
+          <Tooltip label="Close settings">
+            <button
+              aria-label="Close settings"
+              className="icon-button"
+              onClick={close}
+              type="button"
+            >
+              <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            </button>
+          </Tooltip>
         </div>
 
         <nav aria-label="Settings sections" className="settings-sidebar-nav">
