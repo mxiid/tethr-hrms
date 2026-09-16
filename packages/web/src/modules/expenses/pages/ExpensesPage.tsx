@@ -1,10 +1,12 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatMoney } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import { IconExternalLink, IconReceipt } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import { DataTable, toViewColumns, type ColumnDefinition } from '../../../components/table/DataTable';
@@ -73,9 +75,6 @@ const STATUS_LABELS: Record<string, string> = {
   paid: 'Paid',
 };
 
-const formatMoney = (amount: number, currency: string): string =>
-  new Intl.NumberFormat('en', { currency, style: 'currency' }).format(amount);
-
 const formatDate = (value: string | null): string => (value ? value.slice(0, 10) : '—');
 
 const CLAIM_COLUMNS: readonly ColumnDefinition<ExpenseClaimRecord>[] = [
@@ -139,6 +138,7 @@ const CLAIM_COLUMNS: readonly ColumnDefinition<ExpenseClaimRecord>[] = [
 
 export const ExpensesPage = () => {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const isTethr = user?.portal === 'tethr';
   const roleKeys = user?.roleKeys ?? [];
   const canApprove =
@@ -207,14 +207,23 @@ export const ExpensesPage = () => {
       await refetch();
       setSuccessMessage(success);
     } catch (cause) {
-      setErrorMessage(cause instanceof Error ? cause.message : 'Operation failed.');
+      setErrorMessage(cause instanceof Error ? cause.message : 'Could not update the claim. Refresh and try again.');
     }
   };
 
   const sourceOrganizationId = selected?.organizationId ?? undefined;
 
-  const onDecide = (decision: 'approved' | 'rejected'): void => {
+  const onDecide = async (decision: 'approved' | 'rejected'): Promise<void> => {
     if (!selected) return;
+    if (decision === 'rejected') {
+      const confirmed = await confirm({
+        title: 'Reject this claim?',
+        body: 'The employee will see it as rejected and can file a new claim.',
+        confirmLabel: 'Reject',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     void run(
       () =>
         decideClaim({
@@ -434,6 +443,13 @@ export const ExpensesPage = () => {
                     },
                   ] satisfies readonly ColumnDefinition<ExpenseLineRecord>[]
                 }
+                emptyState={
+                  <EmptyState
+                    icon={IconReceipt}
+                    title="No lines on this claim"
+                    description="Lines capture the individual expenses that make up the claim total."
+                  />
+                }
                 loading={false}
                 rows={selected.lines}
                 getRowKey={(line) => line.id}
@@ -468,7 +484,7 @@ export const ExpensesPage = () => {
                     className="button button-primary"
                     disabled={deciding}
                     type="button"
-                    onClick={() => onDecide('approved')}
+                    onClick={() => void onDecide('approved')}
                   >
                     {deciding ? 'Saving…' : 'Approve'}
                   </button>
@@ -476,7 +492,7 @@ export const ExpensesPage = () => {
                     className="button button-secondary"
                     disabled={deciding}
                     type="button"
-                    onClick={() => onDecide('rejected')}
+                    onClick={() => void onDecide('rejected')}
                   >
                     Reject
                   </button>

@@ -266,7 +266,7 @@ export const OnboardingFlow = ({
           <button className="button button-primary" disabled={submitting} type="submit">
             {isLastStep ? (
               submitting ? (
-                'Saving...'
+                'Saving…'
               ) : (
                 submitLabel
               )

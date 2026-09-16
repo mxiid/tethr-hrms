@@ -130,7 +130,7 @@ export const SignUpPage = () => {
             </div>
           ) : legalNameAlreadyUsed ? (
             <p className="field-hint field-hint-warning" role="status">
-              A workspace named &quot;{organizationName.trim()}&quot; already exists. Workspace
+              A workspace named &ldquo;{organizationName.trim()}&rdquo; already exists. Workspace
               names are unique — try a different name.
             </p>
           ) : null}

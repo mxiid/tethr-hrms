@@ -1,4 +1,4 @@
-import { formatDate, formatDateTime, formatMoney } from './formatting';
+import { formatDate, formatDateTime, formatMoney, todayDateKey } from './formatting';
 
 describe('formatDate', () => {
   it('formats date-only strings as calendar dates without a UTC shift', () => {
@@ -36,6 +36,16 @@ describe('formatDateTime', () => {
 
   it('degrades to an em dash for invalid values', () => {
     expect(formatDateTime(null)).toBe('—');
+  });
+});
+
+describe('todayDateKey', () => {
+  it('renders the local calendar day as YYYY-MM-DD', () => {
+    expect(todayDateKey(new Date(2026, 8, 5, 10, 30))).toBe('2026-09-05');
+  });
+
+  it('keeps a late local time on the same calendar day', () => {
+    expect(todayDateKey(new Date(2026, 8, 15, 23, 59))).toBe('2026-09-15');
   });
 });
 

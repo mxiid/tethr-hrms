@@ -212,8 +212,8 @@ export const BenefitPlansPanel = () => {
                     </button>
                     <span className="employee-secondary"> · {plan.code}</span>
                   </td>
-                  <td data-label="Employee / month">{formatMoney(plan.employeeContributionAmount)}</td>
-                  <td data-label="Employer / month">{formatMoney(plan.employerContributionAmount)}</td>
+                  <td className="tabular-nums" data-label="Employee / month">{formatMoney(plan.employeeContributionAmount)}</td>
+                  <td className="tabular-nums" data-label="Employer / month">{formatMoney(plan.employerContributionAmount)}</td>
                   <td data-label="Pre-tax">{plan.reducesTaxable ? 'Yes' : 'No'}</td>
                   <td data-label="Status">{plan.isActive ? 'Active' : 'Inactive'}</td>
                 </tr>

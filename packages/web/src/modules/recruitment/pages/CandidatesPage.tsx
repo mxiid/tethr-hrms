@@ -2,6 +2,7 @@ import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import {
   APPLICATION_OUTCOMES,
   APPLICATION_STAGES,
+  formatDate,
   type ApplicationOutcome,
   type ApplicationStage,
 } from '@hrms/shared';
@@ -16,6 +17,7 @@ import {
 import { useState } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { focusFirstByName } from '../../../components/form/validation';
 import { FieldGroup } from '../../../components/record-panel/FieldGroup';
@@ -130,11 +132,6 @@ const outcomeLabels: Record<ApplicationOutcome, string> = {
   hired: 'Hired',
 };
 
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(value),
-  );
-
 type CandidateDraft = {
   fullName: string;
   email: string;
@@ -153,6 +150,7 @@ const emptyCandidateDraft = (): CandidateDraft => ({
 
 export const CandidatesPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, error, refetch } = useQuery<{
     readonly candidates: readonly CandidateRecord[];
   }>(CANDIDATES_QUERY);
@@ -542,6 +540,24 @@ export const CandidatesPage = () => {
     action: 'send' | 'accept' | 'withdraw' | 'decline',
     offer: OfferRecord,
   ): Promise<void> => {
+    if (action === 'withdraw') {
+      const confirmed = await confirm({
+        title: 'Withdraw this offer?',
+        body: 'The candidate will see the offer as withdrawn.',
+        confirmLabel: 'Withdraw',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
+    if (action === 'decline') {
+      const confirmed = await confirm({
+        title: 'Record this decline?',
+        body: 'The offer will be marked as declined by the candidate.',
+        confirmLabel: 'Record decline',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     setOfferError(null);
     try {
       if (action === 'send') {
@@ -688,7 +704,7 @@ export const CandidatesPage = () => {
                             />
                             <span className="employee-secondary">
                               {offer.salaryCurrency} {offer.baseSalary.toLocaleString()} · starts{' '}
-                              {offer.startDate}
+                              {formatDate(offer.startDate)}
                             </span>
                             {offer.status === 'draft' ? (
                               <button

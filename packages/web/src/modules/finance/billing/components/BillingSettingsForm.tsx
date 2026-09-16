@@ -59,7 +59,7 @@ export const BillingSettingsForm = () => {
 
   const readFileAsDataUrl = (file: File, setter: (dataUrl: string) => void): void => {
     if (file.size > 300_000) {
-      setFormError('Image must be under 300 KB.');
+      setFormError('Image must be under 300\u00A0KB.');
       return;
     }
     const reader = new FileReader();
@@ -127,7 +127,7 @@ export const BillingSettingsForm = () => {
 
           <h3 className="section-title">Letterhead</h3>
           <div className="field">
-            <label htmlFor="invoice-logo">Invoice logo (PNG/JPG, ≤300 KB)</label>
+            <label htmlFor="invoice-logo">Invoice logo (PNG/JPG, ≤{'300\u00A0KB'})</label>
             <div className="file-input">
               <label className="file-input-trigger" htmlFor="invoice-logo">
                 Choose file
@@ -152,12 +152,15 @@ export const BillingSettingsForm = () => {
           {config?.invoiceLogoDataUrl || logoDataUrl ? (
             <img
               alt="Invoice logo preview"
+              height={60}
+              loading="lazy"
               src={logoDataUrl || config?.invoiceLogoDataUrl || undefined}
-              style={{ maxHeight: 60, marginBottom: 8, objectFit: 'contain' }}
+              style={{ maxHeight: 60, maxWidth: '100%', marginBottom: 8, objectFit: 'contain' }}
+              width={200}
             />
           ) : null}
           <div className="field">
-            <label htmlFor="signature-image">Signature image (≤300 KB)</label>
+            <label htmlFor="signature-image">Signature image (≤{'300\u00A0KB'})</label>
             <div className="file-input">
               <label className="file-input-trigger" htmlFor="signature-image">
                 Choose file
@@ -182,8 +185,11 @@ export const BillingSettingsForm = () => {
           {config?.signatureDataUrl || signatureDataUrl ? (
             <img
               alt="Signature preview"
+              height={40}
+              loading="lazy"
               src={signatureDataUrl || config?.signatureDataUrl || undefined}
-              style={{ maxHeight: 40, marginBottom: 8, objectFit: 'contain' }}
+              style={{ maxHeight: 40, maxWidth: '100%', marginBottom: 8, objectFit: 'contain' }}
+              width={120}
             />
           ) : null}
 

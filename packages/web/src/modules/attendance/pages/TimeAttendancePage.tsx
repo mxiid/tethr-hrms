@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { todayDateKey } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
@@ -12,6 +13,7 @@ import {
 import { useMemo, useState, type FormEvent } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { Modal } from '../../../components/modal/Modal';
 import { SkeletonRows } from '../../../components/skeleton/Skeleton';
@@ -66,9 +68,7 @@ const STATUS_COLORS: Record<string, MainColorName> = {
 };
 
 const isoDaysAgo = (days: number): string =>
-  new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-
-const today = (): string => new Date().toISOString().slice(0, 10);
+  todayDateKey(new Date(Date.now() - days * 86_400_000));
 
 export const TimeAttendancePage = () => {
   const { theme } = useTheme();
@@ -80,7 +80,7 @@ export const TimeAttendancePage = () => {
 
   const [employeeId, setEmployeeId] = useState('');
   const [from, setFrom] = useState(isoDaysAgo(30));
-  const [to, setTo] = useState(today());
+  const [to, setTo] = useState(todayDateKey());
   const [tab, setTab] = useState<TabKey>('entries');
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -115,6 +115,7 @@ export const TimeAttendancePage = () => {
     variables: { employeeId: activeEmployeeId },
   });
 
+  const confirm = useConfirm();
   const [recordTimeEntry, { loading: recording }] = useMutation(RECORD_TIME_ENTRY_MUTATION);
   const [openTimesheet, { loading: opening }] = useMutation(OPEN_TIMESHEET_MUTATION);
   const [submitTimesheet] = useMutation(SUBMIT_TIMESHEET_MUTATION);
@@ -125,10 +126,10 @@ export const TimeAttendancePage = () => {
   const timesheets = timesheetsData?.timesheets ?? [];
   const totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
 
-  const [entryForm, setEntryForm] = useState({ date: today(), hours: '8', note: '' });
+  const [entryForm, setEntryForm] = useState({ date: todayDateKey(), hours: '8', note: '' });
   const [periodForm, setPeriodForm] = useState({
     periodStart: isoDaysAgo(14),
-    periodEnd: today(),
+    periodEnd: todayDateKey(),
   });
   const [openForm, setOpenForm] = useState<'entry' | 'period' | null>(null);
 
@@ -158,7 +159,7 @@ export const TimeAttendancePage = () => {
           },
         },
       });
-      setEntryForm({ date: today(), hours: '8', note: '' });
+      setEntryForm({ date: todayDateKey(), hours: '8', note: '' });
       await refetchEntries();
     }, 'Time entry recorded');
     if (ok) setOpenForm(null);
@@ -185,6 +186,15 @@ export const TimeAttendancePage = () => {
     timesheetId: string,
     kind: 'submit' | 'approve' | 'lock',
   ): Promise<void> => {
+    if (kind === 'lock') {
+      const confirmed = await confirm({
+        title: 'Lock this timesheet?',
+        body: 'The timesheet will be closed and its hours can no longer be edited.',
+        confirmLabel: 'Lock',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     const mutations = {
       submit: submitTimesheet,
       approve: approveTimesheet,
@@ -544,7 +554,7 @@ export const TimeAttendancePage = () => {
           </div>
           <button className="button button-primary button-full" disabled={recording} type="submit">
             <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {recording ? 'Recording...' : 'Record hours'}
+            {recording ? 'Recording…' : 'Record hours'}
           </button>
         </form>
       </Modal>
@@ -594,7 +604,7 @@ export const TimeAttendancePage = () => {
           </div>
           <button className="button button-primary button-full" disabled={opening} type="submit">
             <IconCalendarPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {opening ? 'Opening...' : 'Open timesheet'}
+            {opening ? 'Opening…' : 'Open timesheet'}
           </button>
         </form>
       </Modal>

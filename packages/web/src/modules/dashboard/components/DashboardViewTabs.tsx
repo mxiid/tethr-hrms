@@ -1,6 +1,7 @@
 import { IconPencil, IconX } from '@tabler/icons-react';
 import { useState, type KeyboardEvent } from 'react';
 
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { prefersCoarsePointer } from '../../../components/form/pointer';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useDashboardViews } from '../hooks/useDashboardViews';
@@ -10,6 +11,7 @@ import { CreateViewPanel } from './CreateViewPanel';
 
 export const DashboardViewTabs = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { views, activeViewId, switchView, renameView, deleteView } = useDashboardViews();
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
@@ -23,6 +25,17 @@ export const DashboardViewTabs = () => {
     const trimmed = draftName.trim();
     if (trimmed) renameView(id, trimmed);
     setRenamingId(null);
+  };
+
+  const onDeleteView = async (view: DashboardView): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Delete this dashboard view?',
+      body: 'The view and its widget layout will be removed from this dashboard.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    deleteView(view.id);
   };
 
   const onTabListKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -105,7 +118,7 @@ export const DashboardViewTabs = () => {
                   <button
                     aria-label={`Delete ${view.name}`}
                     className="icon-button"
-                    onClick={() => deleteView(view.id)}
+                    onClick={() => void onDeleteView(view)}
                     type="button"
                   >
                     <IconX aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />

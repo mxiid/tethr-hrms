@@ -52,7 +52,7 @@ export const PayrollReadinessBanner = ({ readiness }: Props) => {
       <div className="payroll-readiness__head">
         <IconAlertTriangle aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
         <span>
-          {readiness.hardBlockerCount} employee{readiness.hardBlockerCount === 1 ? '' : 's'} can&apos;t
+          {readiness.hardBlockerCount} employee{readiness.hardBlockerCount === 1 ? '' : 's'} can&rsquo;t
           be paid
           {readiness.warningCount > 0 ? ` · ${readiness.warningCount} warning${readiness.warningCount === 1 ? '' : 's'}` : ''}
         </span>

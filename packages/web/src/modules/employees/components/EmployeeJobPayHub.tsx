@@ -1,4 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { formatDate, todayDateKey } from '@hrms/shared';
 import {
   IconAlertTriangle,
   IconCircleCheck,
@@ -127,7 +128,7 @@ export const EmployeeJobPayHub = ({
   canApproveBankChanges,
 }: Props) => {
   const { theme } = useTheme();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateKey();
 
   const { data: salaryData } = useQuery<{ readonly salaryRevisions: readonly SalaryRevisionRecord[] }>(
     EMPLOYEE_SALARY_HISTORY_QUERY,
@@ -296,9 +297,9 @@ export const EmployeeJobPayHub = ({
                         {payslip.paidDays}/{payslip.standardWorkingDays}
                         {payslip.lopDays > 0 ? ` · LOP ${payslip.lopDays}` : ''}
                       </td>
-                      <td>{formatMoney(payslip.grossAmount, payslip.currency)}</td>
-                      <td>{formatMoney(payslip.incomeTaxAmount, payslip.currency)}</td>
-                      <td>
+                      <td className="tabular-nums">{formatMoney(payslip.grossAmount, payslip.currency)}</td>
+                      <td className="tabular-nums">{formatMoney(payslip.incomeTaxAmount, payslip.currency)}</td>
+                      <td className="tabular-nums">
                         <strong>{formatMoney(payslip.netPayAmount, payslip.currency)}</strong>
                       </td>
                       <td>
@@ -336,7 +337,7 @@ export const EmployeeJobPayHub = ({
                   <strong>{formatMoney(bonus.amount, bonus.currency)}</strong>
                   <span className="employee-secondary"> · bonus ({bonus.reason})</span>
                 </span>
-                <span className="employee-secondary">{bonus.awardDate}</span>
+                <span className="employee-secondary">{formatDate(bonus.awardDate)}</span>
               </li>
             ))}
             {adjustments.map((adjustment) => (

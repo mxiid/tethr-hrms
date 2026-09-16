@@ -47,12 +47,44 @@ body,
   margin: 0;
 }
 
+/* The document owns the scheme so pre-mount scrollbars and native controls
+   follow the theme; the provider keeps it in step at runtime. */
+html {
+  color-scheme: light;
+}
+
 body {
   background: var(--hrms-color-background-primary);
   color: var(--hrms-color-text-primary);
   font-family: var(--hrms-font-family-ui);
   font-size: var(--hrms-font-size-sm);
   line-height: var(--hrms-line-height-lg);
+}
+
+/* Self-hosted Inter (latin): preloaded in index.html, `swap` keeps text visible
+   while the face loads. Weights mirror the typography tokens. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('/fonts/inter-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url('/fonts/inter-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url('/fonts/inter-latin-600-normal.woff2') format('woff2');
 }
 
 button,
@@ -1458,8 +1490,8 @@ button,
   position: absolute;
   right: 2px;
   bottom: 2px;
-  width: 14px;
-  height: 14px;
+  width: 24px;
+  height: 24px;
   cursor: nwse-resize;
   touch-action: none;
 }
@@ -1467,8 +1499,8 @@ button,
 .dashboard-widget-resize-handle::after {
   content: '';
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  right: 5px;
+  bottom: 5px;
   width: 6px;
   height: 6px;
   border-right: 2px solid var(--hrms-color-border-strong);
@@ -1943,6 +1975,11 @@ button,
   font-variant-numeric: tabular-nums;
 }
 
+/* Numbers that should keep a fixed advance width outside the data table. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
 .employee-table-wrap {
   overflow: auto;
   max-height: min(72vh, 760px);
@@ -1998,6 +2035,14 @@ button,
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
+}
+
+/* Long tables skip rendering rows that are far off screen; the intrinsic size
+   keeps the scrollbar stable until a row has rendered once. */
+.data-table tbody tr,
+.employee-table tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
 }
 
 .employee-table th,
@@ -3672,7 +3717,7 @@ button,
 .filter-chip-remove {
   display: grid;
   place-items: center;
-  width: 20px;
+  width: 24px;
   height: 100%;
   padding: 0;
   color: inherit;
@@ -4093,6 +4138,10 @@ button,
   height: 16px;
   margin: 0;
   accent-color: var(--hrms-color-accent-accent9);
+}
+
+label.record-field-label {
+  cursor: pointer;
 }
 
 /* The name fields that live in the panel header while creating a record. */
@@ -5787,6 +5836,7 @@ button,
 .announcement-body {
   margin: 0;
   color: var(--hrms-color-text-secondary);
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -5805,6 +5855,7 @@ button,
 .request-note p {
   margin: var(--hrms-space-2) 0 0;
   color: var(--hrms-color-text-secondary);
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 

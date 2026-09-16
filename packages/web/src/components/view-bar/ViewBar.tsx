@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { createPortal } from 'react-dom';
 
 import { useTheme } from '../../providers/theme/useTheme';
+import { useConfirm } from '../confirm/ConfirmProvider';
 import { FilterBar, type FilterDefinition } from '../filter-bar/FilterBar';
 import { focusFirstByName } from '../form/validation';
 import { handleMenuArrowKeys } from '../menu/menuKeyboard';
@@ -60,6 +61,7 @@ const clampPanelLeft = (rect: DOMRect): number =>
  */
 export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: ViewBarProps) => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const [panel, setPanel] = useState<PanelKey | null>(null);
   const [optionsStep, setOptionsStep] = useState<'root' | 'fields'>('root');
   const [naming, setNaming] = useState<NamingState>(null);
@@ -208,6 +210,18 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
     closePanelAndRestore();
   };
 
+  const onDeletePreset = async (id: string): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Delete this view?',
+      body: 'The saved view, its filters, and its column choices will be removed.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    view.deletePreset(id);
+    closePanelAndRestore();
+  };
+
   const onCopyLink = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -353,10 +367,7 @@ export const ViewBar = ({ view, viewLabel, count, filters, columns, actions }: V
                               <button
                                 aria-label={`Delete ${preset.name}`}
                                 className="icon-button view-menu-icon"
-                                onClick={() => {
-                                  view.deletePreset(preset.id);
-                                  closePanelAndRestore();
-                                }}
+                                onClick={() => void onDeletePreset(preset.id)}
                                 type="button"
                               >
                                 <IconTrash aria-hidden="true" size={14} stroke={2} />

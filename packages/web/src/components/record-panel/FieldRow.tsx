@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import { prefersCoarsePointer } from '../form/pointer';
 
@@ -72,6 +72,7 @@ export const FieldRow = ({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const fieldName = name ?? nameFromLabel(label);
+  const fieldId = useId();
 
   useEffect(() => {
     if (editing) setDraft(value);
@@ -137,10 +138,10 @@ export const FieldRow = ({
     if (type === 'checkbox') {
       return (
         <input
-          aria-label={label}
           checked={editorValue === 'true'}
           className="record-field-checkbox"
           disabled={readOnly}
+          id={fieldId}
           name={fieldName}
           onChange={(event) => handleChange(event.target.checked ? 'true' : 'false')}
           type="checkbox"
@@ -191,16 +192,30 @@ export const FieldRow = ({
     );
   };
 
+  const labelContent = (
+    <>
+      {label}
+      {required ? (
+        <span aria-hidden="true" className="record-field-required">
+          *
+        </span>
+      ) : null}
+    </>
+  );
+  // A rendered checkbox shares its label with the control (one hit target, no
+  // dead zone); every other control is named directly, so the label stays a
+  // plain span there.
+  const labelIsForControl = type === 'checkbox' && showEditor;
+
   return (
     <div className="record-field">
-      <span className="record-field-label">
-        {label}
-        {required ? (
-          <span aria-hidden="true" className="record-field-required">
-            *
-          </span>
-        ) : null}
-      </span>
+      {labelIsForControl ? (
+        <label className="record-field-label" htmlFor={fieldId}>
+          {labelContent}
+        </label>
+      ) : (
+        <span className="record-field-label">{labelContent}</span>
+      )}
       <span className="record-field-value">
         {showEditor ? (
           renderEditor()

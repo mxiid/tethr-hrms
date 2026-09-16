@@ -240,7 +240,7 @@ export const WorkspaceOnboardingForm = ({
                 value={form.adminEmail}
                 onChange={(event) => setField('adminEmail', event.target.value)}
               />
-              <p className="field-hint">Someone on the client&apos;s side, not on your team.</p>
+              <p className="field-hint">Someone on the client&rsquo;s side, not on your team.</p>
             </div>
             <div className="field">
               <label htmlFor="client-admin-password">

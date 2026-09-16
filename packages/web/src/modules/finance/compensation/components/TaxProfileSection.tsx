@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatDate, todayDateKey } from '@hrms/shared';
 import { IconPencil } from '@tabler/icons-react';
 import { useState, type FormEvent } from 'react';
 
@@ -29,7 +30,7 @@ const formatAmount = (value: number): string =>
   );
 
 const formatPeriod = (profile: TaxProfileRecord): string =>
-  `${profile.validFrom} → ${profile.validTo ?? 'open'}`;
+  `${formatDate(profile.validFrom)} → ${profile.validTo ? formatDate(profile.validTo) : 'open'}`;
 
 // The employee's effective-dated withholding facts, on the Job & Pay tab:
 // what payroll will apply and the history of changes. Roles holding
@@ -60,7 +61,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
   const [priorIncome, setPriorIncome] = useState('');
   const [credit, setCredit] = useState('');
   const [fixed, setFixed] = useState('');
-  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [effectiveDate, setEffectiveDate] = useState(() => todayDateKey());
   const [note, setNote] = useState('');
 
   const profile = current.data?.employeeTaxProfile ?? null;

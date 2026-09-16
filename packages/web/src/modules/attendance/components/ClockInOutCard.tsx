@@ -59,7 +59,7 @@ export const ClockInOutCard = () => {
             onClick={() => void clock.clockIn()}
           >
             <IconPlayerPlay aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {clock.clockingIn ? 'Checking in...' : 'Check in'}
+            {clock.clockingIn ? 'Checking in…' : 'Check in'}
           </button>
           <button
             className="button button-secondary"
@@ -68,7 +68,7 @@ export const ClockInOutCard = () => {
             onClick={() => void clock.clockOut()}
           >
             <IconPlayerStop aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {clock.clockingOut ? 'Checking out...' : 'Check out'}
+            {clock.clockingOut ? 'Checking out…' : 'Check out'}
           </button>
         </div>
       </section>

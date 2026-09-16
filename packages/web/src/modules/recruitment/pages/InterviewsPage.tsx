@@ -1,5 +1,10 @@
 import { useMutation, useQuery } from '@apollo/client';
-import { INTERVIEW_OUTCOMES, type InterviewOutcome, type InterviewStatus } from '@hrms/shared';
+import {
+  formatDateTime,
+  INTERVIEW_OUTCOMES,
+  type InterviewOutcome,
+  type InterviewStatus,
+} from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
@@ -10,6 +15,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import {
@@ -94,17 +100,9 @@ const outcomeLabels: Record<InterviewOutcome, string> = {
   noShow: 'No-show',
 };
 
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
-
 export const InterviewsPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, error, refetch } = useQuery<{
     readonly interviews: readonly InterviewRecord[];
   }>(INTERVIEWS_QUERY);
@@ -271,6 +269,15 @@ export const InterviewsPage = () => {
   };
 
   const onStatus = async (interview: InterviewRecord, status: InterviewStatus): Promise<void> => {
+    if (status === 'cancelled') {
+      const confirmed = await confirm({
+        title: 'Cancel this interview?',
+        body: 'The interview will be cancelled and the panel will see it as cancelled.',
+        confirmLabel: 'Cancel',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     await updateInterview({ variables: { input: { interviewId: interview.id, status } } });
     await refetch();
   };
@@ -285,6 +292,13 @@ export const InterviewsPage = () => {
   };
 
   const onWithdraw = async (feedback: FeedbackRecord): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Withdraw this feedback?',
+      body: 'The scorecard will be removed from this interview.',
+      confirmLabel: 'Withdraw',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     await withdrawFeedback({ variables: { input: { feedbackId: feedback.id } } });
     await refetch();
   };

@@ -1,5 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
-import type { ApprovalStatus } from '@hrms/shared';
+import { formatDate, formatDateTime, todayDateKey, type ApprovalStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconCalendarEvent,
@@ -200,16 +200,11 @@ const QUICK_LINKS: ReadonlyArray<{
   },
 ];
 
-const today = (): string => new Date().toISOString().slice(0, 10);
 const addDays = (date: Date, amount: number): string => {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
-  return next.toISOString().slice(0, 10);
+  return todayDateKey(next);
 };
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
 const formatMonth = (value: string): string =>
   new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(
     new Date(`${value}T00:00:00`),
@@ -218,14 +213,6 @@ const formatDay = (value: string): string =>
   new Intl.DateTimeFormat('en', { day: '2-digit' }).format(new Date(`${value}T00:00:00`));
 const formatWeekday = (value: string): string =>
   new Intl.DateTimeFormat('en', { weekday: 'short' }).format(new Date(`${value}T00:00:00`));
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
 
 const requestColor: Record<ApprovalStatus, MainColorName> = {
   pending: 'amber',
@@ -281,7 +268,7 @@ const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
           onClick={() => void clock.clockIn()}
         >
           <IconPlayerPlay aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-          {clock.clockingIn ? 'Checking in...' : 'Check in'}
+          {clock.clockingIn ? 'Checking in…' : 'Check in'}
         </button>
         <button
           className="me-hero-button"
@@ -290,7 +277,7 @@ const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
           onClick={() => void clock.clockOut()}
         >
           <IconPlayerStop aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-          {clock.clockingOut ? 'Checking out...' : 'Check out'}
+          {clock.clockingOut ? 'Checking out…' : 'Check out'}
         </button>
       </div>
     </section>
@@ -301,7 +288,7 @@ export const EmployeeWorkspacePage = () => {
   const { theme } = useTheme();
   const date = useMemo(() => new Date(), []);
   const variables = useMemo(
-    () => ({ asOf: today(), from: today(), to: addDays(date, 120) }),
+    () => ({ asOf: todayDateKey(), from: todayDateKey(), to: addDays(date, 120) }),
     [date],
   );
   const { data, loading, error, refetch } = useQuery<WorkspaceData>(MY_WORKSPACE_QUERY, {
@@ -414,7 +401,7 @@ export const EmployeeWorkspacePage = () => {
   };
 
   if (loading) {
-    return <section className="portal-loading">Loading your workspace...</section>;
+    return <section className="portal-loading">Loading your workspace…</section>;
   }
 
   if (error || !data || !employee) {
@@ -578,7 +565,7 @@ export const EmployeeWorkspacePage = () => {
                 />
               </div>
               <button className="button button-primary" disabled={submittingLeave} type="submit">
-                {submittingLeave ? 'Submitting...' : 'Submit request'}
+                {submittingLeave ? 'Submitting…' : 'Submit request'}
               </button>
             </form>
           </section>
@@ -603,9 +590,9 @@ export const EmployeeWorkspacePage = () => {
                     {data.myLeaveBalances.map((balance) => (
                       <tr key={balance.id}>
                         <td>{leaveTypesById.get(balance.leaveTypeId)?.name ?? 'Leave'}</td>
-                        <td data-label="Available">{balance.availableDays.toFixed(1)} days</td>
-                        <td data-label="Used">{balance.usedDays.toFixed(1)} days</td>
-                        <td data-label="Pending">{balance.pendingDays.toFixed(1)} days</td>
+                        <td className="tabular-nums" data-label="Available">{balance.availableDays.toFixed(1)} days</td>
+                        <td className="tabular-nums" data-label="Used">{balance.usedDays.toFixed(1)} days</td>
+                        <td className="tabular-nums" data-label="Pending">{balance.pendingDays.toFixed(1)} days</td>
                       </tr>
                     ))}
                     {data.myLeaveBalances.length === 0 ? (
@@ -647,7 +634,7 @@ export const EmployeeWorkspacePage = () => {
                       <td data-label="Dates">
                         {formatDate(request.startDate)} - {formatDate(request.endDate)}
                       </td>
-                      <td data-label="Days">{request.dayCount.toFixed(1)}</td>
+                      <td className="tabular-nums" data-label="Days">{request.dayCount.toFixed(1)}</td>
                       <td data-label="Status">
                         <StatusChip color={requestColor[request.status]} label={requestLabel[request.status]} />
                       </td>
@@ -776,7 +763,7 @@ export const EmployeeWorkspacePage = () => {
               </div>
               <button className="button button-secondary" disabled={submittingFeedback} type="submit">
                 <IconMessageCircle aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                {submittingFeedback ? 'Submitting...' : 'Submit feedback'}
+                {submittingFeedback ? 'Submitting…' : 'Submit feedback'}
               </button>
             </form>
           </section>
@@ -912,11 +899,11 @@ function MyPayslipsSection() {
                       </button>
                     </td>
                     <td data-label="Period">{monthNames[payslip.periodMonth - 1]} {payslip.periodYear}</td>
-                    <td data-label="Pay date">{payslip.payDate}</td>
+                    <td data-label="Pay date">{formatDate(payslip.payDate)}</td>
                     <td>{payslip.paidDays}{payslip.lopDays > 0 ? ` / LOP ${payslip.lopDays}` : ''}</td>
-                    <td>{money(payslip.grossAmount, payslip.currency)}</td>
-                    <td>{money(payslip.incomeTaxAmount, payslip.currency)}</td>
-                    <td><strong>{money(payslip.netPayAmount, payslip.currency)}</strong></td>
+                    <td className="tabular-nums">{money(payslip.grossAmount, payslip.currency)}</td>
+                    <td className="tabular-nums">{money(payslip.incomeTaxAmount, payslip.currency)}</td>
+                    <td className="tabular-nums"><strong>{money(payslip.netPayAmount, payslip.currency)}</strong></td>
                     <td>
                       <button
                         className="button button-secondary"
@@ -929,7 +916,7 @@ function MyPayslipsSection() {
                               if (!result.data) return;
                               downloadBase64File(`${payslip.payslipNumber}.pdf`, result.data.myPayslipPdf);
                             } catch (cause) {
-                              setError(cause instanceof Error ? cause.message : 'Could not render PDF.');
+                              setError(cause instanceof Error ? cause.message : 'Could not render the PDF. Refresh and try again.');
                             }
                           })();
                         }}

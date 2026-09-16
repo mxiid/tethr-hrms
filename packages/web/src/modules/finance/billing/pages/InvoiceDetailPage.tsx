@@ -1,10 +1,12 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { formatDate, formatMoney } from '@hrms/shared';
 import { IconCheck, IconFileInvoice, IconLock, IconPlus, IconX } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../../app/download';
 import { StatusChip } from '../../../../components/chip/StatusChip';
+import { useConfirm } from '../../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
 import { focusFirstByName } from '../../../../components/form/validation';
 import { FieldGroup } from '../../../../components/record-panel/FieldGroup';
@@ -79,9 +81,6 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
-const formatMoney = (amount: number, currency: string): string =>
-  new Intl.NumberFormat('en', { currency, style: 'currency' }).format(amount);
-
 const emptyLineDraft = (): LineDraft => ({ description: '', quantity: '1', unitPrice: '' });
 
 const isLineDraftComplete = (draft: LineDraft): boolean => {
@@ -114,6 +113,7 @@ const draftAsLine = (draft: LineDraft): InvoiceLineRecord => {
 
 export const InvoiceDetailPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const invoiceId = useParams<{ invoiceId: string }>().invoiceId ?? '';
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +141,7 @@ export const InvoiceDetailPage = () => {
       const name = invoice?.number ?? 'invoice-draft';
       downloadBase64File(`${name}${suffix}.pdf`, result.data[fieldName]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not generate PDF.');
+      setError(cause instanceof Error ? cause.message : 'Could not generate the PDF. Refresh and try again.');
     }
   };
 
@@ -166,7 +166,7 @@ export const InvoiceDetailPage = () => {
       if (successMessage) setMessage(successMessage);
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Operation failed.');
+      setError(cause instanceof Error ? cause.message : 'Could not update the invoice. Refresh and try again.');
       return false;
     }
   };
@@ -210,11 +210,51 @@ export const InvoiceDetailPage = () => {
   };
 
   const onDeleteLine = async (lineId: string): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Remove this line?',
+      body: 'The line will be removed from the draft invoice and the total will be recalculated.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     const ok = await run(
       () => removeLine({ variables: { lineId, invoiceId } }),
       'Line removed.',
     );
     if (ok) setEditingLineId(null);
+  };
+
+  const onVoidInvoice = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Void this draft invoice?',
+      body: 'The draft will be voided and the month can be re-drafted.',
+      confirmLabel: 'Void',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await run(
+      () => voidInvoice({ variables: { invoiceId } }),
+      'Draft voided. The month can be re-drafted.',
+    );
+  };
+
+  const onIssueInvoice = async (): Promise<void> => {
+    if (lines.length === 0) {
+      setError('Add at least one line before issuing the invoice.');
+      focusFirstByName(document.querySelector<HTMLElement>('.table-shell'), ['add-line']);
+      return;
+    }
+    const confirmed = await confirm({
+      title: 'Issue this invoice?',
+      body: 'The invoice number is assigned and the invoice locks, so it cannot be edited afterwards.',
+      confirmLabel: 'Issue',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await run(
+      () => issueInvoice({ variables: { invoiceId } }),
+      'Invoice issued. It is now locked.',
+    );
   };
 
   // Line edits are partial: only the field that changed is sent. Invalid
@@ -247,7 +287,7 @@ export const InvoiceDetailPage = () => {
       });
       await refetch();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save the line');
+      setError(cause instanceof Error ? cause.message : 'Could not save the line. Check the values and try again.');
     }
   };
 
@@ -369,7 +409,7 @@ export const InvoiceDetailPage = () => {
               <h1 className="page-title">{invoice?.number ?? 'Draft invoice'}</h1>
               <p className="page-subtitle">
                 {invoice
-                  ? `${invoice.groupName ?? ''} · ${invoice.type} · covers ${MONTH_NAMES[invoice.serviceMonth - 1]} ${invoice.serviceYear} (${invoice.periodStart} → ${invoice.periodEndExclusive})`
+                  ? `${invoice.groupName ?? ''} · ${invoice.type} · covers ${MONTH_NAMES[invoice.serviceMonth - 1]} ${invoice.serviceYear} (${formatDate(invoice.periodStart)} → ${formatDate(invoice.periodEndExclusive)})`
                   : ''}
               </p>
             </div>
@@ -399,16 +439,7 @@ export const InvoiceDetailPage = () => {
                   className="button button-primary"
                   disabled={issuing}
                   type="button"
-                  onClick={() => {
-                    if (lines.length === 0) {
-                      setError('Add at least one line before issuing the invoice.');
-                      focusFirstByName(document.querySelector<HTMLElement>('.table-shell'), [
-                        'add-line',
-                      ]);
-                      return;
-                    }
-                    void run(() => issueInvoice({ variables: { invoiceId } }), 'Invoice issued. It is now locked.');
-                  }}
+                  onClick={() => void onIssueInvoice()}
                 >
                   <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   {issuing ? 'Issuing…' : 'Approve & issue'}
@@ -419,12 +450,7 @@ export const InvoiceDetailPage = () => {
                   className="button button-secondary"
                   disabled={voiding}
                   type="button"
-                  onClick={() =>
-                    void run(
-                      () => voidInvoice({ variables: { invoiceId } }),
-                      'Draft voided. The month can be re-drafted.',
-                    )
-                  }
+                  onClick={() => void onVoidInvoice()}
                 >
                   <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   {voiding ? 'Voiding…' : 'Void draft'}

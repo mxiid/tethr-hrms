@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatDate } from '@hrms/shared';
 import { IconAdjustments, IconAlertTriangle, IconCalendarStats, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
@@ -84,7 +85,7 @@ const RUN_COLUMNS: readonly ColumnDefinition<PayrollRunRecord>[] = [
     header: 'Finalized',
     width: '19%',
     sortValue: (run) => run.finalizedAt ?? '',
-    render: (run) => (run.finalizedAt ? new Date(run.finalizedAt).toLocaleDateString() : '—'),
+    render: (run) => (run.finalizedAt ? formatDate(run.finalizedAt) : '—'),
   },
   {
     key: 'open',
@@ -270,7 +271,7 @@ export const PayrollPage = () => {
           }}
         >
           <p className="field-hint">
-            Pay is calculated from each person's working days and approved unpaid leave, so
+            Pay is calculated from each person’s working days and approved unpaid leave, so
             mid-month joiners are handled automatically.
           </p>
           <div className="field">

@@ -1,4 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { formatDate } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
@@ -11,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import {
@@ -99,15 +101,9 @@ const decisionColors: Record<EntryRecord['clientDecision'], MainColorName> = {
   rejected: 'red',
 };
 
-const formatDate = (value: string | null): string =>
-  value === null
-    ? '—'
-    : new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-        new Date(value),
-      );
-
 export const ShortlistsPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data: postingsData, loading: postingsLoading } = useQuery<{
     readonly jobPostings: readonly PostingRecord[];
   }>(JOB_POSTINGS_QUERY);
@@ -185,6 +181,13 @@ export const ShortlistsPage = () => {
   };
 
   const onClose = async (shortlist: ShortlistRecord): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Close this shortlist?',
+      body: 'The client verdicts become final and no further decisions can be recorded.',
+      confirmLabel: 'Close',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     await closeShortlist({ variables: { input: { shortlistId: shortlist.id } } });
     await refetch();
   };
@@ -509,6 +512,9 @@ export const ShortlistsPage = () => {
                   </div>
                 </div>
               ))}
+              {selectedShortlist.entries.length === 0 ? (
+                <p className="table-empty">No candidates yet.</p>
+              ) : null}
             </div>
           </section>
         ) : null}

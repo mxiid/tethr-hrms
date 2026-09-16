@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { WorkerType } from '@hrms/shared';
+import { todayDateKey, type WorkerType } from '@hrms/shared';
 import {
   IconAlertTriangle,
   IconArrowRight,
@@ -90,8 +90,6 @@ type EmployeeFieldGroup = {
   readonly fields: readonly EmployeeFieldDescriptor[];
 };
 
-const today = (): string => new Date().toISOString().slice(0, 10);
-
 const emptyEmployeeDraft = (): EmployeeDraft => ({
   employeeNumber: '',
   firstName: '',
@@ -101,7 +99,7 @@ const emptyEmployeeDraft = (): EmployeeDraft => ({
   workEmail: '',
   roleTitle: '',
   dateOfBirth: '',
-  hireDate: today(),
+  hireDate: todayDateKey(),
   probationEndDate: '',
   scheduledConfirmationDate: '',
   finalConfirmationDate: '',
@@ -402,7 +400,7 @@ export const EmployeesListPage = () => {
           input: {
             employeeId,
             reportsToEmployeeId: managerId,
-            effectiveDate: new Date().toISOString().slice(0, 10),
+            effectiveDate: todayDateKey(),
           },
         },
       });
@@ -647,7 +645,7 @@ export const EmployeesListPage = () => {
                 ? 'See who reports to whom. Select anyone to open their record.'
                 : isTethrWorkspace
                   ? 'Add employees and keep their records up to date.'
-                  : "Your team's records, documents, and pay."}
+                  : "Your team’s records, documents, and pay."}
             </p>
           </div>
           {canOnboardEmployee && viewMode !== 'orgChart' ? (

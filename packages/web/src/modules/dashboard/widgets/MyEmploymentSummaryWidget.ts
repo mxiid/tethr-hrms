@@ -1,4 +1,5 @@
 import { gql, useQuery } from '@apollo/client';
+import { todayDateKey } from '@hrms/shared';
 
 import type { WidgetData, WidgetFieldDefinition } from './types';
 
@@ -65,7 +66,7 @@ export const MY_EMPLOYMENT_SUMMARY_FIELDS: readonly WidgetFieldDefinition[] = [
 ];
 
 export const useMyEmploymentSummaryData = (): WidgetData => {
-  const asOf = new Date().toISOString().slice(0, 10);
+  const asOf = todayDateKey();
   const { data, loading, error } = useQuery<MyEmploymentSummaryData>(MY_EMPLOYMENT_SUMMARY_QUERY, {
     variables: { asOf },
   });

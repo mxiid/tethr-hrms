@@ -1,5 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client';
 import {
+  formatDate,
+  formatDateTime,
   HIRING_REQUEST_PRIORITIES,
   HIRING_REQUEST_STATUSES,
   type HiringRequestPriority,
@@ -18,6 +20,7 @@ import {
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { FieldGroup } from '../../../components/record-panel/FieldGroup';
 import { FieldRow, type RecordFieldOption } from '../../../components/record-panel/FieldRow';
@@ -192,19 +195,6 @@ type EmployeeOption = {
   readonly roleTitle: string | null;
 };
 
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(value),
-  );
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
-
 const formatSalary = (request: HiringRequestRecord): string => {
   const currency = request.salaryCurrency ?? '';
   if (request.salaryMin === null && request.salaryMax === null) return '—';
@@ -290,6 +280,7 @@ const draftAsRequest = (draft: HiringDraft): HiringRequestRecord => ({
 
 export const HiringRequestsPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const isTethr = user?.portal === 'tethr';
   // Mirrors the hiringRequestWrite permission: clients raise requests for their
@@ -580,6 +571,13 @@ export const HiringRequestsPage = () => {
 
   const onUnpublish = async (): Promise<void> => {
     if (!livePosting) return;
+    const confirmed = await confirm({
+      title: 'Unpublish this posting?',
+      body: 'The apply link stops working and no further applications will be accepted.',
+      confirmLabel: 'Unpublish',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setPanelError(null);
     try {
       await unpublishPosting({ variables: { postingId: livePosting.id } });
@@ -594,6 +592,15 @@ export const HiringRequestsPage = () => {
     entry: ClientShortlistEntryRecord,
     decision: 'interested' | 'rejected',
   ): Promise<void> => {
+    if (decision === 'rejected') {
+      const confirmed = await confirm({
+        title: 'Reject this candidate?',
+        body: 'The decision is recorded on the shortlist and shared with the recruiting team.',
+        confirmLabel: 'Reject',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     setDecisionError(null);
     try {
       await recordDecision({
@@ -1187,7 +1194,7 @@ export const HiringRequestsPage = () => {
                 </div>
                 {renderBrief(selected)}
                 <button className="button button-primary" disabled={updating} type="submit">
-                  {updating ? 'Saving...' : 'Save update'}
+                  {updating ? 'Saving…' : 'Save update'}
                 </button>
               </form>
             </section>

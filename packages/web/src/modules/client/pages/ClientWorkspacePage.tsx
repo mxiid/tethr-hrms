@@ -1,5 +1,5 @@
 import { useLazyQuery, useQuery } from '@apollo/client';
-import type { EmploymentStatus } from '@hrms/shared';
+import { formatDate, formatMoney, type EmploymentStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconArrowUpRight,
@@ -76,11 +76,6 @@ const statusLabels: Record<EmploymentStatus, string> = {
   suspended: 'Suspended',
   terminated: 'Terminated',
 };
-
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
 
 export const ClientWorkspacePage = () => {
   const { theme } = useTheme();
@@ -280,7 +275,9 @@ export const ClientWorkspacePage = () => {
                           </div>
                           <div className="employee-secondary">{employee.employeeNumber}</div>
                         </td>
-                        <td data-label="Work email">{employee.workEmail ?? '—'}</td>
+                        <td data-label="Work email">
+                          <span className="truncate">{employee.workEmail ?? '—'}</span>
+                        </td>
                         <td data-label="Joined">{formatDate(employee.hireDate)}</td>
                         <td data-label="Employment">
                           <StatusChip
@@ -398,13 +395,11 @@ function ClientInvoicesSection() {
       if (!result.data) return;
       downloadBase64File(`${invoiceNumber}${suffix}.pdf`, result.data[fieldName]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not render PDF.');
+      setError(cause instanceof Error ? cause.message : 'Could not render the PDF. Refresh and try again.');
     }
   };
 
   const rows = data?.clientInvoices ?? [];
-  const money = (value: number, currency: string): string =>
-    new Intl.NumberFormat('en', { currency, style: 'currency' }).format(value);
 
   return (
     <section className="table-shell" aria-labelledby="client-invoices-title">
@@ -454,7 +449,7 @@ function ClientInvoicesSection() {
                   <td data-label="Covers">{`${invoice.groupName ?? ''} ${invoice.type} · ${invoiceMonthNames[invoice.serviceMonth - 1]} ${invoice.serviceYear}`}</td>
                   <td data-label="Issued">{invoice.issueDate}</td>
                   <td data-label="Due">{invoice.dueDate}</td>
-                  <td className="cell-numeric" data-label="Total"><strong>{money(invoice.totalAmount, invoice.currency)}</strong></td>
+                  <td className="cell-numeric" data-label="Total"><strong>{formatMoney(invoice.totalAmount, invoice.currency)}</strong></td>
                   <td data-label="Status">
                     <StatusChip
                       color={invoice.status === 'paid' ? 'green' : 'blue'}
@@ -526,8 +521,6 @@ function ClientSpendSection() {
     CLIENT_COST_BREAKDOWN_QUERY,
   );
   const breakdown = data?.clientCostBreakdown;
-  const money = (value: number, currency: string): string =>
-    new Intl.NumberFormat('en', { currency, style: 'currency' }).format(value);
 
   if (!breakdown || (breakdown.byEmployee.length === 0 && breakdown.byPeriod.length === 0)) {
     return null;
@@ -542,7 +535,7 @@ function ClientSpendSection() {
           Spend by employee
         </div>
         <div className="table-density">
-          {loading ? 'Loading…' : `${money(breakdown.totalBilled, breakdown.currency)} total`}
+          {loading ? 'Loading…' : `${formatMoney(breakdown.totalBilled, breakdown.currency)} total`}
         </div>
       </div>
       <div className="data-table-wrap">
@@ -565,7 +558,7 @@ function ClientSpendSection() {
                     {entry.employeeName ?? entry.employeeId}
                   </Link>
                 </td>
-                <td className="cell-numeric">{money(entry.total, breakdown.currency)}</td>
+                <td className="cell-numeric">{formatMoney(entry.total, breakdown.currency)}</td>
               </tr>
             ))}
           </tbody>
@@ -594,7 +587,7 @@ function ClientSpendSection() {
                     verticalAlign: 'middle',
                   }}
                 />
-                {money(period.total, breakdown.currency)}
+                {formatMoney(period.total, breakdown.currency)}
               </span>
             </div>
           ))}
