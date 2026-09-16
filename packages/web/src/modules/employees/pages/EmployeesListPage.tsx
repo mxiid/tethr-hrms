@@ -809,6 +809,7 @@ export const EmployeesListPage = () => {
       </section>
 
       <SidePanel
+        ariaLabel={selected !== null ? fullName(selected) : undefined}
         headerContent={
           create.draft !== null ? (
             <NameHeader
