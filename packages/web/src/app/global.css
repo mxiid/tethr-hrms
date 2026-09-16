@@ -1360,6 +1360,22 @@ button,
   background: var(--hrms-color-background-quaternary);
 }
 
+/* Destructive confirmation actions: a filled red tier, same pill language. */
+.button-danger {
+  color: var(--hrms-color-text-inverted);
+  background: var(--hrms-color-text-danger);
+  box-shadow: var(--hrms-box-shadow-light);
+}
+
+.button-danger:hover {
+  background: color-mix(in srgb, var(--hrms-color-text-danger) 84%, var(--hrms-color-text-primary));
+}
+
+.confirm-body {
+  margin: 0;
+  color: var(--hrms-color-text-secondary);
+}
+
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
