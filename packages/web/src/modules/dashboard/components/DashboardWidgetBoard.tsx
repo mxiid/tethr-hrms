@@ -31,7 +31,13 @@ import {
 import { DashboardWidgetCard } from '../widgets/DashboardWidgetCard';
 import { defaultWidgetsForPortal, WIDGET_REGISTRY } from '../widgets/registry';
 import type { WidgetId } from '../widgets/types';
-import { WIDGET_SIZE_LABELS, type WidgetSize } from '../widgets/widgetSizes';
+import {
+  WIDGET_DENSITY_LIMITS,
+  WIDGET_SIZE_DENSITY,
+  WIDGET_SIZE_GEOMETRY,
+  WIDGET_SIZE_LABELS,
+  type WidgetSize,
+} from '../widgets/widgetSizes';
 
 import { CustomizeDashboardMenu } from './CustomizeDashboardMenu';
 import { DashboardViewTabs } from './DashboardViewTabs';
@@ -131,6 +137,38 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
     );
   };
 
+  const reorderWidgetFields = (id: WidgetId, fieldIds: readonly string[]): void => {
+    setLayout((current) =>
+      current.map((widget) => (widget.id === id ? { ...widget, fieldIds } : widget)),
+    );
+  };
+
+  // The smallest allowed size that renders everything selected — the target of
+  // the picker's "Enlarge to add"; null when no allowed size is big enough.
+  const enlargeTarget = (id: WidgetId): WidgetSize | null => {
+    const definition = WIDGET_REGISTRY.find((widget) => widget.id === id);
+    const entry = layout.find((widget) => widget.id === id);
+    if (!definition || !entry) return null;
+    const fitting = definition.sizeOptions
+      .filter(
+        (option) =>
+          WIDGET_DENSITY_LIMITS[WIDGET_SIZE_DENSITY[option]].fields >= entry.fieldIds.length,
+      )
+      .sort((left, right) => {
+        const leftGeometry = WIDGET_SIZE_GEOMETRY[left];
+        const rightGeometry = WIDGET_SIZE_GEOMETRY[right];
+        return leftGeometry.columns * leftGeometry.rows - rightGeometry.columns * rightGeometry.rows;
+      })[0];
+    return fitting !== undefined && fitting !== entry.size ? fitting : null;
+  };
+
+  const enlargeWidget = (id: WidgetId): void => {
+    const target = enlargeTarget(id);
+    if (target !== null) {
+      changeSize(id, target);
+    }
+  };
+
   const toggleDisplayMode = (id: WidgetId): void => {
     setLayout((current) =>
       current.map((widget) =>
@@ -199,7 +237,11 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
                   id={widget.id}
                   key={widget.id}
                   onChangeSize={(size) => changeSize(widget.id, size)}
+                  onEnlarge={
+                    enlargeTarget(widget.id) !== null ? () => enlargeWidget(widget.id) : undefined
+                  }
                   onRemove={() => void removeWidget(widget.id)}
+                  onReorderFields={(fieldIds) => reorderWidgetFields(widget.id, fieldIds)}
                   onToggleDisplayMode={() => toggleDisplayMode(widget.id)}
                   onToggleField={(fieldId, enabled) => toggleWidgetField(widget.id, fieldId, enabled)}
                   selectedFieldIds={widget.fieldIds}

@@ -18,7 +18,12 @@ import type {
 } from './types';
 import { WidgetFieldPicker } from './WidgetFieldPicker';
 import { WidgetFieldRow } from './WidgetFieldRow';
-import { WIDGET_DENSITY_LIMITS, WIDGET_SIZE_DENSITY, type WidgetSize } from './widgetSizes';
+import {
+  WIDGET_DENSITY_LIMITS,
+  WIDGET_SIZE_DENSITY,
+  WIDGET_SIZE_LABELS,
+  type WidgetSize,
+} from './widgetSizes';
 import { WidgetSizeMenu } from './WidgetSizeMenu';
 
 type DashboardWidgetCardProps = {
@@ -36,6 +41,9 @@ type DashboardWidgetCardProps = {
   readonly useData: () => WidgetData;
   readonly onChangeSize: (size: WidgetSize) => void;
   readonly onRemove: () => void;
+  readonly onReorderFields: (fieldIds: readonly string[]) => void;
+  /** Present when a larger allowed size would render everything selected. */
+  readonly onEnlarge?: () => void;
   readonly onToggleDisplayMode: () => void;
   readonly onToggleField: (fieldId: string, enabled: boolean) => void;
 };
@@ -59,6 +67,8 @@ export const DashboardWidgetCard = ({
   useData,
   onChangeSize,
   onRemove,
+  onReorderFields,
+  onEnlarge,
   onToggleDisplayMode,
   onToggleField,
 }: DashboardWidgetCardProps) => {
@@ -71,7 +81,8 @@ export const DashboardWidgetCard = ({
 
   const density = WIDGET_SIZE_DENSITY[size];
   const limits = WIDGET_DENSITY_LIMITS[density];
-  const showChart = displayMode === 'chart' && chartKind !== undefined && density !== 'strip';
+  const canShowChart = chartKind !== undefined && density !== 'strip';
+  const showChart = displayMode === 'chart' && canShowChart;
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -104,7 +115,7 @@ export const DashboardWidgetCard = ({
           </button>
         ) : null}
         <h2 className="panel-title dashboard-widget-title">{title}</h2>
-        {editing && chartKind !== undefined ? (
+        {editing && canShowChart ? (
           <button
             aria-label={displayMode === 'chart' ? 'Switch to plain view' : 'Switch to chart view'}
             className="icon-button"
@@ -124,9 +135,13 @@ export const DashboardWidgetCard = ({
         {editing ? (
           <WidgetFieldPicker
             fields={fields}
+            onEnlarge={onEnlarge}
+            onReorderFields={onReorderFields}
             onToggleField={onToggleField}
             selectedFieldIds={selectedFieldIds}
+            sizeLabel={WIDGET_SIZE_LABELS[size]}
             title={title}
+            visibleCount={limits.fields}
           />
         ) : null}
         {editing ? (

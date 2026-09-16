@@ -298,13 +298,13 @@ Tiles never scroll. Each widget declares the sizes its content is authored to fi
 | Size | Geometry | Density | Content contract |
 |---|---|---|---|
 | `2x1` Strip | 6 cols × 1 unit | strip | title + one headline metric |
-| `1x2` Quarter | 3 cols × 2 units | quarter | one metric + optional share bar |
-| `2x2` Half | 6 cols × 2 units | half | bar + ≤3 legend items + ≤4 stats |
+| `1x2` Quarter | 3 cols × 2 units | quarter | split legend (≤3 items) + two inline metrics |
+| `2x2` Half | 6 cols × 2 units | half | bar + ≤4 legend items + ≤4 stats |
 | `2x3` Half tall | 6 cols × 3 units | halfTall | chart + legend + ≤6 stats |
 | `4x2` Full | 12 cols × 2 units | full | bar + inline legend + ≤6 stats |
 | `4x3` Full tall | 12 cols × 3 units | fullTall | chart + legend + ≤6 stats |
 
-Interaction: dragging reorders; size is chosen from the widget's allowed set (never free-resized), and **all edit chrome lives in Edit layout mode** — the resting dashboard shows only titles, accent dots, and content. Layouts persist per workspace + user, and the active view rides in the URL (`?view=`).
+Interaction: dragging reorders; size is chosen from the widget's allowed set (never free-resized), and **all edit chrome lives in Edit layout mode** — the resting dashboard shows only titles, accent dots, and content. The metrics picker is one ordered list shared by every size: drag the grips (or lift with the keyboard) to set display order, the first N render at the current size, selected metrics beyond that capacity read muted, and a single **Enlarge to add** action jumps to the smallest size that renders everything selected. Controls only exist where they can act — the chart/plain toggle disappears when the size has no chart. Layouts persist per workspace + user, and the active view rides in the URL (`?view=`).
 
 ---
 

@@ -1614,6 +1614,29 @@ button,
   padding: var(--hrms-space-3) var(--hrms-space-4);
 }
 
+/* Quarter keeps the split readable: the legend plus two inline metrics. */
+.widget-density-quarter .widget-stat-row {
+  flex-wrap: nowrap;
+  gap: var(--hrms-space-3);
+}
+
+.widget-density-quarter .metric-value {
+  margin-top: 0;
+  font-size: var(--hrms-font-size-md);
+}
+
+.widget-density-quarter .widget-stat {
+  display: flex;
+  align-items: baseline;
+  gap: var(--hrms-space-1);
+  padding-left: var(--hrms-space-3);
+}
+
+.widget-density-quarter .widget-stat:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
 .widget-density-strip .dashboard-widget-header {
   padding: var(--hrms-space-1) var(--hrms-space-2) var(--hrms-space-1) var(--hrms-space-1);
 }
@@ -1995,7 +2018,59 @@ button,
 
 .dropdown-panel-widget-fields {
   right: 0;
-  min-width: 200px;
+  min-width: 220px;
+}
+
+/* The metrics picker: ordered rows with a drag grip; rows selected beyond the
+   current size's capacity read muted, and the footer carries the count plus
+   the single "Enlarge to add" action when the selection outgrows the tile. */
+.field-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--hrms-space-1);
+}
+
+.field-picker-row.is-hidden {
+  opacity: 0.55;
+}
+
+.field-picker-row.is-dragging {
+  opacity: 0.7;
+}
+
+.field-picker-grip {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  cursor: grab;
+}
+
+.field-picker-grip-spacer {
+  flex: 0 0 auto;
+  width: 24px;
+}
+
+.field-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hrms-space-2);
+  padding-top: var(--hrms-space-2);
+  margin-top: var(--hrms-space-2);
+  border-top: 1px solid var(--hrms-color-border-light);
+}
+
+.field-picker-count {
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+  font-variant-numeric: tabular-nums;
+}
+
+.field-picker-enlarge {
+  padding: 0;
+  background: none;
+  border: 0;
+  white-space: nowrap;
 }
 
 .dropdown-panel-customize .checkbox-field,

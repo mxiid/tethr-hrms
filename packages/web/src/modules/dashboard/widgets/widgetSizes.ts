@@ -52,8 +52,8 @@ export type WidgetDensityLimits = {
 
 export const WIDGET_DENSITY_LIMITS: Readonly<Record<WidgetDensity, WidgetDensityLimits>> = {
   strip: { fields: 1, legend: 0, stages: 0 },
-  quarter: { fields: 1, legend: 0, stages: 3 },
-  half: { fields: 4, legend: 3, stages: 3 },
+  quarter: { fields: 2, legend: 3, stages: 3 },
+  half: { fields: 4, legend: 4, stages: 3 },
   halfTall: { fields: 6, legend: 6, stages: 4 },
   full: { fields: 6, legend: 6, stages: 3 },
   fullTall: { fields: 6, legend: 6, stages: 5 },
