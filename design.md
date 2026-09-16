@@ -289,6 +289,23 @@ Dense, spreadsheet-grade tables — Twenty's primary information surface.
 
 Variants: `highlighted`, `regular`, `transparent`, `rounded`, `static`. Flex-based alignment. Color comes from the 24-hue main palette (§4.3) — chips are how object categories and statuses get color-coded.
 
+### 6.6 Dashboard tiles
+
+The dashboard is a **fixed-size tile grid**, not a free canvas: a 12-column grid at desktop (8 at tablet, 4 at phone; 16px gutters) with a 36px row track — so two rows equal the **88px tile unit** every height is built on.
+
+Tiles never scroll. Each widget declares the sizes its content is authored to fit, and content caps (fields, legend items, funnel stages) come from the density of that size:
+
+| Size | Geometry | Density | Content contract |
+|---|---|---|---|
+| `2x1` Strip | 6 cols × 1 unit | strip | title + one headline metric |
+| `1x2` Quarter | 3 cols × 2 units | quarter | one metric + optional share bar |
+| `2x2` Half | 6 cols × 2 units | half | bar + ≤3 legend items + ≤4 stats |
+| `2x3` Half tall | 6 cols × 3 units | halfTall | chart + legend + ≤6 stats |
+| `4x2` Full | 12 cols × 2 units | full | bar + inline legend + ≤6 stats |
+| `4x3` Full tall | 12 cols × 3 units | fullTall | chart + legend + ≤6 stats |
+
+Interaction: dragging reorders; size is chosen from the widget's allowed set (never free-resized), and **all edit chrome lives in Edit layout mode** — the resting dashboard shows only titles, accent dots, and content. Layouts persist per workspace + user, and the active view rides in the URL (`?view=`).
+
 ---
 
 ## 7. Styling Engine

@@ -1,6 +1,18 @@
 # Foundation Status
 
-> As of 2026-09-16 (`feat/guidelines-polish`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
+> As of 2026-09-16 (`feat/dashboard-system`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
+
+## Dashboard system: fixed-size tiles, no scrolling, persistent layouts (2026-09-16, local — not pushed)
+
+The dashboard was rebuilt on the grid standard modern dashboards use (12 columns with a fixed row track — the pattern behind react-grid-layout/Grafana/Home Assistant) and the widget system now guarantees fit instead of hoping for it.
+
+**Sizes, not stretches.** Tiles are authored to a six-class catalog on a 12-column grid (8 tablet / 4 phone): `2×1` strip, `1×2` quarter, `2×2` half, `2×3` half tall, `4×2` full, `4×3` full tall (2 rows = the 88px tile unit). Each widget declares the sizes its content fits; share/stat tiles offer the compact set, stat pairs skip the quarter, and charts take only full-height sizes so plots never squeeze. Density caps what renders (fields, legend items, funnel stages) and `.dashboard-widget-body` is `overflow: hidden` — **widgets cannot scroll, by construction**, which the new matrix script proves across every widget × size.
+
+**Clean by default.** All edit chrome — drag handle, size picker (with scaled mini diagrams), field picker, chart/plain toggle, remove — lives in an explicit **Edit layout** mode; the resting dashboard shows titles, accent dots, and content only, with dashed guides while editing. Dragging reorders; resizing is choosing from the allowed set, never free-form.
+
+**Persistent + shareable.** Layouts persist per workspace + user in localStorage (versioned envelope; corrupt or legacy data falls back to portal defaults), the active view rides in `?view=`, and the getting-started tile now asks *“Don't show getting started again?”* on X **or** on completion — yes persists it per workspace, “Not now” hides it for the session only.
+
+**Verification.** New `verify-dashboard-widgets` **8/8**: 12/8/4 column counts at the breakpoints, chrome gating, the 14-combination fit matrix (no overflow anywhere), persistence across reload, corrupt-storage recovery, and both getting-started paths. Battery re-run green: polish 6/6, a11y sweep 6/6, motion 13/13, panel latch 6/6, hiring nav 11/11, expenses width 3/3, subnav 5/5 + 6/6, zoom 8/8, org chart 7/7, color UI 4/4. Gates **272 API / 36 shared / 9 UI tests**, lint 0 errors, typecheck and build clean. **No push:** everything sits on `feat/dashboard-system` awaiting the next batch.
 
 ## Guidelines polish: second half of the round (2026-09-16, PR B)
 

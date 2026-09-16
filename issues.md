@@ -120,7 +120,8 @@
 ## ISS-008 - Stateful UI is not deep-linkable (no URL state)
 
 - **Severity:** Low-Medium (UX) - guidelines audit (2026-09-16).
-- **Status:** Deferred.
+- **Status:** Partially addressed. Dashboard layouts persist per user + workspace in localStorage and
+  the active dashboard view rides in `?view=` (2026-09-16); the selections below still reset.
 - **Where:** ~15 `useState` selections that should be query params: attendance tab and date range
   (`TimeAttendancePage`), profile tab (`EmployeeProfilePage`), every list's side-panel selection (leave,
   expenses, feedback, candidates, hiring, interviews, shortlists, compensation, employees, invoice, payroll
