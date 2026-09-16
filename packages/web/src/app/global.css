@@ -654,7 +654,7 @@ button,
     color-mix(in srgb, var(--chip-color, var(--hrms-color-tag-gray)) 10%, var(--hrms-color-background-primary)) 0%,
     var(--hrms-color-background-primary) 100%
   );
-  transition: grid-template-rows var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-inOut);
+  transition: grid-template-rows var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-in-out);
 }
 
 .app-subnav.is-open {
@@ -2197,7 +2197,7 @@ button,
 .org-children {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-inOut);
+  transition: grid-template-rows var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-in-out);
 }
 
 .org-children:not(.is-open) {
@@ -5065,7 +5065,7 @@ button,
   width: 0;
   overflow: hidden;
   outline: none;
-  transition: width var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-inOut);
+  transition: width var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-in-out);
 }
 
 .side-panel.is-open {
@@ -5645,7 +5645,7 @@ button,
   height: 100%;
   border-radius: 999px;
   background: var(--chip-color, var(--hrms-color-tag-blue));
-  transition: width var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-inOut);
+  transition: width var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-in-out);
 }
 
 .dashboard-getting-started-chevron {
