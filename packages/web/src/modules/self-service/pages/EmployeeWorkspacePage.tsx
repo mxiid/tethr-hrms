@@ -280,7 +280,7 @@ const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
           type="button"
           onClick={() => void clock.clockIn()}
         >
-          <IconPlayerPlay size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          <IconPlayerPlay aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           {clock.clockingIn ? 'Checking in...' : 'Check in'}
         </button>
         <button
@@ -289,7 +289,7 @@ const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
           type="button"
           onClick={() => void clock.clockOut()}
         >
-          <IconPlayerStop size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          <IconPlayerStop aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           {clock.clockingOut ? 'Checking out...' : 'Check out'}
         </button>
       </div>
@@ -414,19 +414,19 @@ export const EmployeeWorkspacePage = () => {
   };
 
   if (loading) {
-    return <main className="portal-loading">Loading your workspace...</main>;
+    return <section className="portal-loading">Loading your workspace...</section>;
   }
 
   if (error || !data || !employee) {
     return (
-      <main className="portal-loading">
+      <section className="portal-loading">
         {error?.message ?? 'Your account is not linked to an employee record yet.'}
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="employee-app">
+    <section className="employee-app">
       {view === 'home' ? (
         <>
           <EmployeeHomeHero firstName={employee.firstName} />
@@ -439,13 +439,13 @@ export const EmployeeWorkspacePage = () => {
                 return (
                   <Link className="app-tile" key={link.to} to={link.to}>
                     <span className="app-tile-icon">
-                      <LinkIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <LinkIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     </span>
                     <span className="app-tile-copy">
                       <span className="app-tile-label">{link.label}</span>
                       <span className="app-tile-meta">{link.meta(homeCounts)}</span>
                     </span>
-                    <IconChevronRight size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <IconChevronRight aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   </Link>
                 );
               })}
@@ -489,7 +489,7 @@ export const EmployeeWorkspacePage = () => {
       ) : (
         <>
           <Link className="profile-back" to="/me">
-            <IconArrowLeft size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconArrowLeft aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             My workspace
           </Link>
           <header className="page-header">
@@ -511,7 +511,7 @@ export const EmployeeWorkspacePage = () => {
                 <div className="panel-kicker">Time off</div>
                 <h2 className="panel-title">Request leave</h2>
               </div>
-              <IconPlaneDeparture size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              <IconPlaneDeparture aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
             <form className="config-form" onSubmit={onLeaveSubmit}>
               {leaveError ? (
@@ -523,6 +523,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="leave-type">Leave type</label>
                 <select
                   id="leave-type"
+                  name="leave-type"
                   required
                   value={leaveForm.leaveTypeId}
                   onChange={(event) =>
@@ -542,6 +543,7 @@ export const EmployeeWorkspacePage = () => {
                   <label htmlFor="leave-start">Start date</label>
                   <input
                     id="leave-start"
+                    name="leave-start"
                     required
                     type="date"
                     value={leaveForm.startDate}
@@ -554,6 +556,7 @@ export const EmployeeWorkspacePage = () => {
                   <label htmlFor="leave-end">End date</label>
                   <input
                     id="leave-end"
+                    name="leave-end"
                     required
                     type="date"
                     value={leaveForm.endDate}
@@ -567,6 +570,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="leave-reason">Reason</label>
                 <textarea
                   id="leave-reason"
+                  name="leave-reason"
                   value={leaveForm.reason}
                   onChange={(event) =>
                     setLeaveForm((current) => ({ ...current, reason: event.target.value }))
@@ -581,7 +585,7 @@ export const EmployeeWorkspacePage = () => {
             <section className="table-shell">
               <div className="table-title-row">
                 <div className="table-title">
-                  <IconPlaneDeparture size={theme.icon.size.md} /> Leave balance
+                  <IconPlaneDeparture aria-hidden="true" size={theme.icon.size.md} /> Leave balance
                 </div>
                 <div className="table-density">{new Date().getFullYear()}</div>
               </div>
@@ -618,7 +622,7 @@ export const EmployeeWorkspacePage = () => {
           <section className="table-shell">
             <div className="table-title-row">
               <div className="table-title">
-                <IconClock size={theme.icon.size.md} /> Leave requests
+                <IconClock aria-hidden="true" size={theme.icon.size.md} /> Leave requests
               </div>
               <div className="table-density">
                 {sortedRequests.length} record{sortedRequests.length === 1 ? '' : 's'}
@@ -678,7 +682,7 @@ export const EmployeeWorkspacePage = () => {
             <section className="table-shell">
               <div className="table-title-row">
                 <div className="table-title">
-                  <IconCalendarEvent size={theme.icon.size.md} /> Upcoming holidays
+                  <IconCalendarEvent aria-hidden="true" size={theme.icon.size.md} /> Upcoming holidays
                 </div>
                 <div className="table-density">Next 120 days</div>
               </div>
@@ -716,7 +720,7 @@ export const EmployeeWorkspacePage = () => {
                 <div className="panel-kicker">Feedback</div>
                 <h2 className="panel-title">Share feedback</h2>
               </div>
-              <IconMessageCircle size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              <IconMessageCircle aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
             <form className="config-form" onSubmit={onFeedbackSubmit}>
               {feedbackNotice ? (
@@ -733,6 +737,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="feedback-category">Category</label>
                 <select
                   id="feedback-category"
+                  name="feedback-category"
                   value={feedbackForm.category}
                   onChange={(event) =>
                     setFeedbackForm((current) => ({ ...current, category: event.target.value }))
@@ -749,6 +754,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="feedback-subject">Subject</label>
                 <input
                   id="feedback-subject"
+                  name="feedback-subject"
                   required
                   value={feedbackForm.subject}
                   onChange={(event) =>
@@ -760,6 +766,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="feedback-body">Feedback</label>
                 <textarea
                   id="feedback-body"
+                  name="feedback-body"
                   required
                   value={feedbackForm.body}
                   onChange={(event) =>
@@ -768,7 +775,7 @@ export const EmployeeWorkspacePage = () => {
                 />
               </div>
               <button className="button button-secondary" disabled={submittingFeedback} type="submit">
-                <IconMessageCircle size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconMessageCircle aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 {submittingFeedback ? 'Submitting...' : 'Submit feedback'}
               </button>
             </form>
@@ -776,7 +783,7 @@ export const EmployeeWorkspacePage = () => {
           ) : null}
         </>
       )}
-    </main>
+    </section>
   );
 };
 

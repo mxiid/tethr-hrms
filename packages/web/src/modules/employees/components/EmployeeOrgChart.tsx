@@ -10,6 +10,7 @@ import {
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
+import { prefersCoarsePointer } from '../../../components/form/pointer';
 import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useTheme } from '../../../providers/theme/useTheme';
 
@@ -478,7 +479,7 @@ export const EmployeeOrgChart = ({
                 setPickerFor((current) => (current === employee.id ? null : employee.id));
               }}
             >
-              <IconUserPlus size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+              <IconUserPlus aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             </button>
           ) : null}
 
@@ -488,8 +489,9 @@ export const EmployeeOrgChart = ({
                 {fullName(employee)} reports to
               </div>
               <input
-                autoFocus
+                autoFocus={!prefersCoarsePointer()}
                 className="org-node-picker-search"
+                name="manager-search"
                 placeholder="Search people"
                 value={pickerQuery}
                 onChange={(event) => setPickerQuery(event.target.value)}
@@ -541,11 +543,11 @@ export const EmployeeOrgChart = ({
             >
               {isCollapsed ? (
                 <>
-                  <IconChevronRight size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                  <IconChevronRight aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                   {totalReports}
                 </>
               ) : (
-                <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                <IconChevronDown aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
               )}
             </button>
           ) : null}
@@ -581,7 +583,7 @@ export const EmployeeOrgChart = ({
             }}
             type="button"
           >
-            <IconZoomOut size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconZoomOut aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           </button>
         </Tooltip>
         <Tooltip label="Reset zoom" side="top">
@@ -608,7 +610,7 @@ export const EmployeeOrgChart = ({
             }}
             type="button"
           >
-            <IconZoomIn size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconZoomIn aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           </button>
         </Tooltip>
         <Tooltip label="Centre on the first match" side="top">
@@ -620,7 +622,7 @@ export const EmployeeOrgChart = ({
             }}
             type="button"
           >
-            <IconFocusCentered size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconFocusCentered aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           </button>
         </Tooltip>
       </div>

@@ -478,6 +478,8 @@ export const HiringRequestsPage = () => {
   const create = useInlineCreate<HiringDraft, HiringRequestRecord>({
     createEmptyDraft: emptyHiringDraft,
     isComplete: isHiringDraftComplete,
+    requiredFieldNames: ['position-title'],
+    incompleteMessage: 'Enter a role title before submitting the request.',
     createRecord: async (draft) => {
       const result = await createRequest({
         variables: {
@@ -619,7 +621,7 @@ export const HiringRequestsPage = () => {
       <div className="record-list">
         {request.updates.map((update) => (
           <div className="record-item" key={update.id}>
-            <IconMessageCircle size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconMessageCircle aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             <div>
               <div className="record-inline-actions">
                 <StatusChip
@@ -668,7 +670,7 @@ export const HiringRequestsPage = () => {
       : null;
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="hiring-content" aria-labelledby="hiring-title">
         <header className="page-header">
           <div>
@@ -684,7 +686,7 @@ export const HiringRequestsPage = () => {
           {canCreateRequest ? (
             <div className="page-actions">
               <button className="button button-primary" onClick={startCreate} type="button">
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 New request
               </button>
             </div>
@@ -731,6 +733,7 @@ export const HiringRequestsPage = () => {
                               <label htmlFor={`shortlist-note-${entry.id}`}>Note (optional)</label>
                               <input
                                 id={`shortlist-note-${entry.id}`}
+                                name={`shortlist-note-${entry.id}`}
                                 value={decisionNotes[entry.id] ?? ''}
                                 onChange={(event) =>
                                   setDecisionNotes((current) => ({
@@ -823,7 +826,7 @@ export const HiringRequestsPage = () => {
                   onClick={() => void refetch()}
                   type="button"
                 >
-                  <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 </button>
               </Tooltip>
             }
@@ -855,7 +858,7 @@ export const HiringRequestsPage = () => {
                   action={
                     canCreateRequest ? (
                       <button className="button button-primary" onClick={startCreate} type="button">
-                        <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                        <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                         New request
                       </button>
                     ) : null
@@ -911,6 +914,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Role title"
+                name="position-title"
                 onChange={(value) => create.patchDraft({ positionTitle: value })}
                 required
                 type="text"
@@ -918,8 +922,10 @@ export const HiringRequestsPage = () => {
               />
               <FieldRow
                 alwaysEditing
+                inputMode="numeric"
                 label="Headcount"
                 min={1}
+                name="headcount"
                 onChange={(value) => create.patchDraft({ headcount: value })}
                 type="number"
                 value={create.draft.headcount}
@@ -927,6 +933,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Employment type"
+                name="employment-type"
                 onChange={(value) => create.patchDraft({ employmentType: value })}
                 options={EMPLOYMENT_TYPE_OPTIONS}
                 type="select"
@@ -935,6 +942,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Priority"
+                name="priority"
                 onChange={(value) =>
                   create.patchDraft({ priority: value as HiringRequestPriority })
                 }
@@ -951,6 +959,7 @@ export const HiringRequestsPage = () => {
                 <label htmlFor="hiring-description">Role description</label>
                 <textarea
                   id="hiring-description"
+                  name="hiring-description"
                   value={create.draft.jobDescription}
                   onChange={(event) =>
                     create.patchDraft({ jobDescription: event.target.value })
@@ -960,6 +969,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Location"
+                name="location"
                 onChange={(value) => create.patchDraft({ location: value })}
                 type="text"
                 value={create.draft.location}
@@ -967,6 +977,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Preferred start"
+                name="preferred-start"
                 onChange={(value) => create.patchDraft({ preferredStartDate: value })}
                 type="date"
                 value={create.draft.preferredStartDate}
@@ -974,6 +985,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Target fill by"
+                name="target-fill-by"
                 onChange={(value) => create.patchDraft({ targetFillDate: value })}
                 type="date"
                 value={create.draft.targetFillDate}
@@ -981,6 +993,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Role brief"
+                name="role-brief"
                 onChange={(value) => create.patchDraft({ clientNote: value })}
                 placeholder="What the client needs"
                 type="text"
@@ -990,25 +1003,32 @@ export const HiringRequestsPage = () => {
             <FieldGroup title="Compensation">
               <FieldRow
                 alwaysEditing
+                inputMode="decimal"
                 label="Salary min"
                 min={0}
+                name="salary-min"
                 onChange={(value) => create.patchDraft({ salaryMin: value })}
                 type="number"
                 value={create.draft.salaryMin}
               />
               <FieldRow
                 alwaysEditing
+                inputMode="decimal"
                 label="Salary max"
                 min={0}
+                name="salary-max"
                 onChange={(value) => create.patchDraft({ salaryMax: value })}
                 type="number"
                 value={create.draft.salaryMax}
               />
               <FieldRow
                 alwaysEditing
+                autoComplete="off"
                 label="Currency"
+                name="salary-currency"
                 onChange={(value) => create.patchDraft({ salaryCurrency: value.toUpperCase() })}
                 placeholder="USD"
+                spellCheck={false}
                 type="text"
                 value={create.draft.salaryCurrency}
               />
@@ -1017,6 +1037,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Hiring manager"
+                name="hiring-manager"
                 onChange={(value) => create.patchDraft({ hiringManagerEmployeeId: value })}
                 options={employeeOptions}
                 type="select"
@@ -1025,6 +1046,7 @@ export const HiringRequestsPage = () => {
               <FieldRow
                 alwaysEditing
                 label="Reports to"
+                name="reports-to"
                 onChange={(value) => create.patchDraft({ reportsToEmployeeId: value })}
                 options={employeeOptions}
                 type="select"
@@ -1039,7 +1061,7 @@ export const HiringRequestsPage = () => {
             <div className="record-panel-actions">
               <button
                 className="button button-primary"
-                disabled={!create.canCreate || create.isSaving}
+                disabled={create.isSaving}
                 onClick={() => void create.commit()}
                 type="button"
               >
@@ -1061,7 +1083,7 @@ export const HiringRequestsPage = () => {
                   </div>
                   <h2 className="panel-title">{selected.positionTitle}</h2>
                 </div>
-                <IconClipboardCheck size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+                <IconClipboardCheck aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
               </div>
               <div className="record-inline-actions">
                 <StatusChip color={statusColors[selected.status]} label={statusLabels[selected.status]} />
@@ -1136,6 +1158,7 @@ export const HiringRequestsPage = () => {
                   <label htmlFor="request-status">Status</label>
                   <select
                     id="request-status"
+                    name="request-status"
                     value={updateForm.status}
                     onChange={(event) =>
                       setUpdateForm((current) => ({
@@ -1155,6 +1178,7 @@ export const HiringRequestsPage = () => {
                   <label htmlFor="tethr-note">Client update</label>
                   <textarea
                     id="tethr-note"
+                    name="tethr-note"
                     value={updateForm.tethrNote}
                     onChange={(event) =>
                       setUpdateForm((current) => ({ ...current, tethrNote: event.target.value }))
@@ -1174,7 +1198,7 @@ export const HiringRequestsPage = () => {
                   <div className="panel-kicker">Recruitment updates</div>
                   <h2 className="panel-title">{selected.positionTitle}</h2>
                 </div>
-                <IconBriefcase size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+                <IconBriefcase aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
               </div>
               <div className="record-inline-actions">
                 <StatusChip color={statusColors[selected.status]} label={statusLabels[selected.status]} />
@@ -1185,6 +1209,6 @@ export const HiringRequestsPage = () => {
           )
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

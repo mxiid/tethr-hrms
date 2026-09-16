@@ -117,6 +117,7 @@ export const SignUpPage = () => {
           <label htmlFor="signup-org">Company name</label>
           <input
             id="signup-org"
+            name="organization-name"
             type="text"
             value={organizationName}
             onChange={onOrganizationNameChange}
@@ -128,7 +129,7 @@ export const SignUpPage = () => {
               <Skeleton height="xs" width="65%" style={{ marginTop: 'var(--hrms-space-2)' }} />
             </div>
           ) : legalNameAlreadyUsed ? (
-            <p className="field-hint field-hint-warning">
+            <p className="field-hint field-hint-warning" role="status">
               A workspace named &quot;{organizationName.trim()}&quot; already exists. Workspace
               names are unique — try a different name.
             </p>
@@ -138,8 +139,10 @@ export const SignUpPage = () => {
           <label htmlFor="signup-email">Work email</label>
           <input
             id="signup-email"
+            name="email"
             type="email"
             autoComplete="email"
+            spellCheck={false}
             value={email}
             onChange={onEmailChange}
             onBlur={onEmailBlur}
@@ -150,7 +153,7 @@ export const SignUpPage = () => {
               <Skeleton height="xs" width="65%" style={{ marginTop: 'var(--hrms-space-2)' }} />
             </div>
           ) : emailBlocked ? (
-            <p className="field-hint field-hint-warning">
+            <p className="field-hint field-hint-warning" role="status">
               This email has already created a workspace. <Link to="/login">Sign in</Link> instead,
               or ask an admin to invite you into another one.
             </p>
@@ -160,6 +163,7 @@ export const SignUpPage = () => {
           <label htmlFor="signup-password">Password</label>
           <input
             id="signup-password"
+            name="password"
             type="password"
             autoComplete="new-password"
             minLength={8}

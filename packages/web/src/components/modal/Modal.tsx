@@ -76,6 +76,36 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') {
+        return;
+      }
+      // Keep Tab inside the dialog: aria-modal promises the rest of the page is
+      // inert, so the browser's default cycle must not land there.
+      const dialog = dialogRef.current;
+      if (!dialog) {
+        return;
+      }
+      const focusables = [
+        ...dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ];
+      if (focusables.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     document.addEventListener('keydown', onKeyDown);
@@ -108,6 +138,7 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
   };
 
   return createPortal(
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- click-away is a pointer convenience; Escape and the close button are the accessible paths.
     <div
       className={`modal-backdrop${lifecycle === 'closing' ? ' is-closing' : ''}`}
       style={{ zIndex: theme.zIndex.lastLayer }}
@@ -129,7 +160,7 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
           <button aria-label="Close" className="icon-button" onClick={onClose} type="button">
-            <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           </button>
         </div>
         <div className="modal-body">{children}</div>

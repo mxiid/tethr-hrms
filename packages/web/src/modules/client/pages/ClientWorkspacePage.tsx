@@ -1,4 +1,4 @@
-﻿import { useLazyQuery, useQuery } from '@apollo/client';
+import { useLazyQuery, useQuery } from '@apollo/client';
 import type { EmploymentStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
@@ -165,7 +165,7 @@ export const ClientWorkspacePage = () => {
   ];
 
   return (
-    <main className="client-workspace">
+    <section className="client-workspace">
       <section className="client-workspace-content" aria-labelledby="client-workspace-title">
         <header className="page-header">
           <div>
@@ -186,12 +186,12 @@ export const ClientWorkspacePage = () => {
             onClick={() => setOnboardingOpen((open) => !open)}
           >
             <span className="table-title" id="client-onboarding">
-              <IconChevronDown
+              <IconChevronDown aria-hidden="true"
                 className={`collapse-chevron${onboardingOpen ? ' is-open' : ''}`}
                 size={theme.icon.size.sm}
                 stroke={theme.icon.stroke.sm}
               />
-              <IconChecklist size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconChecklist aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Client onboarding
             </span>
             <span className="table-density">
@@ -210,14 +210,14 @@ export const ClientWorkspacePage = () => {
               const content = (
                 <>
                   <span className="onboarding-step-icon">
-                    <StepIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <StepIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   </span>
                   <span className="onboarding-step-copy">
                     <span className="employee-primary">{step.title}</span>
                     <span className="employee-secondary">{step.detail}</span>
                   </span>
                   <span className="onboarding-step-status">
-                    <StatusIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <StatusIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   </span>
                 </>
               );
@@ -239,11 +239,11 @@ export const ClientWorkspacePage = () => {
         <section className="table-shell">
           <div className="table-title-row">
             <div className="table-title">
-              <IconUsersGroup size={theme.icon.size.md} /> Employees
+              <IconUsersGroup aria-hidden="true" size={theme.icon.size.md} /> Employees
             </div>
             <Link className="button button-secondary" to="/employees">
               View directory{' '}
-              <IconArrowUpRight size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+              <IconArrowUpRight aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             </Link>
           </div>
           {error ? (
@@ -326,13 +326,13 @@ export const ClientWorkspacePage = () => {
                 to={action.to}
               >
                 <span className="quick-action-icon">
-                  <ActionIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <ActionIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 </span>
                 <span className="quick-action-copy">
                   <span className="quick-action-title">{action.title}</span>
                   <span className="quick-action-desc">{action.description}</span>
                 </span>
-                <IconArrowUpRight
+                <IconArrowUpRight aria-hidden="true"
                   className="quick-action-arrow"
                   size={theme.icon.size.sm}
                   stroke={theme.icon.stroke.sm}
@@ -342,7 +342,7 @@ export const ClientWorkspacePage = () => {
           })}
         </nav>
       </aside>
-    </main>
+    </section>
   );
 };
 

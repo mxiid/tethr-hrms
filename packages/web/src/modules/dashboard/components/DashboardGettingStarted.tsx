@@ -46,7 +46,7 @@ export const DashboardGettingStarted = () => {
           type="button"
         >
           <span className="dashboard-getting-started-chevron">
-            <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconChevronDown aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           </span>
           <span className="dashboard-getting-started-title">Getting started</span>
           <span className="dashboard-getting-started-count">{done} of {total} done</span>
@@ -60,7 +60,7 @@ export const DashboardGettingStarted = () => {
           onClick={() => setDismissed(true)}
           type="button"
         >
-          <IconX size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          <IconX aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         </button>
       </div>
 
@@ -76,14 +76,14 @@ export const DashboardGettingStarted = () => {
             const body = (
               <>
                 <span className="onboarding-step-icon">
-                  <StepIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <StepIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 </span>
                 <span className="onboarding-step-copy">
                   <span className="employee-primary">{step.title}</span>
                   <span className="employee-secondary">{step.detail}</span>
                 </span>
                 <span className="onboarding-step-status">
-                  <StatusIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <StatusIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 </span>
               </>
             );

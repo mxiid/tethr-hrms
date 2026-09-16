@@ -232,6 +232,10 @@ export const AppShell = () => {
         event.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
+        return;
+      }
+      if (event.key === 'Escape') {
+        setOpenMenu(null);
       }
     };
     document.addEventListener('keydown', onKeyDown);
@@ -601,7 +605,7 @@ export const AppShell = () => {
       >
         <Icon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         <span>{entry.label}</span>
-        <IconChevronDown
+        <IconChevronDown aria-hidden="true"
           className="nav-pill-caret"
           size={theme.icon.size.sm}
           stroke={theme.icon.stroke.sm}
@@ -615,6 +619,9 @@ export const AppShell = () => {
       className={`app-shell${isEmployeePortal ? ' app-shell-employee' : ''}`}
       style={chipColorVar}
     >
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <header className="app-topnav" ref={topnavRef}>
         <div className="topnav-left">
           {isEmployeePortal ? null : (
@@ -626,9 +633,9 @@ export const AppShell = () => {
               onClick={() => setMobileNavOpen((open) => !open)}
             >
               {mobileNavOpen ? (
-                <IconX size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
+                <IconX aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
               ) : (
-                <IconMenu2 size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
+                <IconMenu2 aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.md} />
               )}
             </button>
           )}
@@ -649,10 +656,14 @@ export const AppShell = () => {
               <span className="workspace-chip-name truncate">
                 {organization?.displayName ?? 'Workspace'}
               </span>
-              <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+              <IconChevronDown aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             </button>
             {openMenu === 'workspace' ? (
-              <div className="dropdown-panel dropdown-panel-workspace" role="menu">
+              <div
+                aria-label={organization?.displayName ?? 'Workspace'}
+                className="dropdown-panel dropdown-panel-workspace"
+                role="group"
+              >
                 {switchStep === 'trigger' ? (
                   <>
                     <div className="workspace-menu-header">
@@ -671,38 +682,32 @@ export const AppShell = () => {
                       }}
                       type="button"
                     >
-                      <ThemeIcon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                      <ThemeIcon aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                       <span>Theme · {theme.name === 'light' ? 'Light' : 'Dark'}</span>
                     </button>
                     {canInviteUsers ? (
-                      <button
+                      <Link
                         className="dropdown-nav-item"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          navigate('/settings/members');
-                        }}
-                        type="button"
+                        onClick={() => setOpenMenu(null)}
+                        to="/settings/members"
                       >
-                        <IconUserPlus size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                        <IconUserPlus aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                         <span>Invite user</span>
-                      </button>
+                      </Link>
                     ) : null}
                     {canOpenSettings ? (
-                      <button
+                      <Link
                         className="dropdown-nav-item"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          navigate('/settings');
-                        }}
-                        type="button"
+                        onClick={() => setOpenMenu(null)}
+                        to="/settings"
                       >
-                        <IconSettings size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                        <IconSettings aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                         <span>Settings</span>
-                      </button>
+                      </Link>
                     ) : null}
                     {hasOtherWorkspaces ? (
                       <button className="dropdown-nav-item" onClick={openWorkspacePicker} type="button">
-                        <IconArrowsRightLeft
+                        <IconArrowsRightLeft aria-hidden="true"
                           size={theme.icon.size.sm}
                           stroke={theme.icon.stroke.sm}
                         />
@@ -717,7 +722,7 @@ export const AppShell = () => {
                       }}
                       type="button"
                     >
-                      <IconLogout size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                      <IconLogout aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                       <span>Log out</span>
                     </button>
                   </>
@@ -767,9 +772,11 @@ export const AppShell = () => {
           {isEmployeePortal ? null : (
             <div className="topbar-search-anchor">
               <label className="topbar-search">
-                <IconSearch size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconSearch aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 <input
                   aria-label="Search"
+                  autoComplete="off"
+                  name="global-search"
                   onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
                   onChange={(event) => {
                     setSearch(event.target.value);
@@ -785,13 +792,14 @@ export const AppShell = () => {
                   }}
                   placeholder="Search"
                   ref={searchInputRef}
+                  spellCheck={false}
                   type="search"
                   value={search}
                 />
-                <kbd className="topbar-search-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+                <kbd className="topbar-search-kbd">{isMac ? '⌘\u00A0K' : 'Ctrl\u00A0K'}</kbd>
               </label>
               {searchOpen && search.trim() ? (
-                <div className="topbar-search-results" role="listbox">
+                <div className="topbar-search-results">
                   {jumpResults.length === 0 ? (
                     <div className="topbar-search-empty">No matches</div>
                   ) : (
@@ -799,7 +807,8 @@ export const AppShell = () => {
                       <button
                         className="topbar-search-result"
                         key={result.key}
-                        onMouseDown={() => onJump(result.to)}
+                        onClick={() => onJump(result.to)}
+                        onMouseDown={(event) => event.preventDefault()}
                         type="button"
                       >
                         <span>{result.label}</span>
@@ -857,7 +866,7 @@ export const AppShell = () => {
                         className={`mobile-nav-item${itemIsActive ? ' is-active' : ''}`}
                         to={item.to}
                       >
-                        <ItemIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                        <ItemIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                         <span>{item.label}</span>
                       </Link>
                     );
@@ -876,7 +885,7 @@ export const AppShell = () => {
                   void onLogout();
                 }}
               >
-                <IconLogout size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconLogout aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 <span>Sign out</span>
               </button>
             </section>
@@ -907,7 +916,7 @@ export const AppShell = () => {
                     key={item.label}
                     to={item.to}
                   >
-                    <ItemIcon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                    <ItemIcon aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                     <span>{item.label}</span>
                   </Link>
                 );
@@ -917,7 +926,7 @@ export const AppShell = () => {
         </div>
       </nav>
 
-      <main className="app-content">
+      <main className="app-content" id="main-content">
         <Outlet />
       </main>
 

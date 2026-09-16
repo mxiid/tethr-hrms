@@ -261,16 +261,16 @@ export const MyProfilePage = () => {
 
   if (loading && !employee) {
     return (
-      <main className="profile-page">
+      <section className="profile-page">
         <p className="page-subtitle">Loading your profile...</p>
-      </main>
+      </section>
     );
   }
 
   return (
     <form className="profile-page profile-page-narrow" onSubmit={(event) => void onSubmit(event)}>
       <Link className="profile-back" to="/me">
-        <IconArrowLeft size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+        <IconArrowLeft aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         My workspace
       </Link>
 
@@ -290,18 +290,19 @@ export const MyProfilePage = () => {
               title={savingPhoto ? 'Saving photo...' : 'Change photo'}
             >
               {savingPhoto ? (
-                <IconLoader2
+                <IconLoader2 aria-hidden="true"
                   className="icon-spin"
                   size={theme.icon.size.sm}
                   stroke={theme.icon.stroke.sm}
                 />
               ) : (
-                <IconCamera size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                <IconCamera aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
               )}
               <input
                 accept="image/*"
                 disabled={savingPhoto}
                 id="my-photo-input"
+                name="my-photo-input"
                 type="file"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
@@ -458,6 +459,9 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-email">Personal email</label>
                 <input
                   id="profile-email"
+                  name="profile-email"
+                  autoComplete="email"
+                  spellCheck={false}
                   type="email"
                   value={form.personalEmail}
                   onChange={(event) => setField('personalEmail', event.target.value)}
@@ -467,6 +471,10 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-phone">Phone</label>
                 <input
                   id="profile-phone"
+                  name="profile-phone"
+                  autoComplete="tel"
+                  inputMode="tel"
+                  type="tel"
                   value={form.phone}
                   onChange={(event) => setField('phone', event.target.value)}
                 />
@@ -476,6 +484,7 @@ export const MyProfilePage = () => {
               <label htmlFor="profile-channel">Preferred contact channel</label>
               <select
                 id="profile-channel"
+                name="profile-channel"
                 value={form.preferredContactChannel}
                 onChange={(event) => setField('preferredContactChannel', event.target.value)}
               >
@@ -494,6 +503,8 @@ export const MyProfilePage = () => {
               <label htmlFor="profile-address-1">Address</label>
               <input
                 id="profile-address-1"
+                name="profile-address-1"
+                autoComplete="section-current address-line1"
                 value={form.addressLine1}
                 onChange={(event) => setField('addressLine1', event.target.value)}
               />
@@ -502,6 +513,8 @@ export const MyProfilePage = () => {
               <label htmlFor="profile-address-2">Address line 2</label>
               <input
                 id="profile-address-2"
+                name="profile-address-2"
+                autoComplete="section-current address-line2"
                 value={form.addressLine2}
                 onChange={(event) => setField('addressLine2', event.target.value)}
               />
@@ -511,6 +524,8 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-city">City</label>
                 <input
                   id="profile-city"
+                  name="profile-city"
+                  autoComplete="section-current address-level2"
                   value={form.city}
                   onChange={(event) => setField('city', event.target.value)}
                 />
@@ -519,6 +534,8 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-region">Region</label>
                 <input
                   id="profile-region"
+                  name="profile-region"
+                  autoComplete="section-current address-level1"
                   value={form.region}
                   onChange={(event) => setField('region', event.target.value)}
                 />
@@ -529,6 +546,9 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-country">Country code</label>
                 <input
                   id="profile-country"
+                  name="profile-country"
+                  autoComplete="off"
+                  spellCheck={false}
                   maxLength={2}
                   value={form.countryCode}
                   onChange={(event) => setField('countryCode', event.target.value.toUpperCase())}
@@ -538,6 +558,8 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-postal">Postal code</label>
                 <input
                   id="profile-postal"
+                  name="profile-postal"
+                  autoComplete="postal-code"
                   value={form.postalCode}
                   onChange={(event) => setField('postalCode', event.target.value)}
                 />
@@ -547,6 +569,7 @@ export const MyProfilePage = () => {
               <label htmlFor="profile-accommodation">Accommodation</label>
               <select
                 id="profile-accommodation"
+                name="profile-accommodation"
                 value={form.currentAccommodationType}
                 onChange={(event) => setField('currentAccommodationType', event.target.value)}
               >
@@ -568,6 +591,8 @@ export const MyProfilePage = () => {
               <label htmlFor="profile-perm-address-1">Address</label>
               <input
                 id="profile-perm-address-1"
+                name="profile-perm-address-1"
+                autoComplete="section-permanent address-line1"
                 value={form.permanentAddressLine1}
                 onChange={(event) => setField('permanentAddressLine1', event.target.value)}
               />
@@ -576,6 +601,8 @@ export const MyProfilePage = () => {
               <label htmlFor="profile-perm-address-2">Address line 2</label>
               <input
                 id="profile-perm-address-2"
+                name="profile-perm-address-2"
+                autoComplete="section-permanent address-line2"
                 value={form.permanentAddressLine2}
                 onChange={(event) => setField('permanentAddressLine2', event.target.value)}
               />
@@ -585,6 +612,8 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-perm-city">City</label>
                 <input
                   id="profile-perm-city"
+                  name="profile-perm-city"
+                  autoComplete="section-permanent address-level2"
                   value={form.permanentCity}
                   onChange={(event) => setField('permanentCity', event.target.value)}
                 />
@@ -593,6 +622,8 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-perm-region">Region</label>
                 <input
                   id="profile-perm-region"
+                  name="profile-perm-region"
+                  autoComplete="section-permanent address-level1"
                   value={form.permanentRegion}
                   onChange={(event) => setField('permanentRegion', event.target.value)}
                 />
@@ -603,6 +634,9 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-perm-country">Country code</label>
                 <input
                   id="profile-perm-country"
+                  name="profile-perm-country"
+                  autoComplete="off"
+                  spellCheck={false}
                   maxLength={2}
                   value={form.permanentCountryCode}
                   onChange={(event) =>
@@ -614,6 +648,8 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-perm-postal">Postal code</label>
                 <input
                   id="profile-perm-postal"
+                  name="profile-perm-postal"
+                  autoComplete="postal-code"
                   value={form.permanentPostalCode}
                   onChange={(event) => setField('permanentPostalCode', event.target.value)}
                 />
@@ -623,6 +659,7 @@ export const MyProfilePage = () => {
               <label htmlFor="profile-perm-accommodation">Accommodation</label>
               <select
                 id="profile-perm-accommodation"
+                name="profile-perm-accommodation"
                 value={form.permanentAccommodationType}
                 onChange={(event) => setField('permanentAccommodationType', event.target.value)}
               >
@@ -641,6 +678,8 @@ export const MyProfilePage = () => {
               <label htmlFor="profile-emergency-name">Name</label>
               <input
                 id="profile-emergency-name"
+                name="profile-emergency-name"
+                autoComplete="name"
                 value={form.emergencyContactName}
                 onChange={(event) => setField('emergencyContactName', event.target.value)}
               />
@@ -650,6 +689,10 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-emergency-phone">Phone</label>
                 <input
                   id="profile-emergency-phone"
+                  name="profile-emergency-phone"
+                  autoComplete="tel"
+                  inputMode="tel"
+                  type="tel"
                   value={form.emergencyContactPhone}
                   onChange={(event) => setField('emergencyContactPhone', event.target.value)}
                 />
@@ -658,6 +701,7 @@ export const MyProfilePage = () => {
                 <label htmlFor="profile-emergency-relation">Relationship</label>
                 <input
                   id="profile-emergency-relation"
+                  name="profile-emergency-relation"
                   value={form.emergencyContactRelation}
                   onChange={(event) => setField('emergencyContactRelation', event.target.value)}
                 />
@@ -674,7 +718,7 @@ export const MyProfilePage = () => {
             Cancel
           </Link>
           <button className="button button-primary" disabled={saving} type="submit">
-            <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {saving ? 'Saving...' : 'Save profile'}
           </button>
         </div>

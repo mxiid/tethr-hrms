@@ -122,7 +122,7 @@ export const AnnouncementsPage = () => {
   };
 
   return (
-    <main className="page-frame page-frame-single">
+    <section className="page-frame page-frame-single">
       <section className="announcements-content" aria-labelledby="announcements-title">
         <header className="page-header">
           <div>
@@ -143,7 +143,7 @@ export const AnnouncementsPage = () => {
                 }}
                 type="button"
               >
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Add announcement
               </button>
             </div>
@@ -170,7 +170,7 @@ export const AnnouncementsPage = () => {
         <section className="table-shell">
           <div className="table-title-row">
             <div className="table-title">
-              <IconSpeakerphone size={theme.icon.size.md} /> Announcements
+              <IconSpeakerphone aria-hidden="true" size={theme.icon.size.md} /> Announcements
             </div>
             <div className="panel-actions">
               <FilterBar
@@ -243,7 +243,7 @@ export const AnnouncementsPage = () => {
                   {announcement.isPinned ? (
                     <StatusChip
                       color="amber"
-                      icon={<IconPin size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />}
+                      icon={<IconPin aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />}
                       label="Pinned"
                     />
                   ) : null}
@@ -279,6 +279,7 @@ export const AnnouncementsPage = () => {
               <label htmlFor="announcement-title">Title</label>
               <input
                 id="announcement-title"
+                name="announcement-title"
                 required
                 value={form.title}
                 onChange={(event) =>
@@ -290,6 +291,7 @@ export const AnnouncementsPage = () => {
               <label htmlFor="announcement-audience">Audience</label>
               <select
                 id="announcement-audience"
+                name="announcement-audience"
                 value={form.audience}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -309,6 +311,7 @@ export const AnnouncementsPage = () => {
               <label htmlFor="announcement-body">Message</label>
               <textarea
                 id="announcement-body"
+                name="announcement-body"
                 required
                 value={form.body}
                 onChange={(event) =>
@@ -320,6 +323,7 @@ export const AnnouncementsPage = () => {
               <label htmlFor="announcement-expires">Expires</label>
               <input
                 id="announcement-expires"
+                name="announcement-expires"
                 type="date"
                 value={form.expiresAt}
                 onChange={(event) =>
@@ -330,6 +334,7 @@ export const AnnouncementsPage = () => {
             <label className="checkbox-field">
               <input
                 checked={form.isPinned}
+                name="announcement-pinned"
                 type="checkbox"
                 onChange={(event) =>
                   setForm((current) => ({ ...current, isPinned: event.target.checked }))
@@ -338,12 +343,12 @@ export const AnnouncementsPage = () => {
               Pin this update
             </label>
             <button className="button button-primary" disabled={publishing} type="submit">
-              <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               {publishing ? 'Publishing...' : 'Publish'}
             </button>
           </form>
         </Modal>
       ) : null}
-    </main>
+    </section>
   );
 };

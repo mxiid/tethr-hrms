@@ -5,6 +5,7 @@ import { useState, type FormEvent } from 'react';
 
 import { uploadToSignedUrl } from '../../../app/upload';
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { focusFirstByName } from '../../../components/form/validation';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import { useTheme } from '../../../providers/theme/useTheme';
 import {
@@ -84,6 +85,7 @@ export const MyExpensesSection = () => {
   const [amount, setAmount] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [invalidLineFields, setInvalidLineFields] = useState<readonly string[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [createClaim, { loading: creating }] = useMutation(CREATE_MY_EXPENSE_CLAIM_MUTATION);
@@ -127,6 +129,11 @@ export const MyExpensesSection = () => {
   const onCreate = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     setErrorMessage(null);
+    if (purpose.trim().length < 3) {
+      setErrorMessage('Enter what this claim is for (at least 3 characters) before starting it.');
+      focusFirstByName(document.querySelector<HTMLElement>('.side-panel'), ['claim-purpose']);
+      return;
+    }
     try {
       const created = await createClaim({
         variables: { input: { purpose: purpose.trim(), currency: 'PKR' } },
@@ -144,6 +151,25 @@ export const MyExpensesSection = () => {
     if (!draftClaimId) return;
     setErrorMessage(null);
     setSuccessMessage(null);
+    const missing: string[] = [];
+    if (!categoryId) missing.push('claim-line-category');
+    if (amount.trim() === '' || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      missing.push('claim-line-amount');
+    }
+    if (description.trim() === '') missing.push('claim-line-description');
+    if (selectedCategory?.requiresReceipt === true && receiptFile === null) {
+      missing.push('claim-line-receipt');
+    }
+    if (missing.length > 0) {
+      setErrorMessage(
+        missing.length === 1 && missing[0] === 'claim-line-receipt'
+          ? 'Attach the receipt this category requires.'
+          : 'Fill in the category, amount (greater than zero), and description before adding the line.',
+      );
+      setInvalidLineFields(missing);
+      focusFirstByName(document.querySelector<HTMLElement>('.side-panel'), missing);
+      return;
+    }
     try {
       let receipt:
         | { storageKey: string; fileName: string; contentType: string; sizeBytes: number }
@@ -179,6 +205,7 @@ export const MyExpensesSection = () => {
       setDescription('');
       setAmount('');
       setReceiptFile(null);
+      setInvalidLineFields([]);
       setSuccessMessage('Line added.');
     } catch (cause) {
       setErrorMessage(cause instanceof Error ? cause.message : 'Could not add the line.');
@@ -199,6 +226,13 @@ export const MyExpensesSection = () => {
   const onSubmit = async (): Promise<void> => {
     if (!draftClaimId) return;
     setErrorMessage(null);
+    if ((draft?.lines ?? []).length === 0) {
+      setErrorMessage('Add at least one line before submitting the claim.');
+      focusFirstByName(document.querySelector<HTMLElement>('.side-panel'), [
+        'claim-line-category',
+      ]);
+      return;
+    }
     try {
       await submitClaim({ variables: { claimId: draftClaimId } });
       await refetch();
@@ -215,7 +249,7 @@ export const MyExpensesSection = () => {
       <div className="me-section-head">
         <h2 className="me-section-title">My expenses</h2>
         <button className="button button-secondary button-sm" type="button" onClick={openNew}>
-          <IconPlus size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          <IconPlus aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           New claim
         </button>
       </div>
@@ -224,37 +258,55 @@ export const MyExpensesSection = () => {
         {!loading && claims.length === 0 ? (
           <div className="table-empty">No claims yet — file one for approval and reimbursement.</div>
         ) : null}
-        {claims.slice(0, 4).map((claim) => (
-          <div
-            className={`stack-row ${claim.status === 'draft' ? 'stack-row-clickable' : ''}`}
-            key={claim.id}
-            onClick={() => openDraft(claim)}
-            role={claim.status === 'draft' ? 'button' : undefined}
-            tabIndex={claim.status === 'draft' ? 0 : undefined}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') openDraft(claim);
-            }}
-          >
-            <div className="stack-row-copy">
-              <div className="employee-primary">
-                {claim.claimNumber ?? 'Draft'} · {claim.purpose}
+        {claims.slice(0, 4).map((claim) => {
+          const rowContent = (
+            <>
+              <div className="stack-row-copy">
+                <div className="employee-primary">
+                  {claim.claimNumber ?? 'Draft'} · {claim.purpose}
+                </div>
+                <div className="employee-secondary">
+                  {claim.submittedAt ? claim.submittedAt.slice(0, 10) : 'Not submitted'} ·{' '}
+                  {formatMoney(claim.totalAmount, claim.currency)}
+                </div>
               </div>
-              <div className="employee-secondary">
-                {claim.submittedAt ? claim.submittedAt.slice(0, 10) : 'Not submitted'} ·{' '}
-                {formatMoney(claim.totalAmount, claim.currency)}
-              </div>
+              <StatusChip
+                color={STATUS_COLORS[claim.status] ?? 'gray'}
+                label={STATUS_LABELS[claim.status] ?? claim.status}
+              />
+            </>
+          );
+          return claim.status === 'draft' ? (
+            <div
+              className="stack-row stack-row-clickable"
+              key={claim.id}
+              onClick={() => openDraft(claim)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  if (event.key === ' ') event.preventDefault();
+                  openDraft(claim);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              {rowContent}
             </div>
-            <StatusChip
-              color={STATUS_COLORS[claim.status] ?? 'gray'}
-              label={STATUS_LABELS[claim.status] ?? claim.status}
-            />
-          </div>
-        ))}
+          ) : (
+            <div className="stack-row" key={claim.id}>
+              {rowContent}
+            </div>
+          );
+        })}
       </div>
 
       <SidePanel isOpen={panelOpen} onClose={() => setPanelOpen(false)} title="Expense claim">
         <section className="self-service-section">
-          {errorMessage ? <p className="auth-error" role="alert">{errorMessage}</p> : null}
+          {errorMessage ? (
+            <p className="auth-error" id="claim-line-error" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
           {successMessage ? (
             <p className="form-success" role="status">
               {successMessage}
@@ -267,16 +319,13 @@ export const MyExpensesSection = () => {
                 <label htmlFor="claim-purpose">What is this claim for?</label>
                 <input
                   id="claim-purpose"
+                  name="claim-purpose"
                   placeholder="Client visit, home office, …"
                   value={purpose}
                   onChange={(event) => setPurpose(event.target.value)}
                 />
               </div>
-              <button
-                className="button button-primary button-full"
-                disabled={creating || purpose.trim().length < 3}
-                type="submit"
-              >
+              <button className="button button-primary button-full" disabled={creating} type="submit">
                 {creating ? 'Creating…' : 'Start a claim'}
               </button>
             </form>
@@ -287,7 +336,7 @@ export const MyExpensesSection = () => {
                   <div className="panel-kicker">Draft</div>
                   <h2 className="panel-title">{purpose}</h2>
                 </div>
-                <IconReceipt size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+                <IconReceipt aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
               </div>
 
               <div className="stack-list stack-card">
@@ -308,7 +357,7 @@ export const MyExpensesSection = () => {
                         type="button"
                         onClick={() => void onRemoveLine(line.id)}
                       >
-                        <IconTrash size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                        <IconTrash aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                       </button>
                     </div>
                   </div>
@@ -322,7 +371,10 @@ export const MyExpensesSection = () => {
                 <div className="field">
                   <label htmlFor="claim-line-category">Category</label>
                   <select
+                    aria-describedby={invalidLineFields.length > 0 ? 'claim-line-error' : undefined}
+                    aria-invalid={invalidLineFields.includes('claim-line-category') || undefined}
                     id="claim-line-category"
+                    name="claim-line-category"
                     value={categoryId}
                     onChange={(event) => setCategoryId(event.target.value)}
                   >
@@ -340,6 +392,7 @@ export const MyExpensesSection = () => {
                     <label htmlFor="claim-line-date">Date</label>
                     <input
                       id="claim-line-date"
+                      name="claim-line-date"
                       type="date"
                       value={expenseDate}
                       onChange={(event) => setExpenseDate(event.target.value)}
@@ -348,8 +401,11 @@ export const MyExpensesSection = () => {
                   <div className="field">
                     <label htmlFor="claim-line-amount">Amount (PKR)</label>
                     <input
+                      aria-describedby={invalidLineFields.length > 0 ? 'claim-line-error' : undefined}
+                      aria-invalid={invalidLineFields.includes('claim-line-amount') || undefined}
                       id="claim-line-amount"
                       inputMode="decimal"
+                      name="claim-line-amount"
                       placeholder="0.00"
                       value={amount}
                       onChange={(event) => setAmount(event.target.value)}
@@ -359,7 +415,10 @@ export const MyExpensesSection = () => {
                 <div className="field">
                   <label htmlFor="claim-line-description">Description</label>
                   <input
+                    aria-describedby={invalidLineFields.length > 0 ? 'claim-line-error' : undefined}
+                    aria-invalid={invalidLineFields.includes('claim-line-description') || undefined}
                     id="claim-line-description"
+                    name="claim-line-description"
                     placeholder="Taxi to client site"
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
@@ -370,21 +429,17 @@ export const MyExpensesSection = () => {
                     Receipt {selectedCategory?.requiresReceipt ? '(required)' : '(optional)'}
                   </label>
                   <input
+                    aria-describedby={invalidLineFields.length > 0 ? 'claim-line-error' : undefined}
+                    aria-invalid={invalidLineFields.includes('claim-line-receipt') || undefined}
                     id="claim-line-receipt"
+                    name="claim-line-receipt"
                     type="file"
                     onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)}
                   />
                 </div>
                 <button
                   className="button button-secondary button-full"
-                  disabled={
-                    adding ||
-                    !categoryId ||
-                    description.trim().length === 0 ||
-                    !Number.isFinite(Number(amount)) ||
-                    Number(amount) <= 0 ||
-                    (selectedCategory?.requiresReceipt === true && receiptFile === null)
-                  }
+                  disabled={adding}
                   type="submit"
                 >
                   {adding ? 'Adding…' : 'Add line'}
@@ -393,7 +448,7 @@ export const MyExpensesSection = () => {
 
               <button
                 className="button button-primary button-full"
-                disabled={submitting || (draft?.lines ?? []).length === 0}
+                disabled={submitting}
                 type="button"
                 onClick={() => void onSubmit()}
               >

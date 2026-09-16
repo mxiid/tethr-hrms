@@ -37,7 +37,7 @@ export const PayrollReadinessBanner = ({ readiness }: Props) => {
     return (
       <div className="payroll-readiness payroll-readiness--clear" role="status">
         <span className="payroll-readiness__head">
-          <IconCircleCheck size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          <IconCircleCheck aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           All active employees are ready to be paid this period.
         </span>
       </div>
@@ -50,7 +50,7 @@ export const PayrollReadinessBanner = ({ readiness }: Props) => {
       aria-label="Payroll readiness"
     >
       <div className="payroll-readiness__head">
-        <IconAlertTriangle size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+        <IconAlertTriangle aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
         <span>
           {readiness.hardBlockerCount} employee{readiness.hardBlockerCount === 1 ? '' : 's'} can&apos;t
           be paid

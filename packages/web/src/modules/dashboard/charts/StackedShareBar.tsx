@@ -37,7 +37,8 @@ export const StackedShareBar = ({ segments }: StackedShareBarProps) => {
         {nonZero.map((segment) => {
           const colorIndex = segments.findIndex((entry) => entry.id === segment.id);
           return (
-            <div
+            <button
+              aria-label={`${segment.label}: ${segment.value} of ${total}`}
               className={`dashboard-share-bar-segment${hoveredId === segment.id ? ' is-hovered' : ''}`}
               key={segment.id}
               onBlur={() => setHoveredId(null)}
@@ -45,7 +46,7 @@ export const StackedShareBar = ({ segments }: StackedShareBarProps) => {
               onMouseEnter={() => setHoveredId(segment.id)}
               onMouseLeave={() => setHoveredId(null)}
               style={{ flexGrow: segment.value, background: categoricalColorVarAt(colorIndex) }}
-              tabIndex={0}
+              type="button"
             />
           );
         })}

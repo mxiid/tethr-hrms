@@ -58,7 +58,7 @@ export const ClockInOutCard = () => {
             type="button"
             onClick={() => void clock.clockIn()}
           >
-            <IconPlayerPlay size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconPlayerPlay aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {clock.clockingIn ? 'Checking in...' : 'Check in'}
           </button>
           <button
@@ -67,7 +67,7 @@ export const ClockInOutCard = () => {
             type="button"
             onClick={() => void clock.clockOut()}
           >
-            <IconPlayerStop size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconPlayerStop aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {clock.clockingOut ? 'Checking out...' : 'Check out'}
           </button>
         </div>
@@ -76,7 +76,7 @@ export const ClockInOutCard = () => {
       <section className="table-shell">
         <div className="table-title-row">
           <div className="table-title">
-            <IconClock size={theme.icon.size.md} /> Recorded days
+            <IconClock aria-hidden="true" size={theme.icon.size.md} /> Recorded days
           </div>
           <div className="table-density">Last 30 days</div>
         </div>

@@ -76,10 +76,13 @@ type EmployeeFieldDescriptor = {
   readonly key: EmployeeFieldKey;
   readonly label: string;
   readonly type: RecordFieldType;
+  readonly autoComplete?: string;
+  readonly inputMode?: 'text' | 'tel' | 'email' | 'numeric' | 'decimal';
   readonly options?: readonly RecordFieldOption[];
   readonly placeholder?: string;
   readonly required?: boolean;
   readonly min?: number;
+  readonly spellCheck?: boolean;
 };
 
 type EmployeeFieldGroup = {
@@ -131,8 +134,22 @@ const EMPLOYEE_FIELD_GROUPS: readonly EmployeeFieldGroup[] = [
   {
     title: 'Work identity',
     fields: [
-      { key: 'employeeNumber', label: 'Employee number', type: 'text', required: true },
-      { key: 'workEmail', label: 'Work email', type: 'text', placeholder: 'name@company.com' },
+      {
+        key: 'employeeNumber',
+        label: 'Employee number',
+        type: 'text',
+        autoComplete: 'off',
+        spellCheck: false,
+        required: true,
+      },
+      {
+        key: 'workEmail',
+        label: 'Work email',
+        type: 'email',
+        autoComplete: 'email',
+        spellCheck: false,
+        placeholder: 'name@company.com',
+      },
       {
         key: 'salutation',
         label: 'Salutation',
@@ -163,7 +180,7 @@ const EMPLOYEE_FIELD_GROUPS: readonly EmployeeFieldGroup[] = [
     title: 'Contract & exit terms',
     fields: [
       { key: 'contractEndDate', label: 'Contract end', type: 'date' },
-      { key: 'noticePeriodDays', label: 'Notice period (days)', type: 'number', min: 0 },
+      { key: 'noticePeriodDays', label: 'Notice period (days)', type: 'number', inputMode: 'numeric', min: 0 },
       { key: 'retirementDate', label: 'Retirement date', type: 'date' },
     ],
   },
@@ -313,8 +330,10 @@ const NameHeader = ({ firstName, lastName, mode, onDraftChange, onCommit }: Name
     <div className="record-panel-name">
       <input
         aria-label="First name"
+        autoComplete="given-name"
         autoFocus={mode === 'create'}
         className="record-panel-name-input"
+        name="first-name"
         onBlur={() => commitKey('firstName')}
         onChange={(event) => update({ firstName: event.target.value })}
         onKeyDown={(event) => {
@@ -331,7 +350,9 @@ const NameHeader = ({ firstName, lastName, mode, onDraftChange, onCommit }: Name
       />
       <input
         aria-label="Last name"
+        autoComplete="family-name"
         className="record-panel-name-input"
+        name="last-name"
         onBlur={() => commitKey('lastName')}
         onChange={(event) => update({ lastName: event.target.value })}
         onKeyDown={(event) => {
@@ -396,6 +417,9 @@ export const EmployeesListPage = () => {
   const create = useInlineCreate<EmployeeDraft, EmployeeRecord>({
     createEmptyDraft: emptyEmployeeDraft,
     isComplete: isEmployeeDraftComplete,
+    requiredFieldNames: ['first-name', 'last-name', 'employeeNumber', 'hireDate'],
+    incompleteMessage:
+      'Enter the employee number, first and last name, and hire date before creating the employee.',
     createRecord: async (draft) => {
       const result = await createEmployee({
         variables: { input: toCreateEmployeeInput(draft) },
@@ -611,7 +635,7 @@ export const EmployeesListPage = () => {
   return (
     // The org chart needs the whole page: with the record panel taking 500px it
     // renders a 2700px tree into ~780px. Selection there opens the record instead.
-    <main className={viewMode === 'orgChart' ? 'page-frame-wide' : 'list-with-panel'}>
+    <section className={viewMode === 'orgChart' ? 'page-frame-wide' : 'list-with-panel'}>
       <section className="employees-content" aria-labelledby="employees-title">
         <header className="page-header">
           <div>
@@ -629,7 +653,7 @@ export const EmployeesListPage = () => {
           {canOnboardEmployee && viewMode !== 'orgChart' ? (
             <div className="page-actions">
               <button className="button button-primary" onClick={startCreate} type="button">
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 New employee
               </button>
             </div>
@@ -638,10 +662,13 @@ export const EmployeesListPage = () => {
 
         <div className="directory-toolbar">
           <div className="directory-search">
-            <IconSearch size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconSearch aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             <input
               aria-label="Search employees"
+              autoComplete="off"
+              name="employee-search"
               placeholder="Search name, number, email, or role"
+              spellCheck={false}
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
@@ -704,7 +731,7 @@ export const EmployeesListPage = () => {
                       type="button"
                       onClick={startCreate}
                     >
-                      <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                       New employee
                     </button>
                   ) : null
@@ -769,7 +796,7 @@ export const EmployeesListPage = () => {
                           type="button"
                           onClick={startCreate}
                         >
-                          <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                          <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                           New employee
                         </button>
                       ) : null
@@ -809,6 +836,7 @@ export const EmployeesListPage = () => {
       </section>
 
       <SidePanel
+        ariaLabel={selected !== null ? fullName(selected) : undefined}
         headerContent={
           create.draft !== null ? (
             <NameHeader
@@ -850,13 +878,17 @@ export const EmployeesListPage = () => {
                     alwaysEditing
                     key={field.key}
                     label={field.label}
+                    autoComplete={field.autoComplete}
+                    inputMode={field.inputMode}
                     min={field.min}
+                    name={field.key}
                     onChange={(value) =>
                       create.patchDraft({ [field.key]: value } as Partial<EmployeeDraft>)
                     }
                     options={field.options}
                     placeholder={field.placeholder}
                     required={field.required}
+                    spellCheck={field.spellCheck}
                     type={field.type}
                     value={create.draft?.[field.key] ?? ''}
                   />
@@ -871,11 +903,11 @@ export const EmployeesListPage = () => {
             <div className="record-panel-actions">
               <button
                 className="button button-primary"
-                disabled={!create.canCreate || create.isSaving}
+                disabled={create.isSaving}
                 onClick={() => void create.commit()}
                 type="button"
               >
-                <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 {create.isSaving ? 'Creating…' : 'Create employee'}
               </button>
               <button className="button button-secondary" onClick={create.discard} type="button">
@@ -904,15 +936,19 @@ export const EmployeesListPage = () => {
                   const raw = employeeRawValue(selected, field.key);
                   return (
                     <FieldRow
+                      autoComplete={field.autoComplete}
                       display={fieldDisplay(field.key, raw)}
+                      inputMode={field.inputMode}
                       key={field.key}
                       label={field.label}
+                      name={field.key}
                       onCommit={(value) => void commitField(selected.id, field.key, value)}
                       options={field.options}
                       readOnly={
                         !canEditEmployee || field.key === 'employeeNumber' || savingEmployee
                       }
                       required={field.required}
+                      spellCheck={field.spellCheck}
                       type={field.type}
                       value={raw}
                     />
@@ -949,11 +985,11 @@ export const EmployeesListPage = () => {
 
             <Link className="button button-primary button-full" to={`/employees/${selected.id}`}>
               Open record
-              <IconArrowRight size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconArrowRight aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             </Link>
           </div>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

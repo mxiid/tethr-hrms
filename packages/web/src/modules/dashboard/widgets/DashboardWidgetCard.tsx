@@ -134,7 +134,7 @@ export const DashboardWidgetCard = ({
           {...attributes}
           {...listeners}
         >
-          <IconGripVertical size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          <IconGripVertical aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         </button>
         <h2 className="panel-title dashboard-widget-title">{title}</h2>
         {chartKind ? (
@@ -145,9 +145,9 @@ export const DashboardWidgetCard = ({
             type="button"
           >
             {displayMode === 'chart' ? (
-              <IconListDetails size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+              <IconListDetails aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             ) : (
-              <IconChartBar size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+              <IconChartBar aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             )}
           </button>
         ) : null}
@@ -163,7 +163,7 @@ export const DashboardWidgetCard = ({
           onClick={onRemove}
           type="button"
         >
-          <IconX size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          <IconX aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         </button>
       </div>
       <div className="dashboard-widget-body">

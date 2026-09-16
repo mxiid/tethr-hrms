@@ -27,8 +27,15 @@ export const WidgetFieldPicker = ({
       if (anchorRef.current?.contains(event.target as Node)) return;
       setIsOpen(false);
     };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
     document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, []);
 
   return (
@@ -39,15 +46,20 @@ export const WidgetFieldPicker = ({
         onClick={() => setIsOpen((open) => !open)}
         type="button"
       >
-        <IconSettings size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+        <IconSettings aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
       </button>
       {isOpen ? (
-        <div className="dropdown-panel dropdown-panel-widget-fields" role="menu">
+        <div
+          aria-label={`Fields for ${title}`}
+          className="dropdown-panel dropdown-panel-widget-fields"
+          role="group"
+        >
           <div className="account-dropdown-label">Fields</div>
           {fields.map((field) => (
             <label className="checkbox-field" key={field.id}>
               <input
                 checked={selectedFieldIds.includes(field.id)}
+                name={`field-${field.id}`}
                 onChange={(event) => onToggleField(field.id, event.target.checked)}
                 type="checkbox"
               />

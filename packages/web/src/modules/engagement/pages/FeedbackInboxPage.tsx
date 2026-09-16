@@ -163,7 +163,7 @@ export const FeedbackInboxPage = () => {
   };
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="feedback-content" aria-labelledby="feedback-title">
         <header className="page-header">
           <div>
@@ -255,7 +255,7 @@ export const FeedbackInboxPage = () => {
                 <div className="panel-kicker">{selected.category}</div>
                 <h2 className="panel-title">{selected.subject}</h2>
               </div>
-              <IconMessageCircle size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              <IconMessageCircle aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
             <div className="request-note">
               <div className="employee-secondary">{formatDateTime(selected.createdAt)}</div>
@@ -271,6 +271,7 @@ export const FeedbackInboxPage = () => {
                 <label htmlFor="feedback-status">Status</label>
                 <select
                   id="feedback-status"
+                  name="feedback-status"
                   value={status}
                   onChange={(event) => setStatus(event.target.value as FeedbackStatus)}
                 >
@@ -285,18 +286,19 @@ export const FeedbackInboxPage = () => {
                 <label htmlFor="feedback-resolution">Resolution note</label>
                 <textarea
                   id="feedback-resolution"
+                  name="feedback-resolution"
                   value={resolutionNote}
                   onChange={(event) => setResolutionNote(event.target.value)}
                 />
               </div>
               <button className="button button-primary" disabled={resolving} type="submit">
-                <IconCheck size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconCheck aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 {resolving ? 'Saving...' : 'Save status'}
               </button>
             </form>
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

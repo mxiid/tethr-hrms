@@ -178,7 +178,7 @@ export const ClientPortfolioPage = () => {
   // flow is not competing with the portfolio it is about to add to.
   if (showForm) {
     return (
-      <main className="onboarding-page">
+      <section className="onboarding-page">
         <WorkspaceOnboardingForm
           clients={clients}
           formError={formError}
@@ -189,12 +189,12 @@ export const ClientPortfolioPage = () => {
           onCancel={() => setShowForm(false)}
           onSubmit={(values) => void onSubmit(values)}
         />
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="client-portfolio-page">
+    <section className="client-portfolio-page">
       <section className="client-portfolio-content" aria-labelledby="client-portfolio-title">
         <header className="page-header">
           <div>
@@ -209,7 +209,7 @@ export const ClientPortfolioPage = () => {
               type="button"
               onClick={() => startOnboarding()}
             >
-              <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               New workspace
             </button>
           </div>
@@ -252,7 +252,7 @@ export const ClientPortfolioPage = () => {
                   onClick={() => void refetch()}
                   type="button"
                 >
-                  <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 </button>
               </Tooltip>
             }
@@ -278,7 +278,7 @@ export const ClientPortfolioPage = () => {
                   description="Onboard the first workspace to start the portfolio."
                   action={
                     <button className="button button-secondary" onClick={() => startOnboarding()} type="button">
-                      <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                       New workspace
                     </button>
                   }
@@ -316,7 +316,7 @@ export const ClientPortfolioPage = () => {
               <div className="panel-kicker">Portfolio</div>
               <h2 className="panel-title">At a glance</h2>
             </div>
-            <IconBuildingCommunity size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+            <IconBuildingCommunity aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
           </div>
           <div className="field-list">
             <div className="field-row">
@@ -382,6 +382,6 @@ export const ClientPortfolioPage = () => {
           )}
         </section>
       </aside>
-    </main>
+    </section>
   );
 };

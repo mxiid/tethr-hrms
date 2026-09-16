@@ -5,7 +5,7 @@ export const SettingsPayrollPage = () => (
     <div className="employees-content">
       <header className="page-header">
         <div>
-          <h1 className="page-title">Payroll</h1>
+          <h2 className="page-title">Payroll</h2>
           <p className="page-subtitle">Workspace payroll configuration.</p>
         </div>
       </header>
