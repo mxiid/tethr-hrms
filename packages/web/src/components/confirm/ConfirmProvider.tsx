@@ -14,57 +14,98 @@ export type ConfirmOptions = {
 };
 
 type ConfirmContextValue = {
-  readonly confirm: (options: ConfirmOptions) => Promise<boolean>;
+  readonly confirm: (options: ConfirmOptions, signal?: AbortSignal) => Promise<boolean>;
+};
+
+type PendingConfirm = {
+  readonly resolve: (value: boolean) => void;
+  readonly signal?: AbortSignal;
+  readonly onAbort: () => void;
 };
 
 const ConfirmContext = createContext<ConfirmContextValue | null>(null);
 
 /**
- * Resolves true when the user accepts, false on cancel, Escape, or backdrop
- * click — destructive handlers can await it inline:
+ * Resolves true when the user accepts, false on cancel, Escape, backdrop
+ * click, supersession, or the caller unmounting. Destructive handlers can
+ * await it inline:
  *
  *   const confirmed = await confirm({ title: 'Void this draft?', tone: 'danger' });
  *   if (!confirmed) return;
+ *
+ * The hook owns the caller's lifecycle: a pending confirmation settles false
+ * when the component that asked for it unmounts, so a dialog retained across
+ * a route change can never resume an old handler on the new route.
  */
 export const useConfirm = (): ConfirmContextValue['confirm'] => {
   const value = useContext(ConfirmContext);
   if (value === null) {
     throw new Error('useConfirm must be used inside <ConfirmProvider>');
   }
-  return value.confirm;
+  const controllerRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    // A fresh controller per mount keeps StrictMode's mount→cleanup→mount safe.
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    return () => controller.abort();
+  }, []);
+  return useCallback(
+    (options: ConfirmOptions) => value.confirm(options, controllerRef.current?.signal),
+    [value],
+  );
 };
 
 /**
  * One confirmation dialog for the whole app, mounted above the router. Only a
  * single dialog can be pending; starting another settles the first as
- * cancelled, and unmounting the provider resolves any pending request false so
- * a handler can never hang.
+ * cancelled, an aborted caller signal settles its request false, and
+ * unmounting the provider resolves anything still pending so a handler can
+ * never hang.
  */
 export const ConfirmProvider = ({ children }: { readonly children: ReactNode }) => {
   const [request, setRequest] = useState<ConfirmOptions | null>(null);
-  const resolverRef = useRef<((value: boolean) => void) | null>(null);
+  const pendingRef = useRef<PendingConfirm | null>(null);
 
   const settle = useCallback((value: boolean): void => {
-    const resolve = resolverRef.current;
-    resolverRef.current = null;
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    if (pending) {
+      pending.signal?.removeEventListener('abort', pending.onAbort);
+      pending.resolve(value);
+    }
     setRequest(null);
-    resolve?.(value);
   }, []);
 
   const confirm = useCallback(
-    (options: ConfirmOptions): Promise<boolean> =>
+    (options: ConfirmOptions, signal?: AbortSignal): Promise<boolean> =>
       new Promise<boolean>((resolve) => {
-        resolverRef.current?.(false);
-        resolverRef.current = resolve;
+        // A second confirmation supersedes the first as cancelled.
+        if (pendingRef.current !== null) {
+          const pending = pendingRef.current;
+          pendingRef.current = null;
+          pending.signal?.removeEventListener('abort', pending.onAbort);
+          pending.resolve(false);
+        }
+        if (signal?.aborted) {
+          resolve(false);
+          return;
+        }
+        const onAbort = (): void => settle(false);
+        pendingRef.current = { resolve, signal, onAbort };
+        signal?.addEventListener('abort', onAbort);
         setRequest({ ...options });
       }),
-    [],
+    [settle],
   );
 
   useEffect(
     () => () => {
-      resolverRef.current?.(false);
-      resolverRef.current = null;
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      if (pending !== null) {
+        pending.signal?.removeEventListener('abort', pending.onAbort);
+        pending.resolve(false);
+      }
     },
     [],
   );
