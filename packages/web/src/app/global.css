@@ -177,7 +177,7 @@ button {
   font-family: inherit;
   font-size: var(--hrms-font-size-xxs);
   line-height: 1.4;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
 /* Only fades once there's actual text — not on a bare click/focus, so
@@ -404,7 +404,7 @@ button {
   white-space: nowrap;
   transition:
     var(--hrms-animation-clickable-background-transition),
-    border-radius 0.15s ease;
+    border-radius var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
 .nav-pill:hover {
@@ -880,7 +880,7 @@ button {
   border-radius: var(--hrms-radius-rounded);
   /* Pale hues (yellow, lime, mint, sky) would otherwise vanish on the card. */
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hrms-color-text-primary) 12%, transparent);
-  transition: transform var(--hrms-animation-duration-instant) ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .color-swatch:hover:not(:disabled) .color-swatch-dot {
@@ -970,6 +970,7 @@ button {
   margin: 0;
   font-size: var(--hrms-font-size-sm);
   font-weight: var(--hrms-font-weight-semi-bold);
+  text-wrap: balance;
 }
 
 .settings-sidebar-nav {
@@ -1200,6 +1201,7 @@ button {
   margin: 0;
   font-size: var(--hrms-font-size-lg);
   font-weight: var(--hrms-font-weight-semi-bold);
+  text-wrap: balance;
 }
 
 .modal-body {
@@ -1236,6 +1238,7 @@ button {
   font-weight: var(--hrms-font-weight-semi-bold);
   letter-spacing: 0;
   line-height: var(--hrms-line-height-md);
+  text-wrap: balance;
 }
 
 .page-subtitle {
@@ -1332,6 +1335,7 @@ button {
   color: var(--hrms-color-text-primary);
   font-size: var(--hrms-font-size-xl);
   font-weight: var(--hrms-font-weight-semi-bold);
+  font-variant-numeric: tabular-nums;
   line-height: var(--hrms-line-height-md);
 }
 
@@ -1850,11 +1854,13 @@ button {
 
 .table-title {
   font-weight: var(--hrms-font-weight-semi-bold);
+  text-wrap: balance;
 }
 
 .table-density {
   color: var(--hrms-color-text-tertiary);
   font-size: var(--hrms-font-size-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .employee-table-wrap {
@@ -1990,7 +1996,7 @@ button {
   .data-table .row-hover-action,
   .employee-table .row-hover-action {
     opacity: 0;
-    transition: opacity 0.12s ease;
+    transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
   }
 
   .data-table tbody tr:hover .row-hover-action,
@@ -2169,7 +2175,7 @@ button {
 .org-children {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+  transition: grid-template-rows var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-inOut);
 }
 
 .org-children:not(.is-open) {
@@ -2296,7 +2302,7 @@ button {
   border-radius: var(--hrms-radius-rounded);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
 .org-node-wrap:hover .org-node-edit,
@@ -2401,9 +2407,9 @@ button {
   cursor: pointer;
   transition:
     var(--hrms-animation-clickable-background-transition),
-    opacity 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft),
+    border-color var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft),
+    box-shadow var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
 .org-node:hover {
@@ -2548,6 +2554,7 @@ button {
   font-size: var(--hrms-font-size-lg);
   font-weight: var(--hrms-font-weight-semi-bold);
   line-height: var(--hrms-line-height-md);
+  text-wrap: balance;
 }
 
 .panel-actions {
@@ -2580,7 +2587,7 @@ button {
 
 .detail-section-chevron {
   color: var(--hrms-color-text-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .detail-section-chevron.is-open {
@@ -3338,7 +3345,7 @@ button {
 .column-header-caret {
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--hrms-animation-duration-fast) var(--hrms-animation-easing-soft);
 }
 
 .column-header-trigger:hover .column-header-caret,
@@ -4317,7 +4324,7 @@ button {
 .onboarding-help-summary svg {
   flex: 0 0 auto;
   color: var(--hrms-color-text-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .onboarding-help-body {
@@ -5184,6 +5191,7 @@ button {
   font-size: var(--hrms-font-size-md);
   font-weight: var(--hrms-font-weight-semi-bold);
   line-height: var(--hrms-line-height-md);
+  text-wrap: balance;
 }
 
 .empty-state-copy {
@@ -5486,7 +5494,7 @@ button {
 
 .collapse-chevron {
   color: var(--hrms-color-text-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .collapse-chevron.is-open {
@@ -5596,13 +5604,13 @@ button {
   height: 100%;
   border-radius: 999px;
   background: var(--chip-color, var(--hrms-color-tag-blue));
-  transition: width 0.3s ease;
+  transition: width var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-inOut);
 }
 
 .dashboard-getting-started-chevron {
   display: inline-flex;
   color: var(--hrms-color-text-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--hrms-animation-duration-fast) var(--hrms-animation-easing-out);
 }
 
 .dashboard-getting-started.is-open .dashboard-getting-started-chevron {
