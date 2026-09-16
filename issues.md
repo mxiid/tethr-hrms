@@ -100,3 +100,83 @@
   `aria-invalid`/`aria-describedby` on the two controls, cleared when the modal opens.
 - **Tests:** extend `verify-a11y-sweep` (or a focused script) to submit each form empty and assert both
   attributes land on the right control.
+
+## ISS-007 - Expenses table lost ~524px to an empty grid track (fixed)
+
+- **Severity:** Medium (layout bug) - reported by the user on 2026-09-16 (claim text collided with the next
+  column; dates wrapped and status chips stacked once the panel opened).
+- **Status:** Fixed in PR B (`5117105`).
+- **Where:** `packages/web/src/modules/expenses/pages/ExpensesPage.tsx` nested `<div className="page-frame">`
+  (the rail grid `minmax(0, 1fr) 500px`) inside `<section className="list-with-panel">`, whose panel is a flex
+  sibling - so the grid's second track was reserved but empty. `ExpensesPage` also rendered
+  `<span className="employee-cell">` with no matching CSS rule, so the claim number and purpose ran together
+  inline and could not truncate.
+- **Fix:** the wrapper is gone (the content column is the flex child directly) and `.employee-cell` now stacks
+  and truncates its two lines. Invoice detail looked identical but its rail really hosts the actions aside -
+  verified and left alone.
+- **Tests:** `verify-expenses-width.cjs` (table tracks the content edge closed; stays >900px open with
+  single-line rows, dates, and chips).
+
+## ISS-008 - Stateful UI is not deep-linkable (no URL state)
+
+- **Severity:** Low-Medium (UX) - guidelines audit (2026-09-16).
+- **Status:** Deferred.
+- **Where:** ~15 `useState` selections that should be query params: attendance tab and date range
+  (`TimeAttendancePage`), profile tab (`EmployeeProfilePage`), every list's side-panel selection (leave,
+  expenses, feedback, candidates, hiring, interviews, shortlists, compensation, employees, invoice, payroll
+  run), the Shortlists posting filter, and the dashboard active view (Jotai, resets on refresh).
+- **Impact:** refresh, back, and link-sharing lose context; only filters/sorts/columns are URL-synced today
+  (`useListView`).
+- **Planned fix:** extend the `useListView` pattern with a small `useSearchParamState` helper and migrate the
+  selections; dashboard view id into the query string.
+- **Tests:** browser checks - open a panel/tab, reload, assert the same state; back button returns.
+
+## ISS-009 - Large lists render every row
+
+- **Severity:** Low (performance) - guidelines audit (2026-09-16).
+- **Status:** Deferred (tables now use `content-visibility: auto`; this covers the rest).
+- **Where:** unbounded `.map` renders: payroll run lines, org chart forest, time entries/timesheets, job-pay
+  payslips, client workspace employees, workspace users, invoice lines.
+- **Impact:** very long lists paint everything on first render; no virtualization anywhere.
+- **Planned fix:** adopt a small virtualization approach (or `content-visibility` where semantics allow) for
+  the remaining lists, starting with payroll lines and the org chart.
+- **Tests:** perf spot check on a generated long list.
+
+## ISS-010 - Full locale-helper dedupe (month arrays and compact money)
+
+- **Severity:** Low (maintainability) - guidelines audit (2026-09-16).
+- **Status:** Deferred (the shared helpers landed in PR A; the display sites migrated in PR B).
+- **Where:** ~12 duplicated month-name arrays and ~11 local `formatMoney` variants that use
+  `maximumFractionDigits: 0` (kept local on purpose - shared would add cents); remaining manual month labels.
+- **Planned fix:** extend `@hrms/shared` with `monthLabel(date, options)` and a compact-money option, then
+  migrate; delete the month arrays.
+- **Tests:** shared specs for the new helpers; snapshots of the migrated screens.
+
+## ISS-011 - Transient notices have no shared toast host
+
+- **Severity:** Low (consistency) - guidelines audit (2026-09-16).
+- **Status:** Deferred.
+- **Where:** every `.form-success` / `.auth-error` notice is rendered and announced locally per screen.
+- **Impact:** inconsistent placement/duration; no way to announce an action that navigates away.
+- **Planned fix:** a single toast host at the root (aria-live polite) with a `useToast()` helper; migrate the
+  successful mutation notices first, keeping inline errors where they belong to a field.
+- **Tests:** browser check - action shows one toast, announced once, auto-dismisses.
+
+## ISS-012 - No unsaved-changes navigation guard
+
+- **Severity:** Low-Medium (data loss risk) - guidelines audit (2026-09-16).
+- **Status:** Deferred.
+- **Where:** workspace onboarding, the employee create side panel, profile edit, billing settings - closing
+  or navigating away silently drops typed input.
+- **Planned fix:** a router blocker (`useBlocker`) plus `beforeunload` where the form is long, with a confirm
+  dialog ("Discard unsaved changes?") reusing the shared ConfirmProvider.
+- **Tests:** browser check - type, navigate, cancel keeps the form; confirm leaves.
+
+## ISS-013 - Command palette filters on every keystroke
+
+- **Severity:** Low (performance) - guidelines audit (2026-09-16).
+- **Status:** Deferred.
+- **Where:** `AppShell` jump-to search scans all loaded employees, payroll runs, and invoices per keystroke
+  (memoized but not deferred).
+- **Planned fix:** wrap the query in `useDeferredValue` (or debounce ~120ms) and cap the scan.
+- **Tests:** type a burst and assert a single render pass per frame budget.

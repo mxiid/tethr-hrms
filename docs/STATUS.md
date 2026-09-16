@@ -1,6 +1,20 @@
 # Foundation Status
 
-> As of 2026-09-16 (`feat/guidelines-a11y-sweep`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
+> As of 2026-09-16 (`feat/guidelines-polish`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
+
+## Guidelines polish: second half of the round (2026-09-16, PR B)
+
+Every destructive action now asks first, the expenses layout bug is fixed, and the copy/typography/locale, media, and theming findings from the compliance audit are closed. Correction to the PR A notes: three items that sweep billed were not actually shipped (the FieldRow checkbox hit target, the filter-chip target, and the widget resize handle) — all three are completed here.
+
+**Confirmations.** A `ConfirmProvider` above the router exposes a promise-based `confirm()`; one dialog (built on `Modal`, danger button tier, copy specific to each action) fronts all 24 destructive handlers — void/approve-and-issue, finalize/regenerate, lock, reject, withdraw/decline, unpublish, delete views/widgets, remove lines and memberships, separation, and access-role changes. Cancel, Escape, backdrop click, supersession, and unmount all resolve false, so a handler can never hang.
+
+**Expenses layout (ISS-007).** The page nested the rail grid (`1fr + 500px`) inside `list-with-panel` while its side panel is the flex sibling of that grid — the 500px track sat empty, stealing ~600px when closed and another ~524px when the panel opened, which wrapped dates, stacked chips, and collided the claim cell with the next column. The wrapper is gone and `.employee-cell` now stacks and truncates. Invoice detail looked identical but its rail really hosts the actions aside; verified and left alone. `verify-expenses-width` covers both states.
+
+**Stragglers, copy, and locale.** The FieldRow checkbox shares its label as one hit target; the filter-chip clear and widget resize handles meet 24px and the resize handle takes arrow keys; the ellipsis sweep closed 51 sites; apostrophes are curly, units use nbsp, remaining numeric cells use tabular-nums; announcement/feedback bodies wrap long words; two missing empty branches landed; ten weak error messages now name the next step; the duplicated date/money helpers migrate to `@hrms/shared`, and `todayDateKey` replaces 14 UTC-sliced form defaults (which could send "yesterday"). Money helpers intentionally using `maximumFractionDigits: 0` stay local (shared would add cents) and the month arrays remain logged as ISS-010.
+
+**Media, theming, performance.** Inter is self-hosted from `public/fonts` with `<link rel="preload">` and `font-display: swap` (fontsource dropped); `theme-color` and `<html>` `color-scheme` follow the theme toggle and `body` keeps the current background for overscroll; the four images carry dimensions (above-fold photos get `fetchpriority="high"`, previews lazy); long tables use `content-visibility: auto`.
+
+**Verification.** New `verify-expenses-width` 3/3 and `verify-polish` 4/4 (self-hosted fonts preloaded and applied, theme chrome follows the toggle, widget removal confirms and cancels). Static `verify-guidelines` extended (images carry dimensions; index.html preloads the three faces). Battery green: guidelines 6/6, a11y sweep 6/6, motion 13/13, panel latch 6/6, subnav 5/5 + 6/6, zoom 8/8, org chart 7/7, hiring nav 11/11, color UI 4/4. Gates **272 API / 32 shared / 9 UI tests**, lint 0 errors, typecheck and build clean. Deferred items now logged as ISS-008 (URL state), ISS-009 (virtualization), ISS-010 (i18n dedupe), ISS-011 (toasts), ISS-012 (unsaved-changes guard), ISS-013 (palette deferral).
 
 ## Accessibility and forms sweep: first half of the guidelines round (2026-09-16, PR A)
 
