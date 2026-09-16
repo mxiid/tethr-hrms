@@ -1584,12 +1584,15 @@ button,
   touch-action: none;
 }
 
-.dashboard-widget-title {
+/* Two classes of specificity so the widget title never inherits .panel-title's
+   text-wrap: balance — it must stay one line and ellipsize in the tile header. */
+.dashboard-widget .dashboard-widget-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   font-size: var(--hrms-font-size-sm);
   white-space: nowrap;
+  text-wrap: nowrap;
   text-overflow: ellipsis;
 }
 
@@ -1614,10 +1617,12 @@ button,
   padding: var(--hrms-space-3) var(--hrms-space-4);
 }
 
-/* Quarter keeps the split readable: the legend plus two inline metrics. */
+/* Quarter keeps the split readable and tops up with as many metrics as the
+   height holds: a third metric drops to a second line rather than hiding, so
+   the row wraps and relies on pure gaps (no dividers mid-wrap). */
 .widget-density-quarter .widget-stat-row {
-  flex-wrap: nowrap;
-  gap: var(--hrms-space-3);
+  flex-wrap: wrap;
+  gap: var(--hrms-space-2) var(--hrms-space-4);
 }
 
 .widget-density-quarter .metric-value {
@@ -1629,10 +1634,6 @@ button,
   display: flex;
   align-items: baseline;
   gap: var(--hrms-space-1);
-  padding-left: var(--hrms-space-3);
-}
-
-.widget-density-quarter .widget-stat:first-child {
   padding-left: 0;
   border-left: 0;
 }

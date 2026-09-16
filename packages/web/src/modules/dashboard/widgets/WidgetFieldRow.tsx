@@ -6,7 +6,10 @@ type WidgetFieldRowProps = {
   readonly values: WidgetFieldValues;
   readonly loading: boolean;
   readonly error: boolean;
-  /** Density cap from the tile size; undefined renders every selected field. */
+  /**
+   * How many selected fields render — the measured fitted count, never below
+   * one. Undefined renders every selected field.
+   */
   readonly limit?: number;
 };
 

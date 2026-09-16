@@ -143,8 +143,9 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
     );
   };
 
-  // The smallest allowed size that renders everything selected — the target of
-  // the picker's "Enlarge to add"; null when no allowed size is big enough.
+  // The enlarge target: the smallest allowed size whose guaranteed metric count
+  // covers the selection. Measurement covers the rest of the truth — the picker
+  // only offers this when the tile actually hides a selected metric.
   const enlargeTarget = (id: WidgetId): WidgetSize | null => {
     const definition = WIDGET_REGISTRY.find((widget) => widget.id === id);
     const entry = layout.find((widget) => widget.id === id);

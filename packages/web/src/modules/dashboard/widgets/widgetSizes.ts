@@ -30,8 +30,11 @@ export const WIDGET_SIZE_LABELS: Readonly<Record<WidgetSize, string>> = {
   '4x3': 'Full tall',
 };
 
-// Content density drives which parts of a widget render and how many: the caps
-// here are what keep every tile fitting its box without scrolling.
+// Content density drives which parts of a widget render: the caps here are
+// starting points — what each size is authored for, and what the fit matrix
+// exercises — while useFittedContent measures the real box at runtime and
+// trims from there (the picker's Enlarge flow also reasons in these counts).
+// The caps are hints, never verdicts.
 export type WidgetDensity = 'strip' | 'quarter' | 'half' | 'halfTall' | 'full' | 'fullTall';
 
 export const WIDGET_SIZE_DENSITY: Readonly<Record<WidgetSize, WidgetDensity>> = {
@@ -44,6 +47,7 @@ export const WIDGET_SIZE_DENSITY: Readonly<Record<WidgetSize, WidgetDensity>> = 
 };
 
 export type WidgetDensityLimits = {
+  /** Metrics the size is authored for; measurement may render more or fewer. */
   readonly fields: number;
   readonly legend: number;
   /** Ordinal stages a funnel may render (0 hides the stage list). */
