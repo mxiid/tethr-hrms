@@ -32,6 +32,7 @@ A **modular HRMS** built as a **modular monolith**: one deployable system, inter
 - **Events for side effects** via an outbox (transactional publish) + idempotent consumers — never deep synchronous call chains.
 - **Tenancy scoped at the data layer** (`TenantScopedRepository`) so code cannot forget to scope.
 - **Design**: tokens only (from `@hrms/ui`), 4px spacing grid, Inter, indigo accent, Tabler icons, light/dark parity.
+- **UI compliance**: when reviewing or adding UI, fetch the live Web Interface Guidelines (`https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md`), check against them, and report in terse `file:line` format. Two documented deviations: sentence case (not Title Case) for headings and buttons, and no `translate="no"` while the app is single-locale.
 - **PRs**: when opening a pull request, mention `@greptile-apps` in the description or a comment to trigger the Greptile review.
 
 ## Layout
