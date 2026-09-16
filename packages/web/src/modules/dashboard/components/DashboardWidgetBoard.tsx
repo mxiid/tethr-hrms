@@ -13,19 +13,25 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
-import { useAtom, useSetAtom } from 'jotai';
-import { useEffect, useRef } from 'react';
+import { IconLayoutGrid } from '@tabler/icons-react';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useEffect, useState } from 'react';
 
 import { useConfirm } from '../../../components/confirm/ConfirmProvider';
+import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
   activeViewWidgetsAtom,
   dashboardSeededAtom,
+  dashboardStorageKey,
   dashboardViewsState,
+  loadDashboardViews,
+  saveDashboardViews,
 } from '../states/dashboardViewsState';
 import { DashboardWidgetCard } from '../widgets/DashboardWidgetCard';
 import { defaultWidgetsForPortal, WIDGET_REGISTRY } from '../widgets/registry';
 import type { WidgetId } from '../widgets/types';
+import { WIDGET_SIZE_LABELS, type WidgetSize } from '../widgets/widgetSizes';
 
 import { CustomizeDashboardMenu } from './CustomizeDashboardMenu';
 import { DashboardViewTabs } from './DashboardViewTabs';
@@ -37,32 +43,50 @@ type DashboardWidgetBoardProps = {
   readonly showViewTabs?: boolean;
 };
 
-// The customizable widget board: view tabs, the Customize menu, and the
-// drag-to-reorder / resize grid. Mounted by the Tethr Dashboard and, in a
-// section, by the client "People overview" — both seed their own portal's
+// The customizable widget board: view tabs, the Customize menu, the Edit layout
+// toggle, and the fixed-size widget grid. Mounted by the Tethr Dashboard and, in
+// a section, by the client "People overview" — both seed their own portal's
 // default layout from the same shared atoms.
 export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoardProps) => {
+  const { theme } = useTheme();
   const { user } = useAuth();
   const confirm = useConfirm();
   const [layout, setLayout] = useAtom(activeViewWidgetsAtom);
+  const viewsState = useAtomValue(dashboardViewsState);
   const [seeded, setSeeded] = useAtom(dashboardSeededAtom);
   const setViews = useSetAtom(dashboardViewsState);
+  const [editing, setEditing] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const gridRef = useRef<HTMLDivElement | null>(null);
 
-  // Seed the active view once per session from the portal's default layout.
-  // Navigating away and back keeps in-session edits; a refresh reseeds.
+  const storageKey = user !== null ? dashboardStorageKey(user.organizationId, user.id) : null;
+
+  // Seed once per session: this browser's saved layout when one exists,
+  // otherwise the portal's defaults. A ?view= link wins over the stored view.
   useEffect(() => {
-    if (seeded || !user || user.portal === 'none') return;
-    setViews({
+    if (seeded || user === null || user.portal === 'none' || storageKey === null) return;
+    const stored = loadDashboardViews(storageKey);
+    const base = stored ?? {
       views: [{ id: 'overview', name: 'Overview', widgets: defaultWidgetsForPortal(user.portal) }],
       activeViewId: 'overview',
-    });
+    };
+    const paramView = new URLSearchParams(window.location.search).get('view');
+    const activeViewId =
+      paramView !== null && base.views.some((view) => view.id === paramView)
+        ? paramView
+        : base.activeViewId;
+    setViews({ ...base, activeViewId });
     setSeeded(true);
-  }, [seeded, user, setViews, setSeeded]);
+  }, [seeded, user, storageKey, setViews, setSeeded]);
+
+  // Persist every layout or view change for this workspace + user.
+  useEffect(() => {
+    if (!seeded || storageKey === null) return;
+    saveDashboardViews(storageKey, viewsState);
+  }, [seeded, storageKey, viewsState]);
 
   const visibleWidgets = layout
     .map((entry) => {
@@ -83,10 +107,13 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
     setLayout((current) => current.filter((widget) => widget.id !== id));
   };
 
-  const resizeWidget = (id: WidgetId, colSpan: number, rowSpan: number): void => {
+  const changeSize = (id: WidgetId, size: WidgetSize): void => {
+    const definition = WIDGET_REGISTRY.find((widget) => widget.id === id);
+    if (!definition || !definition.sizeOptions.includes(size)) return;
     setLayout((current) =>
-      current.map((widget) => (widget.id === id ? { ...widget, colSpan, rowSpan } : widget)),
+      current.map((widget) => (widget.id === id ? { ...widget, size } : widget)),
     );
+    setAnnouncement(`${definition.title} resized to ${WIDGET_SIZE_LABELS[size]}.`);
   };
 
   const toggleWidgetField = (id: WidgetId, fieldId: string, enabled: boolean): void => {
@@ -125,21 +152,35 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
     });
   };
 
-  // One frame while the portal's default layout is seeded — avoids flashing the
-  // empty state before the effect runs.
+  // One frame while the layout is seeded — avoids flashing the empty state
+  // before the effect runs.
   if (!seeded) return null;
 
   return (
     <div className="dashboard-board">
       <div className={`dashboard-board-toolbar${showViewTabs ? '' : ' is-compact'}`}>
         {showViewTabs ? <DashboardViewTabs /> : <span />}
-        <CustomizeDashboardMenu />
+        <div className="dashboard-board-actions">
+          <button
+            aria-pressed={editing}
+            className="button button-secondary"
+            onClick={() => setEditing((value) => !value)}
+            type="button"
+          >
+            <IconLayoutGrid aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            {editing ? 'Done' : 'Edit layout'}
+          </button>
+          <CustomizeDashboardMenu />
+        </div>
       </div>
+      <span aria-live="polite" className="sr-only">
+        {announcement}
+      </span>
 
       {visibleWidgets.length === 0 ? (
         <div className="dashboard-widget-empty">
           <p className="panel-title">No widgets on this view</p>
-          <p>Open Customize to add employee, leave, hiring, or workspace widgets.</p>
+          <p>Use Customize to add widgets, then Edit layout to resize and reorder them.</p>
         </div>
       ) : (
         <DndContext collisionDetection={closestCenter} sensors={sensors} onDragEnd={onDragEnd}>
@@ -147,23 +188,23 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
             items={visibleWidgets.map((widget) => widget.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="dashboard-widget-grid" ref={gridRef}>
+            <div className={`dashboard-widget-grid${editing ? ' is-editing' : ''}`}>
               {visibleWidgets.map((widget) => (
                 <DashboardWidgetCard
                   accentColor={widget.definition.accentColor}
                   chartKind={widget.definition.chartKind}
-                  colSpan={widget.colSpan}
                   displayMode={widget.displayMode}
+                  editing={editing}
                   fields={widget.definition.fields}
-                  gridRef={gridRef}
                   id={widget.id}
                   key={widget.id}
+                  onChangeSize={(size) => changeSize(widget.id, size)}
                   onRemove={() => void removeWidget(widget.id)}
-                  onResize={(colSpan, rowSpan) => resizeWidget(widget.id, colSpan, rowSpan)}
                   onToggleDisplayMode={() => toggleDisplayMode(widget.id)}
                   onToggleField={(fieldId, enabled) => toggleWidgetField(widget.id, fieldId, enabled)}
-                  rowSpan={widget.rowSpan}
                   selectedFieldIds={widget.fieldIds}
+                  size={widget.size}
+                  sizeOptions={widget.definition.sizeOptions}
                   title={widget.definition.title}
                   useData={widget.definition.useData}
                 />

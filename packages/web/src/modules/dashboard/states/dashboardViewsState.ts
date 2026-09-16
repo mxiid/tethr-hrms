@@ -1,6 +1,7 @@
 import { atom } from 'jotai';
 
 import type { WidgetLayout } from '../widgets/types';
+import { isWidgetSize } from '../widgets/widgetSizes';
 
 export type DashboardView = {
   readonly id: string;
@@ -8,17 +9,18 @@ export type DashboardView = {
   readonly widgets: readonly WidgetLayout[];
 };
 
-type DashboardViewsState = {
+export type DashboardViewsState = {
   readonly views: readonly DashboardView[];
   readonly activeViewId: string;
 };
 
 const DEFAULT_VIEW_ID = 'overview';
 
-// The atom starts empty; DashboardPage seeds the active view once per session
-// from `defaultWidgetsForPortal(user.portal)` (see `dashboardSeededAtom`). The
-// dashboard is code-defined and in-memory only — identical for every workspace
-// and user, and a refresh resets everyone to their portal's default layout.
+// The atom starts empty; DashboardPage seeds the active view once per session —
+// from this browser's saved layout when one exists, otherwise from
+// `defaultWidgetsForPortal(user.portal)` (see `dashboardSeededAtom`). Saved
+// layouts persist per workspace + user in localStorage; a refresh restores
+// them, and corrupt or legacy data falls back to the portal defaults.
 const DEFAULT_STATE: DashboardViewsState = {
   views: [{ id: DEFAULT_VIEW_ID, name: 'Overview', widgets: [] }],
   activeViewId: DEFAULT_VIEW_ID,
@@ -26,8 +28,8 @@ const DEFAULT_STATE: DashboardViewsState = {
 
 export const dashboardViewsState = atom<DashboardViewsState>(DEFAULT_STATE);
 
-// Flipped true after DashboardPage has seeded the portal's default layout, so
-// navigating away and back keeps in-session customizations instead of reseeding.
+// Flipped true after DashboardPage has seeded the layout, so navigating away
+// and back keeps in-session customizations instead of reseeding.
 export const dashboardSeededAtom = atom(false);
 
 // The widget layout list of whichever view is currently active. Reading/writing
@@ -48,3 +50,79 @@ export const activeViewWidgetsAtom = atom(
     }));
   },
 );
+
+const STORAGE_VERSION = 1;
+
+export const dashboardStorageKey = (organizationId: string, userId: string): string =>
+  `hrms.dashboard.views.${organizationId}.${userId}`;
+
+const isWidgetLayout = (value: unknown): value is WidgetLayout => {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string' &&
+    isWidgetSize(candidate.size) &&
+    Array.isArray(candidate.fieldIds) &&
+    candidate.fieldIds.every((fieldId) => typeof fieldId === 'string') &&
+    (candidate.displayMode === 'chart' || candidate.displayMode === 'plain')
+  );
+};
+
+/**
+ * Reads this browser's saved dashboard for the key, dropping anything that no
+ * longer matches the current shape. Returns null when there is nothing usable,
+ * so the caller seeds the portal defaults instead.
+ */
+export const loadDashboardViews = (key: string): DashboardViewsState | null => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) {
+      return null;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+    const envelope = parsed as { v?: unknown; state?: unknown };
+    if (envelope.v !== STORAGE_VERSION || typeof envelope.state !== 'object' || envelope.state === null) {
+      return null;
+    }
+    const state = envelope.state as { views?: unknown; activeViewId?: unknown };
+    if (!Array.isArray(state.views) || state.views.length === 0) {
+      return null;
+    }
+    const views = state.views
+      .map((view): DashboardView | null => {
+        const candidate = view as { id?: unknown; name?: unknown; widgets?: unknown };
+        if (
+          typeof candidate.id !== 'string' ||
+          typeof candidate.name !== 'string' ||
+          !Array.isArray(candidate.widgets)
+        ) {
+          return null;
+        }
+        return { id: candidate.id, name: candidate.name, widgets: candidate.widgets.filter(isWidgetLayout) };
+      })
+      .filter((view): view is DashboardView => view !== null);
+    if (views.length === 0) {
+      return null;
+    }
+    const activeViewId =
+      typeof state.activeViewId === 'string' && views.some((view) => view.id === state.activeViewId)
+        ? state.activeViewId
+        : views[0].id;
+    return { views, activeViewId };
+  } catch {
+    return null;
+  }
+};
+
+export const saveDashboardViews = (key: string, state: DashboardViewsState): void => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify({ v: STORAGE_VERSION, state }));
+  } catch {
+    // Storage disabled or full: the in-memory state stays authoritative.
+  }
+};

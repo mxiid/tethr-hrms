@@ -19,7 +19,11 @@ export const handleMenuArrowKeys = (event: KeyboardEvent<HTMLElement>): boolean 
   ) {
     return false;
   }
-  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  const items = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>(
+      '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+    ),
+  ];
   if (items.length === 0) {
     return false;
   }

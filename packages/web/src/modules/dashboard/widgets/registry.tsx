@@ -15,6 +15,7 @@ import { PAYROLL_TREND_FIELDS, usePayrollTrendData } from './PayrollTrendWidget'
 import type { WidgetDefinition, WidgetId, WidgetLayout, WidgetPortal } from './types';
 import { UPCOMING_HOLIDAYS_FIELDS, useUpcomingHolidaysData } from './UpcomingHolidaysWidget';
 import { WORKSPACE_INFO_FIELDS, useWorkspaceInfoData } from './WorkspaceInfoWidget';
+import type { WidgetSize } from './widgetSizes';
 
 const roleKeysOf = (user: AuthUser | null): readonly string[] => user?.roleKeys ?? [];
 const hasAnyRole = (user: AuthUser | null, ...keys: readonly string[]): boolean =>
@@ -26,17 +27,19 @@ const canManageTethrHr = (user: AuthUser | null): boolean =>
   hasAnyRole(user, 'tethrAdmin', 'tethrHr');
 const canManageClients = (user: AuthUser | null): boolean => hasAnyRole(user, 'tethrAdmin');
 
-const DEFAULT_ROW_SPAN = 3;
-const CHART_ROW_SPAN = 5;
-const SHARE_CHART_ROW_SPAN = 4;
+// Size sets per content class (design.md §6.6): share/stat tiles offer the
+// compact set, stat pairs skip the quarter, charts need at least a half.
+const SHARE_SIZES: readonly WidgetSize[] = ['2x1', '1x2', '2x2', '4x2'];
+const STAT_SIZES: readonly WidgetSize[] = ['2x1', '2x2', '4x2'];
+const CHART_SIZES: readonly WidgetSize[] = ['2x3', '4x3'];
 
 export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
   {
     id: 'employeeCounts',
     title: 'Employee counts',
     portals: ['tethr', 'client'],
-    defaultColSpan: 1,
-    defaultRowSpan: SHARE_CHART_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'blue',
     defaultEnabled: true,
     isVisible: () => true,
@@ -49,8 +52,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'leaveOverview',
     title: 'Leave overview',
     portals: ['tethr', 'client'],
-    defaultColSpan: 1,
-    defaultRowSpan: SHARE_CHART_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'green',
     defaultEnabled: true,
     isVisible: () => true,
@@ -63,8 +66,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'hiringPipeline',
     title: 'Hiring pipeline',
     portals: ['tethr', 'client'],
-    defaultColSpan: 2,
-    defaultRowSpan: CHART_ROW_SPAN,
+    sizeOptions: CHART_SIZES,
+    defaultSize: '2x3',
     accentColor: 'cyan',
     defaultEnabled: false,
     isVisible: (user) => hasAnyRole(user, 'tethrAdmin', 'tethrHr', 'clientAdmin', 'clientMember'),
@@ -77,8 +80,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'announcements',
     title: 'Announcements',
     portals: ['tethr', 'client', 'employee'],
-    defaultColSpan: 1,
-    defaultRowSpan: SHARE_CHART_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'pink',
     defaultEnabled: false,
     isVisible: (user) =>
@@ -92,8 +95,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'workspaceInfo',
     title: 'Workspace info',
     portals: ['tethr', 'client'],
-    defaultColSpan: 1,
-    defaultRowSpan: DEFAULT_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'gray',
     defaultEnabled: false,
     isVisible: () => true,
@@ -105,8 +108,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'payrollSnapshot',
     title: 'Payroll snapshot',
     portals: ['tethr'],
-    defaultColSpan: 2,
-    defaultRowSpan: DEFAULT_ROW_SPAN,
+    sizeOptions: STAT_SIZES,
+    defaultSize: '2x2',
     accentColor: 'violet',
     defaultEnabled: false,
     isVisible: canManagePayroll,
@@ -118,8 +121,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'payrollTrend',
     title: 'Payroll trend',
     portals: ['tethr'],
-    defaultColSpan: 2,
-    defaultRowSpan: CHART_ROW_SPAN,
+    sizeOptions: CHART_SIZES,
+    defaultSize: '2x3',
     accentColor: 'violet',
     defaultEnabled: false,
     isVisible: canManagePayroll,
@@ -132,8 +135,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'feedbackInbox',
     title: 'Feedback inbox',
     portals: ['tethr'],
-    defaultColSpan: 1,
-    defaultRowSpan: SHARE_CHART_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'amber',
     defaultEnabled: false,
     isVisible: canManageTethrHr,
@@ -146,8 +149,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'clientPortfolio',
     title: 'Client portfolio',
     portals: ['tethr'],
-    defaultColSpan: 1,
-    defaultRowSpan: DEFAULT_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'iris',
     defaultEnabled: false,
     isVisible: canManageClients,
@@ -159,8 +162,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'myLeaveBalance',
     title: 'My leave balance',
     portals: ['employee'],
-    defaultColSpan: 1,
-    defaultRowSpan: SHARE_CHART_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'jade',
     defaultEnabled: true,
     isVisible: () => true,
@@ -173,8 +176,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'myPayHistory',
     title: 'My pay history',
     portals: ['employee'],
-    defaultColSpan: 2,
-    defaultRowSpan: CHART_ROW_SPAN,
+    sizeOptions: CHART_SIZES,
+    defaultSize: '2x3',
     accentColor: 'violet',
     defaultEnabled: true,
     isVisible: () => true,
@@ -187,8 +190,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'myEmploymentSummary',
     title: 'My employment',
     portals: ['employee'],
-    defaultColSpan: 2,
-    defaultRowSpan: DEFAULT_ROW_SPAN,
+    sizeOptions: STAT_SIZES,
+    defaultSize: '2x2',
     accentColor: 'blue',
     defaultEnabled: true,
     isVisible: () => true,
@@ -200,8 +203,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'myTimeOff',
     title: 'My time off',
     portals: ['employee'],
-    defaultColSpan: 1,
-    defaultRowSpan: SHARE_CHART_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'amber',
     defaultEnabled: false,
     isVisible: () => true,
@@ -214,8 +217,8 @@ export const WIDGET_REGISTRY: readonly WidgetDefinition[] = [
     id: 'upcomingHolidays',
     title: 'Upcoming holidays',
     portals: ['employee'],
-    defaultColSpan: 1,
-    defaultRowSpan: DEFAULT_ROW_SPAN,
+    sizeOptions: SHARE_SIZES,
+    defaultSize: '1x2',
     accentColor: 'pink',
     defaultEnabled: false,
     isVisible: () => true,
@@ -229,8 +232,7 @@ export const defaultLayoutFor = (id: WidgetId): WidgetLayout => {
   const widget = WIDGET_REGISTRY.find((entry) => entry.id === id);
   return {
     id,
-    colSpan: widget?.defaultColSpan ?? 1,
-    rowSpan: widget?.defaultRowSpan ?? DEFAULT_ROW_SPAN,
+    size: widget?.defaultSize ?? '1x2',
     fieldIds: widget?.defaultFieldIds ?? [],
     displayMode: 'chart',
   };
