@@ -156,7 +156,11 @@ export const PaySetupPanel = () => {
 
   return (
     <>
-      {formMessage ? <p className="form-success">{formMessage}</p> : null}
+      {formMessage ? (
+        <p className="form-success" role="status">
+          {formMessage}
+        </p>
+      ) : null}
       <div className="compensation-grid">
         <section className="table-shell" aria-labelledby="pay-components-title">
           <div className="table-title-row">

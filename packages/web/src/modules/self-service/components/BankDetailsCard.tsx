@@ -108,7 +108,11 @@ export const BankDetailsCard = () => {
           <button className="button button-secondary button-full" disabled={loading} type="submit">
             {loading ? 'Submitting…' : 'Request change'}
           </button>
-          {notice ? <p className="form-success">{notice}</p> : null}
+          {notice ? (
+            <p className="form-success" role="status">
+              {notice}
+            </p>
+          ) : null}
           {error ? <p className="auth-error" role="alert">{error}</p> : null}
         </form>
       ) : null}

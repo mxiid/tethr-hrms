@@ -244,7 +244,11 @@ export const CompensationPage = () => {
             Could not load compensation setup. Confirm the API is running and your session is valid.
           </p>
         ) : null}
-        {formMessage ? <p className="form-success">{formMessage}</p> : null}
+        {formMessage ? (
+          <p className="form-success" role="status">
+            {formMessage}
+          </p>
+        ) : null}
 
 
         <section className="table-shell" aria-labelledby="salary-history-title">

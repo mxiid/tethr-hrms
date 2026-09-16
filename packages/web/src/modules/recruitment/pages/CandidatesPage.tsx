@@ -26,6 +26,7 @@ import {
   toViewColumns,
   type ColumnDefinition,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -303,14 +304,16 @@ export const CandidatesPage = () => {
             </p>
           </div>
           <div className="page-actions">
-            <button
-              className="icon-button"
-              onClick={() => void refetch()}
-              title="Refresh candidates"
-              type="button"
-            >
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
+            <Tooltip label="Refresh candidates">
+              <button
+                aria-label="Refresh candidates"
+                className="icon-button"
+                onClick={() => void refetch()}
+                type="button"
+              >
+                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            </Tooltip>
             <button className="button button-primary" onClick={startCreate} type="button">
               <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Add candidate

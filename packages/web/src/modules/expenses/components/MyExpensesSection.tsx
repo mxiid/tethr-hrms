@@ -255,7 +255,11 @@ export const MyExpensesSection = () => {
       <SidePanel isOpen={panelOpen} onClose={() => setPanelOpen(false)} title="Expense claim">
         <section className="self-service-section">
           {errorMessage ? <p className="auth-error" role="alert">{errorMessage}</p> : null}
-          {successMessage ? <p className="form-success">{successMessage}</p> : null}
+          {successMessage ? (
+            <p className="form-success" role="status">
+              {successMessage}
+            </p>
+          ) : null}
 
           {!draftClaimId ? (
             <form className="config-form" onSubmit={(event) => void onCreate(event)}>

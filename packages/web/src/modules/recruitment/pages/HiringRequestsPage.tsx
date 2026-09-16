@@ -29,6 +29,7 @@ import {
   type ColumnDefinition,
   type DraftRow,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -815,14 +816,16 @@ export const HiringRequestsPage = () => {
         <section className="table-shell" aria-label="Hiring requests">
           <ViewBar
             actions={
-              <button
-                className="icon-button"
-                onClick={() => void refetch()}
-                title="Refresh requests"
-                type="button"
-              >
-                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              </button>
+              <Tooltip label="Refresh requests">
+                <button
+                  aria-label="Refresh requests"
+                  className="icon-button"
+                  onClick={() => void refetch()}
+                  type="button"
+                >
+                  <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                </button>
+              </Tooltip>
             }
             columns={toViewColumns(columns)}
             count={visibleRequests.length}

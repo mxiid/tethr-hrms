@@ -104,7 +104,11 @@ export const BillingSettingsForm = () => {
       </div>
       <div className="settings-section-body">
         {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
         <form className="config-form" onSubmit={(event) => void onSave(event)}>
           <h3 className="section-title">Commercial terms</h3>
           <p className="field-hint">Current: ${config?.feeAmount ?? '—'} PEPM · Net {config?.paymentTermsNetDays ?? '—'} · anchor day {config?.anchorDay ?? '—'}</p>

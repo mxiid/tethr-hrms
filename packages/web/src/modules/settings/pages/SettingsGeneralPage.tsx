@@ -110,7 +110,11 @@ export const SettingsGeneralPage = () => {
             {colorError}
           </p>
         ) : null}
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
 
         {!canManageOrganization ? (
           <EmptyState

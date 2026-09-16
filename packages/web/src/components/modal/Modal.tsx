@@ -1,10 +1,15 @@
 import { IconX } from '@tabler/icons-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type TransitionEvent } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useTheme } from '../../providers/theme/useTheme';
 
 type ModalWidth = 'sm' | 'md' | 'lg' | 'xl';
+
+// The dialog survives `isOpen={false}` just long enough to play its exit
+// transition; the fallback timer covers reduced motion, where no transition
+// fires and `transitionend` never arrives.
+type ModalLifecycle = 'closed' | 'open' | 'closing';
 
 type ModalProps = {
   readonly isOpen: boolean;
@@ -14,6 +19,8 @@ type ModalProps = {
   readonly footer?: ReactNode;
   readonly width?: ModalWidth;
 };
+
+const CLOSE_FALLBACK_MS = 400;
 
 /**
  * The shared dialog. Renders in a body portal above every surface, closes on
@@ -25,6 +32,7 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
   const { theme } = useTheme();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  const [lifecycle, setLifecycle] = useState<ModalLifecycle>(isOpen ? 'open' : 'closed');
   // Read through a ref so the open/close effect doesn't depend on the inline
   // handler identity — otherwise it would re-run (and steal focus back to the
   // dialog) on every keystroke in a form.
@@ -32,6 +40,26 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLifecycle('open');
+      return;
+    }
+    setLifecycle((current) => (current === 'open' ? 'closing' : current));
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (lifecycle !== 'closing') {
+      return undefined;
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setLifecycle('closed');
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setLifecycle('closed'), CLOSE_FALLBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [lifecycle]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -62,19 +90,26 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
     };
   }, [isOpen]);
 
-  if (!isOpen) {
+  if (lifecycle === 'closed') {
     return null;
   }
 
+  const handleTransitionEnd = (event: TransitionEvent<HTMLDivElement>): void => {
+    if (lifecycle === 'closing' && event.target === event.currentTarget) {
+      setLifecycle('closed');
+    }
+  };
+
   return createPortal(
     <div
-      className="modal-backdrop"
+      className={`modal-backdrop${lifecycle === 'closing' ? ' is-closing' : ''}`}
       style={{ zIndex: theme.zIndex.lastLayer }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
         }
       }}
+      onTransitionEnd={handleTransitionEnd}
     >
       <div
         aria-label={title}

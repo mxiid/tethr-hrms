@@ -10,6 +10,7 @@ import {
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useTheme } from '../../../providers/theme/useTheme';
 
 type OrgChartAssignment = {
@@ -560,57 +561,61 @@ export const EmployeeOrgChart = ({
   return (
     <div className="org-chart-frame">
       <div aria-label="Zoom" className="org-chart-zoom" role="group">
-        <button
-          aria-label="Zoom out"
-          disabled={zoom <= ZOOM_MIN}
-          onClick={() => {
-            zoomAnchorRef.current = null;
-            setZoom((current) => clampZoom(current - ZOOM_STEP));
-          }}
-          title="Zoom out"
-          type="button"
-        >
-          <IconZoomOut size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-        </button>
-        <button
-          aria-label={`Reset zoom (currently ${Math.round(zoom * 100)}%)`}
-          className="org-chart-zoom-value"
-          disabled={zoom === 1}
-          onClick={() => {
-            zoomAnchorRef.current = null;
-            setZoom(1);
-          }}
-          title="Reset zoom"
-          type="button"
-        >
-          {Math.round(zoom * 100)}%
-        </button>
-        <button
-          aria-label="Zoom in"
-          disabled={zoom >= ZOOM_MAX}
-          onClick={() => {
-            zoomAnchorRef.current = null;
-            setZoom((current) => clampZoom(current + ZOOM_STEP));
-          }}
-          title="Zoom in"
-          type="button"
-        >
-          <IconZoomIn size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-        </button>
-        <button
-          aria-label="Centre on the first match"
-          disabled={!isSearching || !hasMatches}
-          onClick={() => {
-            const match = scrollRef.current?.querySelector('.org-node.is-match');
-            if (match instanceof HTMLElement) {
-              match.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-            }
-          }}
-          title="Centre on the first match"
-          type="button"
-        >
-          <IconFocusCentered size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
-        </button>
+        <Tooltip label="Zoom out" side="top">
+          <button
+            aria-label="Zoom out"
+            disabled={zoom <= ZOOM_MIN}
+            onClick={() => {
+              zoomAnchorRef.current = null;
+              setZoom((current) => clampZoom(current - ZOOM_STEP));
+            }}
+            type="button"
+          >
+            <IconZoomOut size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Reset zoom" side="top">
+          <button
+            aria-label={`Reset zoom (currently ${Math.round(zoom * 100)}%)`}
+            className="org-chart-zoom-value"
+            disabled={zoom === 1}
+            onClick={() => {
+              zoomAnchorRef.current = null;
+              setZoom(1);
+            }}
+            type="button"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+        </Tooltip>
+        <Tooltip label="Zoom in" side="top">
+          <button
+            aria-label="Zoom in"
+            disabled={zoom >= ZOOM_MAX}
+            onClick={() => {
+              zoomAnchorRef.current = null;
+              setZoom((current) => clampZoom(current + ZOOM_STEP));
+            }}
+            type="button"
+          >
+            <IconZoomIn size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Centre on the first match" side="top">
+          <button
+            aria-label="Centre on the first match"
+            disabled={!isSearching || !hasMatches}
+            onClick={() => {
+              const match = scrollRef.current?.querySelector('.org-node.is-match');
+              if (match instanceof HTMLElement) {
+                match.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+              }
+            }}
+            type="button"
+          >
+            <IconFocusCentered size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          </button>
+        </Tooltip>
       </div>
       <div className="org-chart" ref={scrollRef}>
         <div

@@ -25,7 +25,11 @@ export const ClockInOutCard = () => {
       {/* No card heading: the page header above already says what this is, and a
           second title inside the card only repeats it. */}
       <section className="table-shell clock-card">
-        {clock.notice ? <p className="form-success">{clock.notice}</p> : null}
+        {clock.notice ? (
+          <p className="form-success" role="status">
+            {clock.notice}
+          </p>
+        ) : null}
         {clock.error ? (
           <p className="auth-error" role="alert">
             {clock.error}
