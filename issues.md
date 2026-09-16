@@ -134,7 +134,8 @@
 ## ISS-009 - Large lists render every row
 
 - **Severity:** Low (performance) - guidelines audit (2026-09-16).
-- **Status:** Deferred (tables now use `content-visibility: auto`; this covers the rest).
+- **Status:** Deferred. Tables now use `content-visibility: auto`, but that only skips painting
+  offscreen rows (they are still created) and does not touch the `.map` lists below.
 - **Where:** unbounded `.map` renders: payroll run lines, org chart forest, time entries/timesheets, job-pay
   payslips, client workspace employees, workspace users, invoice lines.
 - **Impact:** very long lists paint everything on first render; no virtualization anywhere.

@@ -91,3 +91,14 @@ export const todayDateKey = (now: Date = new Date()): string => {
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+/**
+ * The local calendar key `days` before `now` (default today) as YYYY-MM-DD.
+ * Calendar subtraction rather than fixed 24-hour periods: subtracting
+ * milliseconds crosses a DST boundary onto the wrong local date.
+ */
+export const dateKeyDaysAgo = (days: number, now: Date = new Date()): string => {
+  const date = new Date(now);
+  date.setDate(date.getDate() - days);
+  return todayDateKey(date);
+};

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { ConfirmDialog, type ConfirmRequest } from './ConfirmDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export type ConfirmTone = 'default' | 'danger';
 
@@ -41,9 +41,8 @@ export const useConfirm = (): ConfirmContextValue['confirm'] => {
  * a handler can never hang.
  */
 export const ConfirmProvider = ({ children }: { readonly children: ReactNode }) => {
-  const [request, setRequest] = useState<ConfirmRequest | null>(null);
+  const [request, setRequest] = useState<ConfirmOptions | null>(null);
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
-  const idRef = useRef(0);
 
   const settle = useCallback((value: boolean): void => {
     const resolve = resolverRef.current;
@@ -57,8 +56,7 @@ export const ConfirmProvider = ({ children }: { readonly children: ReactNode }) 
       new Promise<boolean>((resolve) => {
         resolverRef.current?.(false);
         resolverRef.current = resolve;
-        idRef.current += 1;
-        setRequest({ ...options, id: idRef.current });
+        setRequest({ ...options });
       }),
     [],
   );

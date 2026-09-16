@@ -4,10 +4,8 @@ import { Modal } from '../modal/Modal';
 
 import type { ConfirmOptions } from './ConfirmProvider';
 
-export type ConfirmRequest = ConfirmOptions & { readonly id: number };
-
 type ConfirmDialogProps = {
-  readonly request: ConfirmRequest | null;
+  readonly request: ConfirmOptions | null;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 };
@@ -18,7 +16,7 @@ type ConfirmDialogProps = {
  * transition once `request` clears.
  */
 export const ConfirmDialog = ({ request, onCancel, onConfirm }: ConfirmDialogProps) => {
-  const [shown, setShown] = useState<ConfirmRequest | null>(request);
+  const [shown, setShown] = useState<ConfirmOptions | null>(request);
 
   useEffect(() => {
     if (request !== null) {

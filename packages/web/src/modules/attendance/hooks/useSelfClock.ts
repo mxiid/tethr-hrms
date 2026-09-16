@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
-import { todayDateKey } from '@hrms/shared';
+import { dateKeyDaysAgo, todayDateKey } from '@hrms/shared';
 import { useState } from 'react';
 
 import {
@@ -31,7 +31,9 @@ type SelfClock = {
   readonly clockOut: () => Promise<void>;
 };
 
-const daysAgo = (days: number): string => todayDateKey(new Date(Date.now() - days * 86_400_000));
+/** The local calendar key `days` before today — calendar math, so a DST
+ *  transition can never land on the neighbouring date. */
+const daysAgo = (days: number): string => dateKeyDaysAgo(days);
 
 /**
  * Self-service clocking. Both mutations resolve the employee from the session on

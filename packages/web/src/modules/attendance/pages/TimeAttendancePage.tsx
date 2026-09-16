@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
-import { todayDateKey } from '@hrms/shared';
+import { dateKeyDaysAgo, todayDateKey } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
@@ -67,8 +67,9 @@ const STATUS_COLORS: Record<string, MainColorName> = {
   locked: 'gray',
 };
 
-const isoDaysAgo = (days: number): string =>
-  todayDateKey(new Date(Date.now() - days * 86_400_000));
+/** The local calendar key `days` before today — calendar math, so a DST
+ *  transition can never land on the neighbouring date. */
+const isoDaysAgo = (days: number): string => dateKeyDaysAgo(days);
 
 export const TimeAttendancePage = () => {
   const { theme } = useTheme();
