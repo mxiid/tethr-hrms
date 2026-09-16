@@ -6070,6 +6070,59 @@ button,
   }
 }
 
+/* Rare surfaces — first login, onboarding, the dashboard's first paint — earn a
+   short cascading entrance. Opacity-only on widgets, whose transform is owned
+   by the drag layer; nothing here blocks interaction. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.auth-card,
+.onboarding-card {
+  animation: rise-in var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out) backwards;
+}
+
+.onboarding-card:nth-of-type(2) {
+  animation-delay: 40ms;
+}
+
+.onboarding-card:nth-of-type(3) {
+  animation-delay: 80ms;
+}
+
+.onboarding-card:nth-of-type(4) {
+  animation-delay: 120ms;
+}
+
+.dashboard-widget {
+  animation: fade-in var(--hrms-animation-duration-gentle) var(--hrms-animation-easing-out) backwards;
+}
+
+.dashboard-widget:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.dashboard-widget:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.dashboard-widget:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.dashboard-widget:nth-child(n + 5) {
+  animation-delay: 160ms;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .button,
   .icon-button,
@@ -6101,6 +6154,12 @@ button,
   .action-menu-caret,
   .tooltip {
     transition: none;
+  }
+
+  .auth-card,
+  .onboarding-card,
+  .dashboard-widget {
+    animation: none;
   }
 
   .button:active,
