@@ -6037,8 +6037,8 @@ button,
   position: fixed;
   /* Above every layered surface, modals included (same layer as the top-most
      overlay: the tooltip mounts later, so it paints on top). */
-  z-index: 2147483647;
-  padding: 4px var(--hrms-space-2);
+  z-index: var(--hrms-z-index-last-layer);
+  padding: var(--hrms-space-1) var(--hrms-space-2);
   color: var(--hrms-color-text-inverted);
   background: var(--hrms-color-background-inverted-primary);
   border-radius: var(--hrms-radius-sm);
@@ -6092,15 +6092,15 @@ button,
 }
 
 .onboarding-card:nth-of-type(2) {
-  animation-delay: 40ms;
+  animation-delay: var(--hrms-animation-stagger);
 }
 
 .onboarding-card:nth-of-type(3) {
-  animation-delay: 80ms;
+  animation-delay: calc(var(--hrms-animation-stagger) * 2);
 }
 
 .onboarding-card:nth-of-type(4) {
-  animation-delay: 120ms;
+  animation-delay: calc(var(--hrms-animation-stagger) * 3);
 }
 
 .dashboard-widget {
@@ -6108,19 +6108,19 @@ button,
 }
 
 .dashboard-widget:nth-child(2) {
-  animation-delay: 40ms;
+  animation-delay: var(--hrms-animation-stagger);
 }
 
 .dashboard-widget:nth-child(3) {
-  animation-delay: 80ms;
+  animation-delay: calc(var(--hrms-animation-stagger) * 2);
 }
 
 .dashboard-widget:nth-child(4) {
-  animation-delay: 120ms;
+  animation-delay: calc(var(--hrms-animation-stagger) * 3);
 }
 
 .dashboard-widget:nth-child(n + 5) {
-  animation-delay: 160ms;
+  animation-delay: calc(var(--hrms-animation-stagger) * 4);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6152,6 +6152,16 @@ button,
   .side-panel,
   .nav-pill-caret,
   .action-menu-caret,
+  .color-swatch-dot,
+  .org-children,
+  .detail-section-chevron,
+  .onboarding-help-summary svg,
+  .collapse-chevron,
+  .dashboard-getting-started-bar span,
+  .dashboard-getting-started-chevron,
+  .column-header-caret,
+  .org-node-edit,
+  .topbar-search-kbd,
   .tooltip {
     transition: none;
   }

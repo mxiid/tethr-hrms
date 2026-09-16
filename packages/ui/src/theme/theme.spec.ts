@@ -71,4 +71,11 @@ describe('motion tokens', () => {
   it('ships the gentle duration for modals and drawers', () => {
     expect(lightTheme.animation.duration.gentle).toBe('0.24s');
   });
+
+  it('exposes delay, stagger, and layer tokens', () => {
+    const vars = themeToCssVariables(lightTheme);
+    expect(vars['--hrms-animation-delay-tooltip']).toBe('350ms');
+    expect(vars['--hrms-animation-stagger']).toBe('40ms');
+    expect(vars['--hrms-z-index-last-layer']).toBe('2147483647');
+  });
 });

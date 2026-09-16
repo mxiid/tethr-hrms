@@ -49,6 +49,8 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
     setLifecycle((current) => (current === 'open' ? 'closing' : current));
   }, [isOpen]);
 
+  const isMounted = lifecycle !== 'closed';
+
   useEffect(() => {
     if (lifecycle !== 'closing') {
       return undefined;
@@ -61,8 +63,13 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
     return () => window.clearTimeout(timer);
   }, [lifecycle]);
 
+  // Modal isolation (Escape, scroll lock, focus) must outlive the `isOpen`
+  // flip: it stays active while the exit transition plays and is released only
+  // when the dialog actually unmounts, so a closing dialog can't be ignored by
+  // keyboard and focus can't land on the background behind an `aria-modal`
+  // surface that is still on screen.
   useEffect(() => {
-    if (!isOpen) {
+    if (!isMounted) {
       return undefined;
     }
     previouslyFocused.current = document.activeElement as HTMLElement | null;
@@ -88,9 +95,9 @@ export const Modal = ({ isOpen, onClose, title, children, footer, width = 'md' }
       window.cancelAnimationFrame(focusFrame);
       previouslyFocused.current?.focus?.();
     };
-  }, [isOpen]);
+  }, [isMounted]);
 
-  if (lifecycle === 'closed') {
+  if (!isMounted) {
     return null;
   }
 

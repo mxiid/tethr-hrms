@@ -29,6 +29,7 @@ export const themeToCssVariables = (theme: Theme): CssVariableMap => {
   flatten(theme.betweenSiblingsGap, ['between-siblings-gap'], out);
   flatten(theme.borderRadius, ['radius'], out);
   flatten(theme.animation, ['animation'], out);
+  flatten(theme.zIndex, ['z-index'], out);
   flatten(theme.layout, ['layout'], out);
   flatten(theme.typography.family, ['font-family'], out);
   flatten(theme.typography.size, ['font-size'], out);

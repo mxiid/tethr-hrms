@@ -46,7 +46,7 @@ Restrained rounding. Nothing here is "playful" — everything is functional.
 | `pill` | `999px` | Capsule buttons, chips |
 | `rounded` | `100%` | Avatars, dots |
 
-Source: [BorderCommon.ts](packages/twenty-ui/src/theme/constants/BorderCommon.ts)
+Source: [common.ts](packages/ui/src/theme/common.ts)
 
 ### 2.3 Motion
 
@@ -121,7 +121,7 @@ Three weights only — disciplined hierarchy.
 | `inverted` | `gray1` | Text on dark/inverted bg |
 | `danger` | `red` | Error messaging |
 
-Source: [FontLight.ts](packages/twenty-ui/src/theme/constants/FontLight.ts), [FontCommon.ts](packages/twenty-ui/src/theme/constants/FontCommon.ts)
+Source: [common.ts](packages/ui/src/theme/common.ts) (scale), [colors-light.ts](packages/ui/src/theme/colors-light.ts) / [colors-dark.ts](packages/ui/src/theme/colors-dark.ts) (tiers)
 
 ---
 
@@ -143,7 +143,7 @@ A 12-step display-p3 ramp from pure white (`gray1`) to near-black (`gray12`). Us
 | `gray11` | `display-p3 0.4 0.4 0.4` |
 | `gray12` | `display-p3 0.2 0.2 0.2` |
 
-Source: [GrayScaleLight.ts](packages/twenty-ui/src/theme/constants/GrayScaleLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.2 Accent (Primary brand)
 
@@ -155,7 +155,7 @@ Source: [GrayScaleLight.ts](packages/twenty-ui/src/theme/constants/GrayScaleLigh
 | `accent9` | Brand reference point |
 | `accent11` | Secondary button text |
 
-Source: [AccentLight.ts](packages/twenty-ui/src/theme/constants/AccentLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.3 Main color palette (24 hues)
 
@@ -170,7 +170,7 @@ Each named color maps to a Radix P3 `9`-step (the saturated mid-tone) and is use
 | **Purples / Pinks** | `iris`, `violet`, `purple`, `plum`, `pink` |
 | **Earth tones / Neutrals** | `bronze`, `gold`, `brown`, `gray` |
 
-Source: [MainColorsLight.ts](packages/twenty-ui/src/theme/constants/MainColorsLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.4 Background hierarchy (light theme)
 
@@ -187,7 +187,7 @@ Source: [MainColorsLight.ts](packages/twenty-ui/src/theme/constants/MainColorsLi
 | `overlayPrimary` | gray alpha | Modal scrims |
 | `radialGradient` | gray9 → gray10 | Decorative auth/empty states |
 
-Source: [BackgroundLight.ts](packages/twenty-ui/src/theme/constants/BackgroundLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.5 Border palette
 
@@ -201,7 +201,7 @@ Source: [BackgroundLight.ts](packages/twenty-ui/src/theme/constants/BackgroundLi
 | `blue` | `blue7` | Focus / selected |
 | `transparentStrong` | gray4 alpha | Floating panel borders |
 
-Source: [BorderLight.ts](packages/twenty-ui/src/theme/constants/BorderLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.6 Shadows
 
@@ -214,7 +214,7 @@ Built from layered gray-alpha tokens — no diffuse colored glows.
 | `underline` | `0 1px 0 gray9α` |
 | `superHeavy` | three-layer (8px + 64px + 56px spreads) — modal lift |
 
-Source: [BoxShadowLight.ts](packages/twenty-ui/src/theme/constants/BoxShadowLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ---
 
@@ -231,7 +231,7 @@ Library: **[Tabler Icons](https://tabler.io/icons)** (`@tabler/icons-react`). Ou
 
 Strokes get *heavier* as size scales up — small icons render lighter to avoid blockiness; large icons hold weight for hierarchy.
 
-Source: [Icon.ts](packages/twenty-ui/src/theme/constants/Icon.ts)
+Source: [common.ts](packages/ui/src/theme/common.ts)
 
 ---
 
@@ -252,7 +252,7 @@ Additional toggles: `inverted`, `fullWidth`, `disabled`, `focus`, `isLoading`, `
 
 Border radius is `sm` (4px). Focus state shows a 3px blue outline. Disabled state uses reduced opacity, not a color swap.
 
-Source: [Button.tsx](packages/twenty-ui/src/input/button/components/Button/Button.tsx)
+Source: [global.css](packages/web/src/app/global.css)
 
 ### 6.2 Modals
 
@@ -269,7 +269,7 @@ Source: [Button.tsx](packages/twenty-ui/src/input/button/components/Button/Butto
 - Max-height `90dvh` with overflow scroll
 - Scrim uses `overlayPrimary` (gray alpha)
 
-Source: [Modal.ts](packages/twenty-ui/src/theme/constants/Modal.ts)
+Source: [Modal.tsx](packages/web/src/components/modal/Modal.tsx)
 
 ### 6.3 Side panels
 
