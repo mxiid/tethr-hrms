@@ -16,7 +16,7 @@ type RequestApprovalInput = {
   readonly requestedByUserId: UserId;
 };
 
-type ApprovalDecision = Extract<ApprovalStatus, 'approved' | 'rejected'>;
+type ApprovalDecision = Extract<ApprovalStatus, 'approved' | 'rejected' | 'cancelled'>;
 
 // The single approval engine other modules configure (plan.md §4.1). Leave,
 // expenses, etc. request approvals through this published interface rather than

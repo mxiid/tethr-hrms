@@ -162,9 +162,12 @@ export class LeaveResolver {
   async approveLeaveRequest(
     @Args('input') input: DecideLeaveRequestInput,
   ): Promise<LeaveRequestView> {
+    // Decide as the session user; the input's decidedByUserId is ignored so a
+    // caller cannot record a decision under someone else's name.
+    const user = await this.authService.getCurrentUser();
     const request = await this.leaveRequestService.approve(
       input.leaveRequestId,
-      toId<UserId>(input.decidedByUserId),
+      toId<UserId>(user.id),
       input.note,
     );
     return toLeaveRequestView(request);
@@ -176,9 +179,11 @@ export class LeaveResolver {
   async rejectLeaveRequest(
     @Args('input') input: DecideLeaveRequestInput,
   ): Promise<LeaveRequestView> {
+    // Decide as the session user; see approveLeaveRequest.
+    const user = await this.authService.getCurrentUser();
     const request = await this.leaveRequestService.reject(
       input.leaveRequestId,
-      toId<UserId>(input.decidedByUserId),
+      toId<UserId>(user.id),
       input.note,
     );
     return toLeaveRequestView(request);
