@@ -6,6 +6,11 @@ type WidgetFieldRowProps = {
   readonly values: WidgetFieldValues;
   readonly loading: boolean;
   readonly error: boolean;
+  /**
+   * How many selected fields render — the measured fitted count, never below
+   * one. Undefined renders every selected field.
+   */
+  readonly limit?: number;
 };
 
 export const WidgetFieldRow = ({
@@ -14,6 +19,7 @@ export const WidgetFieldRow = ({
   values,
   loading,
   error,
+  limit,
 }: WidgetFieldRowProps) => {
   if (error) {
     return (
@@ -25,7 +31,8 @@ export const WidgetFieldRow = ({
 
   const selectedFields = selectedFieldIds
     .map((id) => fields.find((field) => field.id === id))
-    .filter((field): field is WidgetFieldDefinition => field !== undefined);
+    .filter((field): field is WidgetFieldDefinition => field !== undefined)
+    .slice(0, limit);
 
   return (
     <div className="widget-stat-row">

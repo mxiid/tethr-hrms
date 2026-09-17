@@ -214,7 +214,7 @@ Built from layered gray-alpha tokens — no diffuse colored glows.
 | `underline` | `0 1px 0 gray9α` |
 | `superHeavy` | three-layer (8px + 64px + 56px spreads) — modal lift |
 
-Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts). Emitted as `--hrms-box-shadow-*` (never under the color prefix).
 
 ---
 
@@ -288,6 +288,23 @@ Dense, spreadsheet-grade tables — Twenty's primary information surface.
 ### 6.5 Chips & Tags
 
 Variants: `highlighted`, `regular`, `transparent`, `rounded`, `static`. Flex-based alignment. Color comes from the 24-hue main palette (§4.3) — chips are how object categories and statuses get color-coded.
+
+### 6.6 Dashboard tiles
+
+The dashboard is a **fixed-size tile grid**, not a free canvas: a 12-column grid at desktop (8 at tablet, 4 at phone; 16px gutters) with a 36px row track — so two rows equal the **88px tile unit** every height is built on.
+
+Tiles never scroll. Each widget declares the sizes its content is authored to fit, and content caps (fields, legend items, funnel stages) come from the density of that size:
+
+| Size | Geometry | Density | Content contract |
+|---|---|---|---|
+| `2x1` Strip | 6 cols × 1 unit | strip | title + one headline metric |
+| `1x2` Quarter | 3 cols × 2 units | quarter | split legend (typically 2–3 items) + as many inline metrics as fit (≥2 at desktop, wrapping when needed) |
+| `2x2` Half | 6 cols × 2 units | half | bar + ≤4 legend items + ≤4 stats |
+| `2x3` Half tall | 6 cols × 3 units | halfTall | chart + legend + ≤6 stats |
+| `4x2` Full | 12 cols × 2 units | full | bar + inline legend + ≤6 stats |
+| `4x3` Full tall | 12 cols × 3 units | fullTall | chart + legend + ≤6 stats |
+
+Interaction: dragging reorders; size is chosen from the widget's allowed set (never free-resized), and **all edit chrome lives in Edit layout mode** — the resting dashboard shows only titles, accent dots, and content. The metrics picker is one ordered list shared by every size: drag the grips (or lift with the keyboard) to set display order, selected metrics beyond what the tile renders read muted, and a single **Enlarge to add** action jumps to the smallest strictly larger size that renders everything selected. Hidden metrics always keep a way back: when no larger size exists, **Show metrics only** drops the chart to free the room, and when even that can't help (already plain, or no chart) a note points at reordering or unselecting — the muted rows themselves are draggable. What renders is **measured, not guessed**: the density caps are starting points, and each tile probes the full selection against its real box, shedding legend items first and metrics one at a time until nothing clips (never below one metric and the chart's key). Controls only exist where they can act — the chart/plain toggle disappears when the size has no chart. Layouts persist per workspace + user, and the signed-in identity owns its layout: a workspace switch or a fresh sign-in loads that identity's dashboard and never reuses or overwrites the previous one. Saved layouts are sanitized against the widget registry on load — unknown widgets, unsupported sizes, retired metrics, and duplicate view/widget ids drop out, so a stale save repairs itself on the next write; a selection whose metrics have all retired falls back to the widget's defaults rather than restoring a blank tile, while an intentionally empty selection stays empty. The tile rhythm and the size-glyph diagrams are tokens (`--hrms-layout-dashboard-*`), never literal dimensions. The active view is **two-way URL state** — deep links apply, deliberate switches push history so Back returns, and a missing or stale `?view=` is corrected in place — and the session's getting-started dismissal survives in-app navigation (a reload starts fresh) while staying scoped to the workspace that chose it: switching workspaces mid-tab still shows the destination's onboarding.
 
 ---
 
