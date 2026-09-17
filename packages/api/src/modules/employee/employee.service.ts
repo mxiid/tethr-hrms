@@ -227,6 +227,9 @@ export class EmployeeService {
     const result = await this.dataSource.transaction(async (manager) => {
       const entity = await manager.findOne(Employee, {
         where: { id: input.employeeId, organizationId },
+        // Lock the row: two concurrent separations must not both pass the
+        // status check and write duplicate separation rows/events.
+        lock: { mode: 'pessimistic_write' },
       });
       if (!entity) {
         throw new NotFoundError('Employee not found', { id: input.employeeId });
@@ -349,17 +352,20 @@ export class EmployeeService {
           changedFields: ['roleTitle'],
         },
       });
+      // Audited in the same transaction: a caller rollback must not leave an
+      // audit row for an update that did not commit.
+      await this.audit.record(
+        {
+          action: 'update',
+          resourceType: 'employee',
+          resourceId: saved.id,
+          after: { roleTitle: saved.roleTitle, updatedByUserId },
+        },
+        target,
+      );
       return saved;
     };
-    const employee = manager ? await run(manager) : await this.dataSource.transaction(run);
-
-    await this.audit.record({
-      action: 'update',
-      resourceType: 'employee',
-      resourceId: employee.id,
-      after: { roleTitle: employee.roleTitle, updatedByUserId },
-    });
-    return employee;
+    return manager ? run(manager) : this.dataSource.transaction(run);
   }
 
   list(): Promise<Employee[]> {

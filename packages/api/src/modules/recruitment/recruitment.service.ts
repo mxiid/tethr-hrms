@@ -509,7 +509,7 @@ export class RecruitmentService {
       // request to a different row and reopen the wrong position. Title lookup
       // is only for the first open that has no link yet.
       if (request.positionId) {
-        const position = await this.positions.getById(request.positionId);
+        const position = await this.positions.getById(request.positionId, manager);
         if (position.status !== 'open') {
           await this.positions.setStatus(position.id, 'open', manager);
         }
@@ -556,7 +556,7 @@ export class RecruitmentService {
     }
     // Every non-open transition targets the linked position by id — never by
     // title, which is not unique and may have been renamed.
-    const position = await this.positions.getById(request.positionId);
+    const position = await this.positions.getById(request.positionId, manager);
     if (request.status === 'onHold' && position.status === 'open') {
       await this.positions.setStatus(position.id, 'frozen', manager);
     }

@@ -40,7 +40,7 @@ const buildService = () => {
     dataSource,
     tenantContext,
   );
-  return { service, manager };
+  return { service, manager, repositories: { positions: positionsRepository, jobs: jobsRepository } };
 };
 
 describe('PositionService.ensureByTitle', () => {
@@ -54,5 +54,23 @@ describe('PositionService.ensureByTitle', () => {
       'SELECT pg_advisory_xact_lock(hashtext($1))',
       [expect.stringContaining('position:')],
     );
+    // Different titles share the 'General' job, so that creation is serialized
+    // on its own key too.
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [expect.stringContaining('job:')],
+    );
+  });
+});
+
+describe('PositionService.getById', () => {
+  it('reads through the caller transaction when a manager is supplied', async () => {
+    const { service, manager, repositories } = buildService();
+    repositories.positions.findOne.mockResolvedValue({ id: 'position-1', status: 'open' });
+
+    const position = await service.getById('position-1', manager);
+
+    expect(position.id).toBe('position-1');
+    expect(manager.getRepository).toHaveBeenCalled();
   });
 });

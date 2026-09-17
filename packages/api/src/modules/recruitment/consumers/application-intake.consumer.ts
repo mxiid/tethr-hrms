@@ -58,5 +58,12 @@ export class ApplicationIntakeConsumer implements OnModuleInit {
         });
       }),
     );
+    // After the ledger transaction commits, enqueue parse jobs for the CvParse
+    // rows the projection left pending: Redis never runs inside the transaction,
+    // and the jobId makes this idempotent.
+    await this.tenantContext.run(
+      { organizationId: event.tenantId, userId: null },
+      () => this.ats.reconcilePendingCvParses(),
+    );
   }
 }

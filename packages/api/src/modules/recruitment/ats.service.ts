@@ -689,14 +689,15 @@ export class AtsService {
       parsedAt: null,
     };
     if (manager) {
+      // Inside a caller transaction: create the row only. The Redis enqueue is
+      // an external side effect and must not run before commit (a rollback would
+      // leave the job pointing at a missing document), so the consumer enqueues
+      // after its ledger transaction commits; the reconcile script covers
+      // failures.
       await manager.save(manager.create(CvParse, payload));
-    } else {
-      await this.cvParses.save(this.cvParses.create(payload));
+      return;
     }
-    // External side effect (Redis): cannot join the transaction, so it stays
-    // last and the parse job is at-least-once. The jobId dedupes redeliveries;
-    // when the enqueue fails the row stays `pending` and
-    // `reconcilePendingCvParses` re-enqueues it later.
+    await this.cvParses.save(this.cvParses.create(payload));
     await this.enqueueCvParse(organizationId, candidateDocumentId);
   }
 

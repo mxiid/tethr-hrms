@@ -46,10 +46,10 @@ describe('MessageQueueService', () => {
       maxRetriesPerRequest: 1,
       connectTimeout: 5_000,
     });
-    // The retry strategy is bounded: it eventually gives up instead of retrying
-    // forever while `add` waits.
+    // The retry strategy never gives up: it caps the delay so the cached queue
+    // keeps reconnecting after Redis returns.
     expect(options.connection.retryStrategy(1)).toBe(500);
-    expect(options.connection.retryStrategy(10)).toBeNull();
+    expect(options.connection.retryStrategy(10)).toBe(2_000);
     expect(options.defaultJobOptions).toMatchObject({
       attempts: 5,
       backoff: { type: 'exponential' },

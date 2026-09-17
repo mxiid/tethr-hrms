@@ -64,6 +64,8 @@ export class Phase1DataIntegrityConstraints1789500000000 implements MigrationInt
         // --- Columns introduced by the Phase 1 fixes.
         // D2: the per-calendar-year split a cross-year leave request reserved.
         await queryRunner.query(`ALTER TABLE "leave_requests" ADD COLUMN "yearAllocations" jsonb NOT NULL DEFAULT '[]'`);
+        // P1.9: WorkflowService.decide records when the decision was made.
+        await queryRunner.query(`ALTER TABLE "approval_requests" ADD COLUMN "decidedAt" timestamptz`);
         // P1.11: the timesheet that froze the entry when its period locked.
         await queryRunner.query(`ALTER TABLE "time_entries" ADD COLUMN "timesheetId" uuid`);
         await queryRunner.query(`CREATE INDEX "time_entries_org_employee_timesheet_idx" ON "time_entries" ("organizationId", "employeeId", "timesheetId")`);
@@ -91,6 +93,7 @@ export class Phase1DataIntegrityConstraints1789500000000 implements MigrationInt
         await queryRunner.query(`DROP INDEX "salary_revisions_org_employee_valid_from_unique"`);
         await queryRunner.query(`DROP INDEX "time_entries_org_employee_timesheet_idx"`);
         await queryRunner.query(`ALTER TABLE "time_entries" DROP COLUMN "timesheetId"`);
+        await queryRunner.query(`ALTER TABLE "approval_requests" DROP COLUMN "decidedAt"`);
         await queryRunner.query(`ALTER TABLE "leave_requests" DROP COLUMN "yearAllocations"`);
     }
 

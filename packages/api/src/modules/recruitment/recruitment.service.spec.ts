@@ -335,7 +335,7 @@ describe('RecruitmentService', () => {
     });
 
     // By id, never by title: titles are not unique and may have been renamed.
-    expect(positions.getById).toHaveBeenCalledWith('position-1');
+    expect(positions.getById).toHaveBeenCalledWith('position-1', undefined);
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'frozen', undefined);
   });
 
@@ -358,7 +358,7 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(positions.getById).toHaveBeenCalledWith('position-1');
+    expect(positions.getById).toHaveBeenCalledWith('position-1', undefined);
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'open', undefined);
   });
 
@@ -380,7 +380,7 @@ describe('RecruitmentService', () => {
     });
 
     expect(positions.ensureByTitle).not.toHaveBeenCalled();
-    expect(positions.getById).toHaveBeenCalledWith('position-1');
+    expect(positions.getById).toHaveBeenCalledWith('position-1', undefined);
     expect(repository.save).not.toHaveBeenCalledWith(
       expect.objectContaining({ positionId: 'position-other' }),
     );
@@ -436,7 +436,7 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(positions.getById).toHaveBeenCalledWith('position-1');
+    expect(positions.getById).toHaveBeenCalledWith('position-1', undefined);
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed', undefined);
     expect(positions.setStatus).not.toHaveBeenCalledWith('position-1', 'open');
   });

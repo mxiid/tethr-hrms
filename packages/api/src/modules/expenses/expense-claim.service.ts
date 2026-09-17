@@ -527,9 +527,8 @@ export class ExpenseClaimService {
         if (attempt >= maxAttempts || !isUniqueViolation(cause)) {
           throw cause;
         }
-        // The failed attempt assigned an id before rolling back; clear it so the
-        // retry inserts instead of updating a row that no longer exists.
-        delete (claim as unknown as { id?: string }).id;
+        // The retry updates the same draft row (its id persists through the
+        // rollback), recalculating the claim number from the current maximum.
       }
     }
   }

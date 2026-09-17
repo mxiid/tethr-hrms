@@ -99,7 +99,12 @@ const buildService = () => {
     findOne: jest.fn(),
     count: jest.fn(async () => 0),
     remove: jest.fn(async (entity: unknown) => entity),
+    // Nested transactions are savepoints in TypeORM; run the callback inline.
+    transaction: jest.fn(),
   };
+  (manager.transaction as jest.Mock).mockImplementation(
+    (callback: (m: typeof manager) => Promise<unknown>) => callback(manager),
+  );
   const dataSource = {
     transaction: jest.fn(async (cb: (mgr: typeof manager) => Promise<unknown>) => cb(manager)),
   };
@@ -192,6 +197,21 @@ describe('InvoiceService.draftInvoicesFromRun', () => {
     // Aug catch-up: 900 × 14/21 working days; Sep full rate; PEPM fee.
     expect(amounts).toEqual(['600.00', '900.00', '300.00']);
     expect(Number(invoiceAttrs.totalAmount)).toBe(1800);
+  });
+
+  it('stamps the tenant on a caller-transaction cost snapshot', async () => {
+    const { service, mocks } = buildService();
+
+    await service.draftInvoicesFromRun('run-1', mocks.manager as unknown as EntityManager);
+
+    const snapshotAttrs = mocks.manager.create.mock.calls.find(
+      ([target]) => target === PayrollCostSnapshot,
+    )?.[1] as Record<string, unknown> | undefined;
+    expect(snapshotAttrs?.organizationId).toBe(ORG);
+    expect(mocks.manager.findOne).toHaveBeenCalledWith(
+      PayrollCostSnapshot,
+      expect.objectContaining({ where: expect.objectContaining({ organizationId: ORG }) }),
+    );
   });
 
   it('is a no-op when the service month is already covered for the group', async () => {

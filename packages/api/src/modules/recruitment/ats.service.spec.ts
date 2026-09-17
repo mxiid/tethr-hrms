@@ -222,12 +222,9 @@ describe('AtsService', () => {
     );
     expect(documents.save).toHaveBeenCalled();
     expect(cvParses.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
-    expect(queue.add).toHaveBeenCalledWith(
-      'hrms-default',
-      'parse-cv',
-      expect.objectContaining({ candidateDocumentId: 'document-1' }),
-      { jobId: 'parse-cv:document-1' },
-    );
+    // No Redis call inside the transaction: the consumer enqueues after the
+    // ledger transaction commits (see reconcilePendingCvParses below).
+    expect(queue.add).not.toHaveBeenCalled();
     expect(forms.markSubmissionProjected).toHaveBeenCalledWith(
       SUBMISSION,
       'application',

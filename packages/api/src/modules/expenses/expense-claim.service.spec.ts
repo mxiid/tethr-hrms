@@ -328,6 +328,29 @@ describe('ExpenseClaimService', () => {
     expect(submitted.claimNumber).toBe('EXP-10001');
   });
 
+  it('retries a lost claim-number race on the same draft row', async () => {
+    const { service, mocks } = buildService();
+    mocks.claims.findById.mockResolvedValue(claimFixture({ status: 'draft', claimNumber: null }));
+    mocks.lines.find.mockResolvedValue([
+      { id: 'line-1', claimId: 'claim-1' } as ExpenseClaimLine,
+    ]);
+    // First attempt loses the unique-index race; the retry recalculates and
+    // must update the same draft row, not insert a new line-less one.
+    mocks.manager.save
+      .mockRejectedValueOnce({ driverError: { code: '23505' } })
+      .mockImplementation(async (entity: unknown) => entity);
+    mocks.dataSource.query
+      .mockResolvedValueOnce([{ number: 'EXP-0002' }])
+      .mockResolvedValueOnce([{ number: 'EXP-0003' }]);
+
+    const submitted = await service.submitClaim('claim-1', selfActor);
+
+    // The winner's EXP-0003 raises the max, so the retry takes EXP-0004 on the
+    // same draft row.
+    expect(submitted.claimNumber).toBe('EXP-0004');
+    expect(submitted.id).toBe('claim-1');
+  });
+
   it('keeps number, claim, and approval in one transaction when the approval fails', async () => {
     const { service, mocks } = buildService();
     mocks.claims.findById.mockResolvedValue(claimFixture({ status: 'draft', claimNumber: null }));

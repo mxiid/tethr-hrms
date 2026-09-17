@@ -1,13 +1,14 @@
 import { toId, type EmployeeId, type IsoDate, type TimesheetId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Between, DataSource, type FindOptionsWhere } from 'typeorm';
+import { Between, DataSource, LessThanOrEqual, MoreThanOrEqual, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError } from '../../common/errors';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
+import { attendanceLockKey } from './attendance-lock';
 import { TIMESHEET_REPOSITORY } from './attendance.tokens';
 import { TimeEntry } from './entities/time-entry.entity';
 import { Timesheet } from './entities/timesheet.entity';
@@ -33,17 +34,41 @@ export class TimesheetService {
     private readonly tenantContext: TenantContextService,
   ) {}
 
-  open(input: OpenTimesheetData): Promise<Timesheet> {
-    const timesheet = this.timesheets.create({
-      employeeId: input.employeeId,
-      periodStart: input.periodStart,
-      periodEnd: input.periodEnd,
-      status: 'open',
-      totalHours: '0',
-      submittedByUserId: null,
-      approvedByUserId: null,
+  async open(input: OpenTimesheetData): Promise<Timesheet> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        attendanceLockKey(organizationId, input.employeeId),
+      ]);
+      // Overlapping periods would let a second timesheet re-freeze entries the
+      // first one already locked.
+      const overlap = await manager.findOne(Timesheet, {
+        where: {
+          organizationId,
+          employeeId: input.employeeId,
+          periodStart: LessThanOrEqual(input.periodEnd),
+          periodEnd: MoreThanOrEqual(input.periodStart),
+        } as FindOptionsWhere<Timesheet>,
+      });
+      if (overlap) {
+        throw new ConflictError('An employee cannot have overlapping timesheets', {
+          existingTimesheetId: overlap.id,
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+        });
+      }
+      const timesheet = manager.create(Timesheet, {
+        organizationId,
+        employeeId: input.employeeId,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        status: 'open',
+        totalHours: '0',
+        submittedByUserId: null,
+        approvedByUserId: null,
+      });
+      return manager.save(timesheet);
     });
-    return this.timesheets.save(timesheet);
   }
 
   listForEmployee(employeeId: EmployeeId): Promise<Timesheet[]> {
@@ -115,13 +140,17 @@ export class TimesheetService {
       if (!timesheet) {
         throw new NotFoundError('Timesheet not found', { id: timesheetId });
       }
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        attendanceLockKey(organizationId, timesheet.employeeId),
+      ]);
       if (timesheet.status !== 'approved') {
         throw new ConflictError('Timesheet must be approved before locking', {
           status: timesheet.status,
         });
       }
       // Freeze the period: every entry it covers is stamped with the timesheet
-      // id, so later `recordEntry` calls can see the period is locked.
+      // id, so later `recordEntry` calls can see the period is locked. An entry
+      // already frozen by a different timesheet is never reassigned.
       const entries = await manager.find(TimeEntry, {
         where: {
           organizationId,
@@ -130,6 +159,13 @@ export class TimesheetService {
         },
       });
       for (const entry of entries) {
+        if (entry.timesheetId !== null && entry.timesheetId !== timesheet.id) {
+          throw new ConflictError('A covered entry is already frozen by another timesheet', {
+            entryId: entry.id,
+            frozenByTimesheetId: entry.timesheetId,
+            timesheetId: timesheet.id,
+          });
+        }
         entry.timesheetId = timesheet.id;
         await manager.save(entry);
       }

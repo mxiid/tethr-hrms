@@ -1,4 +1,4 @@
-import { toId, type EmployeeId, type OrganizationId } from '@hrms/shared';
+import { toId, type EmployeeId, type OrganizationId, type UserId } from '@hrms/shared';
 import type { DataSource, EntityManager } from 'typeorm';
 
 import { ConflictError, ValidationFailedError } from '../../common/errors';
@@ -46,7 +46,7 @@ const buildService = (employee: Partial<Employee>) => {
     tenantContext,
     audit,
   );
-  return { service, publisher, manager };
+  return { service, publisher, manager, audit };
 };
 
 const separateInput = (effectiveDate: string) => ({
@@ -102,6 +102,34 @@ describe('EmployeeService.separate', () => {
     expect(publisher.publishWithin).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ name: 'employee.terminated' }),
+    );
+  });
+
+  it('locks the employee row before separating', async () => {
+    const { service, manager } = buildService({ id: EMPLOYEE, employmentStatus: 'active' });
+
+    await service.separate(separateInput(isoDaysFromToday(-1)));
+
+    expect(manager.findOne).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+  });
+});
+
+describe('EmployeeService.updateRoleTitle', () => {
+  it('writes the audit inside the caller transaction', async () => {
+    const { service, manager, audit } = buildService({
+      id: EMPLOYEE,
+      employmentStatus: 'active',
+    });
+    const actor = toId<UserId>('user-1');
+
+    await service.updateRoleTitle(EMPLOYEE, 'Engineering lead', actor, manager);
+
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'update', resourceId: EMPLOYEE }),
+      manager,
     );
   });
 });

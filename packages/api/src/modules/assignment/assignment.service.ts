@@ -72,7 +72,20 @@ export class AssignmentService {
         throw new NotFoundError('Employee not found', { id: input.employeeId });
       }
       // Throws NotFoundError when the position does not exist.
-      await this.positions.getById(input.positionId);
+      await this.positions.getById(input.positionId, target);
+      // Direct creates must not bypass the reporting-cycle guard that
+      // setReportingLine applies; the org lock serializes the graph read.
+      if (input.reportsToEmployeeId) {
+        await target.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `reporting-line:${organizationId}`,
+        ]);
+        await this.assertNoReportingCycle(
+          input.employeeId,
+          input.reportsToEmployeeId,
+          input.validFrom,
+          target,
+        );
+      }
       if (isPrimary) {
         await this.assertNoPrimaryOverlap(target, input.employeeId, {
           validFrom: input.validFrom,
@@ -107,7 +120,12 @@ export class AssignmentService {
   async end(id: string, effectiveDate: IsoDate, manager?: EntityManager): Promise<Assignment> {
     const organizationId = this.tenantContext.getOrganizationId();
     const run = async (target: EntityManager): Promise<Assignment> => {
-      const entity = await target.findOne(Assignment, { where: { id, organizationId } });
+      const entity = await target.findOne(Assignment, {
+        where: { id, organizationId },
+        // Lock the row: two concurrent ends must not both see validTo null and
+        // publish, then overwrite each other's effective date.
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!entity) {
         throw new NotFoundError('Assignment not found', { id });
       }
@@ -184,6 +202,12 @@ export class AssignmentService {
     }
 
     return this.dataSource.transaction(async (manager) => {
+      // Serialize reporting-line mutations per workspace: the cycle check reads
+      // the whole graph, and two concurrent A<->B edits could both pass it and
+      // commit a loop.
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `reporting-line:${this.tenantContext.getOrganizationId()}`,
+      ]);
       if (input.reportsToEmployeeId) {
         await this.assertNoReportingCycle(
           input.employeeId,

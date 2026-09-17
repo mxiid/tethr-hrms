@@ -564,15 +564,24 @@ export class InvoiceService {
     if (manager) {
       // Shared transaction (payroll.finalized consumer): no unique-violation
       // recovery here — a lost race aborts the handler transaction, and the
-      // outbox retry finds the winner's row and proceeds.
+      // outbox retry finds the winner's row and proceeds. The raw manager
+      // bypasses the tenant repository's stamping, so the organization is set
+      // explicitly and scopes the lookup.
+      const organizationId = this.tenantContext.getOrganizationId();
       const existing = await manager.findOne(PayrollCostSnapshot, {
-        where: { payrollRunId: summary.runId } as FindOptionsWhere<PayrollCostSnapshot>,
+        where: {
+          organizationId,
+          payrollRunId: summary.runId,
+        } as FindOptionsWhere<PayrollCostSnapshot>,
       });
       if (existing) {
         return existing;
       }
       return manager.save(
-        manager.create(PayrollCostSnapshot, await this.costSnapshotPayload(summary, config)),
+        manager.create(PayrollCostSnapshot, {
+          organizationId,
+          ...(await this.costSnapshotPayload(summary, config)),
+        }),
       );
     }
     const existing = await this.costSnapshots.findOne({

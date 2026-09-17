@@ -59,7 +59,7 @@ describe('AttendanceService.clockIn', () => {
 
     expect(manager.query).toHaveBeenCalledWith(
       'SELECT pg_advisory_xact_lock(hashtext($1))',
-      [expect.stringContaining('clock:')],
+      [expect.stringContaining('attendance:')],
     );
   });
 });
@@ -95,6 +95,15 @@ describe('AttendanceService.clockOut', () => {
       /after the open clock-in/,
     );
   });
+
+  it('rejects a clock-out whose date falls in a locked timesheet period', async () => {
+    const openIn = { type: 'in', occurredAt: new Date('2026-06-15T09:00:00Z') } as ClockEvent;
+    const { service } = buildService(openIn, {
+      lockedTimesheet: { id: 'timesheet-locked', status: 'locked' },
+    });
+
+    await expect(service.clockOut(EMPLOYEE, '2026-06-15T17:30:00Z')).rejects.toThrow(/locked/);
+  });
 });
 
 describe('AttendanceService.recordEntry', () => {
@@ -115,5 +124,16 @@ describe('AttendanceService.recordEntry', () => {
 
     expect(entry.hours).toBe('8.00');
     expect(entry.source).toBe('manual');
+  });
+
+  it('takes the shared attendance lock before checking the period', async () => {
+    const { service, manager } = buildService(null);
+
+    await service.recordEntry({ employeeId: EMPLOYEE, date: '2026-06-15', hours: 8 });
+
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [expect.stringContaining('attendance:')],
+    );
   });
 });

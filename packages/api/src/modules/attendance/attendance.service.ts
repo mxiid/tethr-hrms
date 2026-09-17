@@ -7,6 +7,7 @@ import { ConflictError } from '../../common/errors';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
+import { attendanceLockKey } from './attendance-lock';
 import { TIME_ENTRY_REPOSITORY } from './attendance.tokens';
 import { ClockEvent, type ClockSource } from './entities/clock-event.entity';
 import { TimeEntry } from './entities/time-entry.entity';
@@ -44,7 +45,7 @@ export class AttendanceService {
       // Serialize punches per employee: two concurrent clock-ins must not both
       // see the last event as `out` and leave two open punches.
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-        `clock:${organizationId}:${employeeId}`,
+        attendanceLockKey(organizationId, employeeId),
       ]);
       const last = await manager.findOne(ClockEvent, {
         where: { organizationId, employeeId },
@@ -82,7 +83,7 @@ export class AttendanceService {
     const at = occurredAt ? new Date(occurredAt) : new Date();
     return this.dataSource.transaction(async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-        `clock:${organizationId}:${employeeId}`,
+        attendanceLockKey(organizationId, employeeId),
       ]);
       const last = await manager.findOne(ClockEvent, {
         where: { organizationId, employeeId },
@@ -109,11 +110,30 @@ export class AttendanceService {
       await manager.save(outEvent);
 
       const hours = (at.getTime() - last.occurredAt.getTime()) / MILLISECONDS_PER_HOUR;
+      const entryDate = at.toISOString().slice(0, 10) as IsoDate;
+      // A clock-generated entry must not land in a period whose timesheet is
+      // already locked; the shared advisory lock keeps this check and the lock
+      // step from interleaving.
+      const locked = await manager.findOne(Timesheet, {
+        where: {
+          organizationId,
+          employeeId,
+          status: 'locked',
+          periodStart: LessThanOrEqual(entryDate),
+          periodEnd: MoreThanOrEqual(entryDate),
+        } as FindOptionsWhere<Timesheet>,
+      });
+      if (locked) {
+        throw new ConflictError('The period is locked; clock entries cannot be added', {
+          timesheetId: locked.id,
+          date: entryDate,
+        });
+      }
       const entry = manager.create(TimeEntry, {
         organizationId,
         employeeId,
         timesheetId: null,
-        date: at.toISOString().slice(0, 10),
+        date: entryDate,
         hours: toAmount(hours),
         source: 'clock',
         note: null,
@@ -127,6 +147,11 @@ export class AttendanceService {
   async recordEntry(input: RecordTimeEntryData): Promise<TimeEntry> {
     const organizationId = this.tenantContext.getOrganizationId();
     return this.dataSource.transaction(async (manager) => {
+      // Same lock as timesheet open/lock and punches: the locked-period check
+      // and the insert cannot interleave with a freeze.
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        attendanceLockKey(organizationId, input.employeeId),
+      ]);
       const locked = await manager.findOne(Timesheet, {
         where: {
           organizationId,

@@ -36,12 +36,13 @@ export class MessageQueueService implements OnModuleDestroy {
         host: this.config.get('REDIS_HOST'),
         port: this.config.get('REDIS_PORT'),
         // The API is a producer only. Buffering commands in the offline queue
-        // would hang `add` forever when Redis is down (a request or consumer
-        // path awaits it), so fail fast within a bounded time instead.
+        // would hang `add` forever when Redis is down, so fail fast. The client
+        // keeps reconnecting with a capped delay: giving up would leave the
+        // cached Queue dead forever, even after Redis returns.
         enableOfflineQueue: false,
         maxRetriesPerRequest: 1,
         connectTimeout: 5_000,
-        retryStrategy: (times) => (times > 3 ? null : Math.min(times * 500, 2_000)),
+        retryStrategy: (times) => Math.min(times * 500, 2_000),
       },
       // Same retry contract as the outbox (MAX_ATTEMPTS = 5): a job is retried
       // with exponential backoff before it is left failed.

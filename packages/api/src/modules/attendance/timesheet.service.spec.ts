@@ -18,7 +18,9 @@ const buildService = (options: { timesheet: Partial<Timesheet>; entries?: Partia
   const manager = {
     findOne: jest.fn().mockResolvedValue(options.timesheet as Timesheet),
     find: jest.fn().mockResolvedValue((options.entries ?? []) as TimeEntry[]),
+    create: jest.fn((_entity: unknown, data: Record<string, unknown>) => data),
     save: jest.fn((value: Record<string, unknown>) => Promise.resolve(value)),
+    query: jest.fn().mockResolvedValue(undefined),
   } as unknown as EntityManager;
   const dataSource = {
     transaction: jest.fn((callback: (m: EntityManager) => Promise<unknown>) => callback(manager)),
@@ -35,7 +37,7 @@ const buildService = (options: { timesheet: Partial<Timesheet>; entries?: Partia
     publisher,
     tenantContext,
   );
-  return { service, publisher };
+  return { service, publisher, manager };
 };
 
 const baseTimesheet = (status: Timesheet['status']): Partial<Timesheet> => ({
@@ -61,6 +63,33 @@ describe('TimesheetService.submit', () => {
     expect(publisher.publishWithin).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ name: 'timesheet.submitted' }),
+    );
+  });
+});
+
+describe('TimesheetService.open', () => {
+  it('rejects an overlapping period for the same employee', async () => {
+    const { service } = buildService({ timesheet: baseTimesheet('open') });
+
+    await expect(
+      service.open({ employeeId: EMPLOYEE, periodStart: '2026-06-15', periodEnd: '2026-07-15' }),
+    ).rejects.toThrow(/overlapping/);
+  });
+
+  it('opens a non-overlapping period under the attendance lock', async () => {
+    const { service, manager } = buildService({ timesheet: baseTimesheet('open') });
+    (manager.findOne as jest.Mock).mockResolvedValue(null);
+
+    const created = await service.open({
+      employeeId: EMPLOYEE,
+      periodStart: '2026-07-01',
+      periodEnd: '2026-07-31',
+    });
+
+    expect(created.status).toBe('open');
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [expect.stringContaining('attendance:')],
     );
   });
 });
@@ -99,5 +128,19 @@ describe('TimesheetService.lock', () => {
     await service.lock('ts-1');
 
     expect(entry.timesheetId).toBe('ts-1');
+  });
+
+  it('refuses to re-freeze an entry owned by another timesheet', async () => {
+    const entry = {
+      id: 'entry-1',
+      hours: '8.00',
+      timesheetId: 'ts-other',
+    } as unknown as TimeEntry;
+    const { service } = buildService({
+      timesheet: baseTimesheet('approved'),
+      entries: [entry],
+    });
+
+    await expect(service.lock('ts-1')).rejects.toThrow(/another timesheet/);
   });
 });

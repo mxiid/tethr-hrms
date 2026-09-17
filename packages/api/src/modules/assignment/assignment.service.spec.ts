@@ -50,6 +50,7 @@ const buildService = (options: { existing?: Assignment[] } = {}) => {
     ),
     find: jest.fn().mockResolvedValue(existing),
     findOne: jest.fn().mockResolvedValue(null),
+    query: jest.fn().mockResolvedValue(undefined),
   } as unknown as EntityManager;
   const dataSource = {
     transaction: jest.fn((callback: (m: EntityManager) => Promise<unknown>) => callback(manager)),
@@ -135,6 +136,28 @@ describe('AssignmentService.create', () => {
       service.create({ employeeId: EMPLOYEE, positionId: POSITION, validFrom: '2026-07-01' }),
     ).rejects.toThrow(/Position not found/);
   });
+
+  it('validates reporting cycles on direct creates under the graph lock', async () => {
+    const { service, manager } = buildService({ existing: [] });
+    // The proposed manager reports back to this employee: a cycle.
+    (manager.find as jest.Mock).mockResolvedValue([
+      { ...openPrimary, employeeId: MANAGER, reportsToEmployeeId: EMPLOYEE },
+    ]);
+
+    await expect(
+      service.create({
+        employeeId: EMPLOYEE,
+        positionId: POSITION,
+        validFrom: '2026-07-01',
+        reportsToEmployeeId: MANAGER,
+      }),
+    ).rejects.toThrow(/reports to this employee/);
+
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [expect.stringContaining('reporting-line:')],
+    );
+  });
 });
 
 describe('AssignmentService.end', () => {
@@ -148,6 +171,20 @@ describe('AssignmentService.end', () => {
     const { service, manager } = buildService();
     (manager.findOne as jest.Mock).mockResolvedValue(openPrimary);
     await expect(service.end(openPrimary.id, '2025-12-01')).rejects.toThrow(/cannot precede/);
+  });
+
+  it('locks the assignment row before ending it', async () => {
+    const { service, manager } = buildService();
+    // A copy: end() mutates the entity, and the shared fixture is reused below.
+    (manager.findOne as jest.Mock).mockResolvedValue({ ...openPrimary });
+    (manager.save as jest.Mock).mockResolvedValue({ ...openPrimary, validTo: '2026-07-01' });
+
+    await service.end(openPrimary.id, '2026-07-01');
+
+    expect(manager.findOne).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
   });
 });
 
@@ -171,5 +208,10 @@ describe('AssignmentService.setReportingLine', () => {
     // the original open assignment.
     expect(dataSource.transaction).toHaveBeenCalledTimes(1);
     expect(manager.save).toHaveBeenCalledTimes(2);
+    // The graph read is serialized per workspace.
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [expect.stringContaining('reporting-line:')],
+    );
   });
 });
