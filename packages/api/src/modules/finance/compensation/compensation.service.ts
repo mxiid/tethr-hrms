@@ -162,6 +162,11 @@ type AwardBonusData = {
 const toAmount = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
 const todayIso = (): IsoDate => new Date().toISOString().slice(0, 10);
 
+const isUniqueViolation = (cause: unknown): boolean => {
+  const driverError = (cause as { readonly driverError?: { readonly code?: string } }).driverError;
+  return (driverError?.code ?? (cause as { readonly code?: string }).code) === '23505';
+};
+
 const normalizeCurrency = (value: string): string => {
   const currency = value.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) {
@@ -537,6 +542,12 @@ export class CompensationService {
   ): Promise<SalaryRevision> {
     const annualAmount = toAmount(input.annualAmount);
     const organizationId = this.tenantContext.getOrganizationId();
+    // Serialize concurrent revisions for the same employee. The read-check below
+    // cannot lock rows that do not exist yet, so two concurrent calls could both
+    // pass it; the advisory lock is held until this transaction ends.
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `salary-revision:${organizationId}:${input.employeeId}`,
+    ]);
     const existing = await manager.find(SalaryRevision, {
       where: {
         organizationId,
@@ -585,7 +596,15 @@ export class CompensationService {
       approvedByUserId: input.approvedByUserId ?? null,
       note: input.note ?? null,
     });
-    const persisted = await manager.save(revision);
+    const persisted = await manager.save(revision).catch((cause: unknown) => {
+      // The partial unique index is the backstop under a concurrent revision.
+      if (isUniqueViolation(cause)) {
+        throw new ConflictError('Salary revision already exists for effective date', {
+          effectiveDate: input.effectiveDate,
+        });
+      }
+      throw cause;
+    });
 
     await this.publisher.publishWithin(manager, {
       name: 'compensation.revised',
@@ -707,61 +726,87 @@ export class CompensationService {
     }
 
     const organizationId = this.tenantContext.getOrganizationId();
-    const open = await this.taxProfiles.findOne({
-      where: { employeeId: input.employeeId, validTo: IsNull() } as FindOptionsWhere<EmployeeTaxProfile>,
-      order: { validFrom: 'DESC' },
-    });
-    const anyExisting = await this.taxProfiles.findOne({
-      where: { employeeId: input.employeeId } as FindOptionsWhere<EmployeeTaxProfile>,
-      order: { validFrom: 'ASC' },
-    });
-    const validFrom = anyExisting ? effectiveDate : employee.hireDate;
-    // Closing the open profile at a backdated effective date would invert its
-    // half-open range (validTo before validFrom); reject it like reviseSalary.
-    if (open && compareIsoDate(validFrom, open.validFrom) < 0) {
-      throw new ConflictError('Cannot backdate a tax profile before the open profile starts', {
-        effectiveDate: validFrom,
-        openValidFrom: open.validFrom,
-      });
-    }
-    const history = await this.taxProfiles.find({
-      where: { employeeId: input.employeeId } as FindOptionsWhere<EmployeeTaxProfile>,
-    });
-    const conflict = history.find(
-      (profile) =>
-        profile.id !== open?.id &&
-        rangesOverlap(
-          { validFrom: profile.validFrom, validTo: profile.validTo },
-          { validFrom, validTo: null },
-        ),
-    );
-    if (conflict) {
-      throw new ConflictError('A tax profile already covers this period', {
-        employeeId: input.employeeId,
-        conflictingProfileId: conflict.id,
-      });
-    }
-
-    const payload = {
-      organizationId,
-      employeeId: input.employeeId,
-      filerStatus: input.filerStatus ?? 'filer',
-      monthlyExemptionAmount: toAmount(input.monthlyExemptionAmount ?? 0),
-      annualTaxCreditAmount: toAmount(input.annualTaxCreditAmount ?? 0),
-      priorAnnualIncome: toAmount(input.priorAnnualIncome ?? 0),
-      fixedMonthlyWithholding:
-        input.fixedMonthlyWithholding == null ? null : toAmount(input.fixedMonthlyWithholding),
-      note: input.note?.slice(0, 300) ?? null,
-      validFrom,
-      validTo: null,
-    };
+    // The close-open + insert sequence runs under one advisory lock so two
+    // concurrent calls cannot both see the same open profile and write
+    // overlapping ranges. The lock is released with the transaction.
     const saved = await this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `tax-profile:${organizationId}:${input.employeeId}`,
+      ]);
+      const open = await manager.findOne(EmployeeTaxProfile, {
+        where: {
+          organizationId,
+          employeeId: input.employeeId,
+          validTo: IsNull(),
+        } as FindOptionsWhere<EmployeeTaxProfile>,
+        order: { validFrom: 'DESC' },
+      });
+      const anyExisting = await manager.findOne(EmployeeTaxProfile, {
+        where: {
+          organizationId,
+          employeeId: input.employeeId,
+        } as FindOptionsWhere<EmployeeTaxProfile>,
+        order: { validFrom: 'ASC' },
+      });
+      const validFrom = anyExisting ? effectiveDate : employee.hireDate;
+      // Closing the open profile at a backdated effective date would invert its
+      // half-open range (validTo before validFrom); reject it like reviseSalary.
+      if (open && compareIsoDate(validFrom, open.validFrom) < 0) {
+        throw new ConflictError('Cannot backdate a tax profile before the open profile starts', {
+          effectiveDate: validFrom,
+          openValidFrom: open.validFrom,
+        });
+      }
+      const history = await manager.find(EmployeeTaxProfile, {
+        where: {
+          organizationId,
+          employeeId: input.employeeId,
+        } as FindOptionsWhere<EmployeeTaxProfile>,
+      });
+      const conflict = history.find(
+        (profile) =>
+          profile.id !== open?.id &&
+          rangesOverlap(
+            { validFrom: profile.validFrom, validTo: profile.validTo },
+            { validFrom, validTo: null },
+          ),
+      );
+      if (conflict) {
+        throw new ConflictError('A tax profile already covers this period', {
+          employeeId: input.employeeId,
+          conflictingProfileId: conflict.id,
+        });
+      }
+
+      const payload = {
+        organizationId,
+        employeeId: input.employeeId,
+        filerStatus: input.filerStatus ?? 'filer',
+        monthlyExemptionAmount: toAmount(input.monthlyExemptionAmount ?? 0),
+        annualTaxCreditAmount: toAmount(input.annualTaxCreditAmount ?? 0),
+        priorAnnualIncome: toAmount(input.priorAnnualIncome ?? 0),
+        fixedMonthlyWithholding:
+          input.fixedMonthlyWithholding == null ? null : toAmount(input.fixedMonthlyWithholding),
+        note: input.note?.slice(0, 300) ?? null,
+        validFrom,
+        validTo: null,
+      };
       if (open) {
         // Half-open ranges: the old profile ends the moment the new one begins.
         open.validTo = validFrom;
         await manager.save(open);
       }
-      const persisted = await manager.save(manager.create(EmployeeTaxProfile, payload));
+      const persisted = await manager.save(manager.create(EmployeeTaxProfile, payload)).catch(
+        (cause: unknown) => {
+          // The partial unique index is the backstop under a concurrent write.
+          if (isUniqueViolation(cause)) {
+            throw new ConflictError('A tax profile already covers this period', {
+              employeeId: input.employeeId,
+            });
+          }
+          throw cause;
+        },
+      );
       await this.publisher.publishWithin(manager, {
         name: 'compensation.taxProfileChanged',
         payload: {
