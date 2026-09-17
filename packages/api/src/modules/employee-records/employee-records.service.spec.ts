@@ -110,10 +110,24 @@ const buildService = (links: EmployeeDocumentLink[] = []) => {
     find: jest.fn().mockResolvedValue([]),
     findById: jest.fn().mockResolvedValue(null),
   } as unknown as TenantScopedRepository<BankDetailChangeRequest>;
+  // Routes the manager's onboarding-task calls back to the repository mock so
+  // the seed tests keep steering and asserting through one surface.
+  let lastCreatedEntity: unknown = null;
   const manager = {
-    create: jest.fn((_entity: unknown, value: unknown) => value),
-    save: jest.fn((value: Record<string, unknown>) =>
-      Promise.resolve({ id: ASSESSMENT, createdAt: new Date(), updatedAt: new Date(), ...value }),
+    create: jest.fn((entity: unknown, value: unknown) => {
+      lastCreatedEntity = entity;
+      return value;
+    }),
+    save: jest.fn((value: Record<string, unknown>) => {
+      if ((lastCreatedEntity as { name?: string } | null)?.name === 'EmployeeOnboardingTask') {
+        return onboardingTasks.save(value);
+      }
+      return Promise.resolve({ id: ASSESSMENT, createdAt: new Date(), updatedAt: new Date(), ...value });
+    }),
+    findOne: jest.fn((entity: unknown) =>
+      (entity as { name?: string } | null)?.name === 'EmployeeOnboardingTask'
+        ? onboardingTasks.findOne()
+        : Promise.resolve(null),
     ),
   } as unknown as EntityManager;
   const dataSource = {

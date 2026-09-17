@@ -1,5 +1,6 @@
 import type { DomainEvent } from '@hrms/shared';
 import { toId, type HiringRequestId, type OrganizationId } from '@hrms/shared';
+import type { EntityManager } from 'typeorm';
 
 import type { EventBus } from '../../../core/events/event-bus.service';
 import type { IdempotencyService } from '../../../core/events/idempotency.service';
@@ -20,9 +21,11 @@ const buildConsumer = (status: string, currentStatus: string = status) => {
       handler = next;
     }),
   } as unknown as EventBus;
+  const manager = { id: 'manager' } as unknown as EntityManager;
   const idempotency = {
     runOnce: jest.fn(
-      (_name: string, _event: DomainEvent, work: () => Promise<unknown>) => work(),
+      (_name: string, _event: DomainEvent, work: (manager: EntityManager) => Promise<unknown>) =>
+        work(manager),
     ),
   } as unknown as IdempotencyService;
   const notifications = { sendSlack: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationService;
@@ -80,8 +83,8 @@ describe('HiringRequestUpdatedConsumer', () => {
 
     await dispatch();
 
-    expect(recruitment.reconcilePositionForRequest).toHaveBeenCalledWith(REQUEST);
-    expect(recruitment.unpublishPostingsForRequest).toHaveBeenCalledWith(REQUEST);
+    expect(recruitment.reconcilePositionForRequest).toHaveBeenCalledWith(REQUEST, expect.anything());
+    expect(recruitment.unpublishPostingsForRequest).toHaveBeenCalledWith(REQUEST, expect.anything());
     // Position reconcile runs under the request's tenant; the unpublish runs
     // under the operator's, because that is where postings live.
     expect(visitedTenants).toEqual([CLIENT, TETHR]);
@@ -97,7 +100,7 @@ describe('HiringRequestUpdatedConsumer', () => {
 
     // A resume from onHold must repair a frozen position; only held/terminal
     // statuses take the posting down, so no operator-workspace step happens.
-    expect(recruitment.reconcilePositionForRequest).toHaveBeenCalledWith(REQUEST);
+    expect(recruitment.reconcilePositionForRequest).toHaveBeenCalledWith(REQUEST, expect.anything());
     expect(recruitment.unpublishPostingsForRequest).not.toHaveBeenCalled();
     expect(visitedTenants).toEqual([CLIENT]);
     expect(notifications.sendSlack).toHaveBeenCalled();
@@ -113,7 +116,7 @@ describe('HiringRequestUpdatedConsumer', () => {
 
     await dispatch();
 
-    expect(recruitment.reconcilePositionForRequest).toHaveBeenCalledWith(REQUEST);
+    expect(recruitment.reconcilePositionForRequest).toHaveBeenCalledWith(REQUEST, expect.anything());
     expect(recruitment.unpublishPostingsForRequest).not.toHaveBeenCalled();
     expect(visitedTenants).toEqual([CLIENT]);
     // Announcing "now onHold" after the open notice would be wrong.

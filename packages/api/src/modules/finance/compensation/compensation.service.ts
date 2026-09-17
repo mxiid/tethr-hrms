@@ -623,25 +623,45 @@ export class CompensationService {
   // close the open revision after the last covered day so history stops being
   // open-ended forever. validTo is exclusive, so the revision stays in force ON
   // the termination date (which the final-settlement maths needs) and ends the
-  // next day. No-op when there is no open revision.
-  async closeOpenRevisionAt(employeeId: EmployeeId, lastCoveredDate: IsoDate): Promise<void> {
-    const open = await this.salaryRevisions.findOne({
-      where: { employeeId, validTo: IsNull() } as FindOptionsWhere<SalaryRevision>,
-      order: { validFrom: 'DESC' },
-    });
-    if (!open) {
+  // next day. No-op when there is no open revision. The consumer passes its
+  // transaction manager so the close and its audit commit with the ledger row.
+  async closeOpenRevisionAt(
+    employeeId: EmployeeId,
+    lastCoveredDate: IsoDate,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const run = async (target: EntityManager): Promise<void> => {
+      const open = await target.findOne(SalaryRevision, {
+        where: {
+          organizationId,
+          employeeId,
+          validTo: IsNull(),
+        } as FindOptionsWhere<SalaryRevision>,
+        order: { validFrom: 'DESC' },
+      });
+      if (!open) {
+        return;
+      }
+      const exclusiveEnd = addIsoDays(lastCoveredDate, 1);
+      open.validTo =
+        compareIsoDate(exclusiveEnd, open.validFrom) < 0 ? open.validFrom : exclusiveEnd;
+      await target.save(open);
+      await this.audit.record(
+        {
+          action: 'closeRevision',
+          resourceType: 'salary_revision',
+          resourceId: open.id,
+          after: { employeeId, validTo: open.validTo },
+        },
+        target,
+      );
+    };
+    if (manager) {
+      await run(manager);
       return;
     }
-    const exclusiveEnd = addIsoDays(lastCoveredDate, 1);
-    open.validTo =
-      compareIsoDate(exclusiveEnd, open.validFrom) < 0 ? open.validFrom : exclusiveEnd;
-    await this.salaryRevisions.save(open);
-    await this.audit.record({
-      action: 'closeRevision',
-      resourceType: 'salary_revision',
-      resourceId: open.id,
-      after: { employeeId, validTo: open.validTo },
-    });
+    await this.dataSource.transaction((target) => run(target));
   }
 
   // --- Employee tax profiles ---

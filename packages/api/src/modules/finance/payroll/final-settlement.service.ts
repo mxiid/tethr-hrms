@@ -9,7 +9,7 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, type FindOptionsWhere } from 'typeorm';
+import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../../common/errors';
 import { AuditService } from '../../../core/audit/audit.service';
@@ -48,8 +48,14 @@ export class FinalSettlementService {
   ) {}
 
   // Compute (and store) a settlement. Idempotent per employee: re-running
-  // replaces the outstanding settlement.
-  async compute(employeeId: EmployeeId, terminationDate: IsoDate): Promise<FinalSettlement> {
+  // replaces the outstanding settlement. The `employee.terminated` consumer
+  // passes its transaction manager so the settlement and its audit commit with
+  // the idempotency ledger row.
+  async compute(
+    employeeId: EmployeeId,
+    terminationDate: IsoDate,
+    manager?: EntityManager,
+  ): Promise<FinalSettlement> {
     const employee = await this.employeeDirectory.getById(employeeId);
     if (!employee) {
       throw new NotFoundError('Employee not found', { id: employeeId });
@@ -167,37 +173,43 @@ export class FinalSettlementService {
     }
 
     const organizationId = this.tenantContext.getOrganizationId();
-    const settlement = await this.settlements.save(
-      this.settlements.create({
-        organizationId,
-        employeeId,
-        terminationDate,
-        periodYear: year,
-        periodMonth: month,
-        currency,
-        standardWorkingDays,
-        workedDays: toDays(workedDays),
-        proRatedEarnings: toMoney(proRatedEarnings),
-        adjustmentEarnings: toMoney(adjustmentEarnings),
-        leaveBalanceDays: toDays(leaveBalanceDays),
-        leaveEncashmentAmount: toMoney(leaveEncashmentAmount),
-        recoveryAmount: toMoney(recoveryAmount),
-        payableTotal: toMoney(payableTotal),
-        taxableAmount: toMoney(taxableAmount),
-        incomeTaxAmount: toMoney(incomeTaxAmount),
-        netPayableAmount: toMoney(netPayableAmount),
-        status: 'computed',
-        computedAt: new Date(),
-        note: notes.length > 0 ? notes.join('; ') : null,
-      }),
-    );
-    await this.audit.record({
-      action: 'compute',
-      resourceType: 'final_settlement',
-      resourceId: settlement.id,
-      after: { employeeId, payableTotal, netPayableAmount, terminationDate },
-    });
-    return settlement;
+    const run = async (target: EntityManager): Promise<FinalSettlement> => {
+      const settlement = await target.save(
+        target.create(FinalSettlement, {
+          organizationId,
+          employeeId,
+          terminationDate,
+          periodYear: year,
+          periodMonth: month,
+          currency,
+          standardWorkingDays,
+          workedDays: toDays(workedDays),
+          proRatedEarnings: toMoney(proRatedEarnings),
+          adjustmentEarnings: toMoney(adjustmentEarnings),
+          leaveBalanceDays: toDays(leaveBalanceDays),
+          leaveEncashmentAmount: toMoney(leaveEncashmentAmount),
+          recoveryAmount: toMoney(recoveryAmount),
+          payableTotal: toMoney(payableTotal),
+          taxableAmount: toMoney(taxableAmount),
+          incomeTaxAmount: toMoney(incomeTaxAmount),
+          netPayableAmount: toMoney(netPayableAmount),
+          status: 'computed',
+          computedAt: new Date(),
+          note: notes.length > 0 ? notes.join('; ') : null,
+        }),
+      );
+      await this.audit.record(
+        {
+          action: 'compute',
+          resourceType: 'final_settlement',
+          resourceId: settlement.id,
+          after: { employeeId, payableTotal, netPayableAmount, terminationDate },
+        },
+        target,
+      );
+      return settlement;
+    };
+    return manager ? run(manager) : this.dataSource.transaction(run);
   }
 
   async getForEmployee(employeeId: EmployeeId): Promise<FinalSettlement | null> {

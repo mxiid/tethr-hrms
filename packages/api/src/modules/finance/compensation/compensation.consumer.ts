@@ -31,11 +31,12 @@ export class EmployeeTerminatedCompensationConsumer implements OnModuleInit {
     if (event.name !== 'employee.terminated') {
       return;
     }
-    await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
+    await this.idempotency.runOnce(CONSUMER_NAME, event, (manager) =>
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
         await this.compensation.closeOpenRevisionAt(
           event.payload.employeeId,
           event.payload.effectiveDate as IsoDate,
+          manager,
         );
         this.logger.log(`Closed salary revision for terminated employee ${event.payload.employeeId}`);
       }),

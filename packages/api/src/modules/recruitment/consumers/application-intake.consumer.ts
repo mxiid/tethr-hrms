@@ -35,9 +35,9 @@ export class ApplicationIntakeConsumer implements OnModuleInit {
       return;
     }
     const { submissionId } = event.payload;
-    await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
+    await this.idempotency.runOnce(CONSUMER_NAME, event, (manager) =>
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
-        const application = await this.ats.applyFormSubmission(submissionId);
+        const application = await this.ats.applyFormSubmission(submissionId, manager);
         if (!application) return;
         this.logger.log(`Application ${application.id} created from submission ${submissionId}`);
 
@@ -45,6 +45,8 @@ export class ApplicationIntakeConsumer implements OnModuleInit {
           toId<CandidateId>(application.candidateId),
         );
         const postings = await this.ats.postingsByIds([application.jobPostingId]);
+        // Email is an external side effect: it cannot join the transaction and
+        // is therefore at-least-once, so it stays last.
         await this.notifications.send({
           channel: 'email',
           to: candidate.email,

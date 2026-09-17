@@ -14,7 +14,8 @@ import {
   type OrganizationId,
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { type FindOptionsWhere, In } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, type EntityManager, type FindOptionsWhere, In } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
@@ -136,6 +137,7 @@ export class AtsService {
     private readonly hiringRequests: TenantScopedRepository<HiringRequest>,
     private readonly forms: FormsService,
     private readonly queue: MessageQueueService,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly tenantContext: TenantContextService,
     private readonly platformScope: PlatformScopeService,
     private readonly audit: AuditService,
@@ -289,20 +291,27 @@ export class AtsService {
     return candidate;
   }
 
-  async createCandidate(input: CreateCandidateData): Promise<Candidate> {
+  async createCandidate(input: CreateCandidateData, manager?: EntityManager): Promise<Candidate> {
     const email = input.email.trim().toLowerCase();
+    const organizationId = this.tenantContext.getOrganizationId();
+    const payload = {
+      organizationId,
+      fullName: input.fullName.trim(),
+      email,
+      phone: input.phone ?? null,
+      linkedin: input.linkedin ?? null,
+      portfolio: input.portfolio ?? null,
+      source: input.source ?? 'manual',
+      consentGivenAt: null,
+    };
     try {
-      return await this.candidates.save(
-        this.candidates.create({
-          fullName: input.fullName.trim(),
-          email,
-          phone: input.phone ?? null,
-          linkedin: input.linkedin ?? null,
-          portfolio: input.portfolio ?? null,
-          source: input.source ?? 'manual',
-          consentGivenAt: null,
-        }),
-      );
+      if (manager) {
+        // Savepoint: a lost unique-race must not poison a shared transaction.
+        return await manager.transaction((inner) =>
+          inner.save(inner.create(Candidate, payload)),
+        );
+      }
+      return await this.candidates.save(this.candidates.create(payload));
     } catch (error) {
       if ((error as { code?: string }).code === '23505') {
         throw new ConflictError('A candidate with that email already exists', { email });
@@ -405,149 +414,192 @@ export class AtsService {
   // Consumes `form.submitted` (target 'application'). The submission's `mapsTo`
   // fields are projected onto the candidate (the person, latest known) and the
   // application (what was said at submission time), a CandidateDocument records
-  // the CV, and a parse job is enqueued for the AI seam.
-  async applyFormSubmission(submissionId: FormSubmissionId): Promise<Application | null> {
-    const { submission, fields } = await this.forms.getSubmissionForProjection(submissionId);
-    const postingRef = typeof submission.metadata.refId === 'string' ? submission.metadata.refId : null;
-    if (!postingRef) {
-      // No dead ends: an unprojectable submission is recorded as rejected with
-      // a reason instead of sitting pending forever.
-      await this.forms.markSubmissionRejected(
-        submissionId,
-        'The submission is missing its posting context',
-      );
-      return null;
-    }
-    const posting = await this.postings.findById(postingRef);
-    if (!posting) {
-      await this.forms.markSubmissionRejected(submissionId, 'The posting is no longer available');
-      return null;
-    }
-    // A link can outlive the posting it was minted for (form links live for
-    // weeks). Record the late application with a reason instead of dropping it
-    // silently, and never create a live screening application for a closed role.
-    const today = new Date().toISOString().slice(0, 10);
-    if (!posting.isPublished) {
-      await this.forms.markSubmissionRejected(
-        submissionId,
-        'The posting is no longer accepting applications',
-      );
-      return null;
-    }
-    if (posting.closesOn !== null && posting.closesOn < today) {
-      await this.forms.markSubmissionRejected(
-        submissionId,
-        `The posting closed on ${posting.closesOn}`,
-      );
-      return null;
-    }
-
-    const byMap = new Map<string, string>();
-    for (const field of fields) {
-      if (!field.mapsTo) continue;
-      const answer = submission.answers[field.fieldKey];
-      if (answer !== undefined && answer.trim() !== '') {
-        byMap.set(field.mapsTo, answer.trim());
+  // the CV, and a parse job is enqueued for the AI seam. The consumer passes its
+  // transaction manager so every projection write shares the idempotency ledger
+  // transaction.
+  async applyFormSubmission(
+    submissionId: FormSubmissionId,
+    manager?: EntityManager,
+  ): Promise<Application | null> {
+    const run = async (target: EntityManager): Promise<Application | null> => {
+      const organizationId = this.tenantContext.getOrganizationId();
+      const { submission, fields } = await this.forms.getSubmissionForProjection(submissionId);
+      const postingRef =
+        typeof submission.metadata.refId === 'string' ? submission.metadata.refId : null;
+      if (!postingRef) {
+        // No dead ends: an unprojectable submission is recorded as rejected with
+        // a reason instead of sitting pending forever.
+        await this.forms.markSubmissionRejected(
+          submissionId,
+          'The submission is missing its posting context',
+          target,
+        );
+        return null;
       }
-    }
-    const email = bounded(byMap.get('candidate.email')?.toLowerCase(), 320);
-    if (!email || !EMAIL_PATTERN.test(email)) {
-      await this.forms.markSubmissionRejected(submissionId, 'A valid candidate email is required');
-      return null;
-    }
+      const posting = await this.postings.findById(postingRef);
+      if (!posting) {
+        await this.forms.markSubmissionRejected(
+          submissionId,
+          'The posting is no longer available',
+          target,
+        );
+        return null;
+      }
+      // A link can outlive the posting it was minted for (form links live for
+      // weeks). Record the late application with a reason instead of dropping it
+      // silently, and never create a live screening application for a closed role.
+      const today = new Date().toISOString().slice(0, 10);
+      if (!posting.isPublished) {
+        await this.forms.markSubmissionRejected(
+          submissionId,
+          'The posting is no longer accepting applications',
+          target,
+        );
+        return null;
+      }
+      if (posting.closesOn !== null && posting.closesOn < today) {
+        await this.forms.markSubmissionRejected(
+          submissionId,
+          `The posting closed on ${posting.closesOn}`,
+          target,
+        );
+        return null;
+      }
 
-    // The relay retries a projection that failed part-way; a submission that
-    // already produced an application must not produce a second one.
-    const alreadyProjected = await this.applications.findOne({
-      where: { formSubmissionId: submission.id },
-    });
-    if (alreadyProjected) {
-      await this.ensureResumeRecorded(alreadyProjected.candidateId, submission);
-      return alreadyProjected;
-    }
+      const byMap = new Map<string, string>();
+      for (const field of fields) {
+        if (!field.mapsTo) continue;
+        const answer = submission.answers[field.fieldKey];
+        if (answer !== undefined && answer.trim() !== '') {
+          byMap.set(field.mapsTo, answer.trim());
+        }
+      }
+      const email = bounded(byMap.get('candidate.email')?.toLowerCase(), 320);
+      if (!email || !EMAIL_PATTERN.test(email)) {
+        await this.forms.markSubmissionRejected(
+          submissionId,
+          'A valid candidate email is required',
+          target,
+        );
+        return null;
+      }
 
-    const candidate = await this.findOrCreateCandidate({
-      fullName: bounded(byMap.get('candidate.fullName'), 200) ?? email,
-      email,
-      phone: bounded(byMap.get('candidate.phone'), 64),
-      linkedin: bounded(byMap.get('candidate.linkedin'), 320),
-      portfolio: bounded(byMap.get('candidate.portfolio'), 320),
-    });
+      // The relay retries a projection that failed part-way; a submission that
+      // already produced an application must not produce a second one.
+      const alreadyProjected = await target.findOne(Application, {
+        where: { organizationId, formSubmissionId: submission.id } as FindOptionsWhere<Application>,
+      });
+      if (alreadyProjected) {
+        await this.ensureResumeRecorded(alreadyProjected.candidateId, submission, target);
+        return alreadyProjected;
+      }
 
-    // One open application per person and posting: a second submission while an
-    // earlier one is still active is refused with a reason (a rejected or
-    // withdrawn candidate may re-apply later as a new row). The partial unique
-    // index is the backstop under a concurrent duplicate.
-    const activeApplication = await this.applications.findOne({
-      where: {
-        candidateId: candidate.id,
-        jobPostingId: posting.id,
-        outcome: 'active',
-      } as FindOptionsWhere<Application>,
-    });
-    if (activeApplication) {
-      await this.ensureResumeRecorded(candidate.id, submission);
-      await this.forms.markSubmissionRejected(
-        submissionId,
-        'You already have an active application for this role',
+      const candidate = await this.findOrCreateCandidate(
+        {
+          fullName: bounded(byMap.get('candidate.fullName'), 200) ?? email,
+          email,
+          phone: bounded(byMap.get('candidate.phone'), 64),
+          linkedin: bounded(byMap.get('candidate.linkedin'), 320),
+          portfolio: bounded(byMap.get('candidate.portfolio'), 320),
+        },
+        target,
       );
-      return null;
-    }
 
-    let application: Application;
-    try {
-      application = await this.applications.save(
-        this.applications.create({
-          organizationId: this.tenantContext.getOrganizationId(),
+      // One open application per person and posting: a second submission while an
+      // earlier one is still active is refused with a reason (a rejected or
+      // withdrawn candidate may re-apply later as a new row). The partial unique
+      // index is the backstop under a concurrent duplicate.
+      const activeApplication = await target.findOne(Application, {
+        where: {
+          organizationId,
           candidateId: candidate.id,
           jobPostingId: posting.id,
-          formSubmissionId: submission.id,
-          stage: 'screening',
           outcome: 'active',
-          onHold: false,
-          holdReason: null,
-          expectedSalary: numeric(byMap.get('application.expectedSalary')),
-          salaryCurrency: currencyCode(byMap.get('application.salaryCurrency')),
-          currentSalary: numeric(byMap.get('application.currentSalary')),
-          currentTitle: bounded(byMap.get('application.currentTitle'), 200),
-          yearsExperience: integer(byMap.get('application.yearsExperience')),
-          location: bounded(byMap.get('application.location'), 200),
-          skills: bounded(byMap.get('application.skills'), 20000),
-          coverNote: bounded(byMap.get('application.coverNote'), 20000),
-          manualRating: null,
-          notes: null,
-        }),
-      );
-    } catch (cause) {
-      if (!isUniqueViolation(cause)) {
-        throw cause;
+        } as FindOptionsWhere<Application>,
+      });
+      if (activeApplication) {
+        await this.ensureResumeRecorded(candidate.id, submission, target);
+        await this.forms.markSubmissionRejected(
+          submissionId,
+          'You already have an active application for this role',
+          target,
+        );
+        return null;
       }
-      // The pre-check lost a race with another submission: still record the CV
-      // (the person applied, and the document is theirs), then reject.
-      await this.ensureResumeRecorded(candidate.id, submission);
-      await this.forms.markSubmissionRejected(
-        submissionId,
-        'You already have an active application for this role',
-      );
-      return null;
-    }
 
-    await this.ensureResumeRecorded(candidate.id, submission);
-    await this.forms.markSubmissionProjected(submissionId, 'application', application.id);
-    return application;
+      let application: Application;
+      try {
+        // Savepoint: a lost race with the partial unique index must not poison
+        // the surrounding ledger transaction — we still record the CV and reject.
+        application = await target.transaction((inner) =>
+          inner.save(
+            inner.create(Application, {
+              organizationId,
+              candidateId: candidate.id,
+              jobPostingId: posting.id,
+              formSubmissionId: submission.id,
+              stage: 'screening',
+              outcome: 'active',
+              onHold: false,
+              holdReason: null,
+              expectedSalary: numeric(byMap.get('application.expectedSalary')),
+              salaryCurrency: currencyCode(byMap.get('application.salaryCurrency')),
+              currentSalary: numeric(byMap.get('application.currentSalary')),
+              currentTitle: bounded(byMap.get('application.currentTitle'), 200),
+              yearsExperience: integer(byMap.get('application.yearsExperience')),
+              location: bounded(byMap.get('application.location'), 200),
+              skills: bounded(byMap.get('application.skills'), 20000),
+              coverNote: bounded(byMap.get('application.coverNote'), 20000),
+              manualRating: null,
+              notes: null,
+            }),
+          ),
+        );
+      } catch (cause) {
+        if (!isUniqueViolation(cause)) {
+          throw cause;
+        }
+        // The pre-check lost a race with another submission: still record the CV
+        // (the person applied, and the document is theirs), then reject.
+        await this.ensureResumeRecorded(candidate.id, submission, target);
+        await this.forms.markSubmissionRejected(
+          submissionId,
+          'You already have an active application for this role',
+          target,
+        );
+        return null;
+      }
+
+      await this.ensureResumeRecorded(candidate.id, submission, target);
+      await this.forms.markSubmissionProjected(submissionId, 'application', application.id, target);
+      return application;
+    };
+    return manager ? run(manager) : this.dataSource.transaction(run);
   }
 
-  private async ensureResumeRecorded(candidateId: string, submission: FormSubmission): Promise<void> {
+  private async ensureResumeRecorded(
+    candidateId: string,
+    submission: FormSubmission,
+    manager?: EntityManager,
+  ): Promise<void> {
     const resume = submission.files.find((file) => file.fieldKey === 'resume');
     if (resume) {
-      await this.recordCandidateDocument(candidateId, resume);
+      await this.recordCandidateDocument(candidateId, resume, manager);
     }
   }
 
-  private async findOrCreateCandidate(input: CreateCandidateData): Promise<Candidate> {
-    const existing = await this.candidates.findOne({ where: { email: input.email } });
+  private async findOrCreateCandidate(
+    input: CreateCandidateData,
+    manager?: EntityManager,
+  ): Promise<Candidate> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const existing = manager
+      ? await manager.findOne(Candidate, {
+          where: { organizationId, email: input.email } as FindOptionsWhere<Candidate>,
+        })
+      : await this.candidates.findOne({ where: { email: input.email } });
     if (!existing) {
-      return this.createCandidate(input);
+      return this.createCandidate(input, manager);
     }
     // Latest known wins for the person's present-tense facts; application
     // history stays on the application rows.
@@ -555,55 +607,92 @@ export class AtsService {
     existing.phone = input.phone ?? existing.phone;
     existing.linkedin = input.linkedin ?? existing.linkedin;
     existing.portfolio = input.portfolio ?? existing.portfolio;
-    return this.candidates.save(existing);
+    return manager ? manager.save(existing) : this.candidates.save(existing);
   }
 
   private async recordCandidateDocument(
     candidateId: string,
     resume: { storageKey: string; fileName: string; contentType: string; sizeBytes: number },
+    manager?: EntityManager,
   ): Promise<void> {
+    const organizationId = this.tenantContext.getOrganizationId();
     // Retried projections must not version the same submission's CV twice.
-    const alreadyStored = await this.candidateDocuments.findOne({
-      where: { candidateId: toId<CandidateId>(candidateId), storageKey: resume.storageKey },
-    });
+    const alreadyStored = manager
+      ? await manager.findOne(CandidateDocument, {
+          where: {
+            organizationId,
+            candidateId: toId<CandidateId>(candidateId),
+            storageKey: resume.storageKey,
+          } as FindOptionsWhere<CandidateDocument>,
+        })
+      : await this.candidateDocuments.findOne({
+          where: { candidateId: toId<CandidateId>(candidateId), storageKey: resume.storageKey },
+        });
     if (alreadyStored) {
-      await this.ensureCvParse(alreadyStored.id);
+      await this.ensureCvParse(alreadyStored.id, manager);
       return;
     }
-    const versions = await this.candidateDocuments.find({
-      where: { candidateId: toId<CandidateId>(candidateId), label: 'resume' },
-    });
+    const versions = manager
+      ? await manager.find(CandidateDocument, {
+          where: {
+            organizationId,
+            candidateId: toId<CandidateId>(candidateId),
+            label: 'resume',
+          } as FindOptionsWhere<CandidateDocument>,
+        })
+      : await this.candidateDocuments.find({
+          where: { candidateId: toId<CandidateId>(candidateId), label: 'resume' },
+        });
     const nextVersion = versions.reduce((max, doc) => Math.max(max, doc.versionNumber), 0) + 1;
-    const document = await this.candidateDocuments.save(
-      this.candidateDocuments.create({
-        candidateId: toId<CandidateId>(candidateId),
-        label: 'resume',
-        versionNumber: nextVersion,
-        storageKey: resume.storageKey,
-        fileName: resume.fileName,
-        contentType: resume.contentType,
-        sizeBytes: String(resume.sizeBytes),
-      }),
-    );
-    await this.ensureCvParse(document.id);
+    const payload = {
+      organizationId,
+      candidateId: toId<CandidateId>(candidateId),
+      label: 'resume',
+      versionNumber: nextVersion,
+      storageKey: resume.storageKey,
+      fileName: resume.fileName,
+      contentType: resume.contentType,
+      sizeBytes: String(resume.sizeBytes),
+    };
+    const document = manager
+      ? await manager.save(manager.create(CandidateDocument, payload))
+      : await this.candidateDocuments.save(this.candidateDocuments.create(payload));
+    await this.ensureCvParse(document.id, manager);
   }
 
   // The parse record and the job that fills it are created together and only
   // once per document, so a retried projection cannot queue a duplicate parse.
-  private async ensureCvParse(candidateDocumentId: string): Promise<void> {
-    const existing = await this.cvParses.findOne({ where: { candidateDocumentId } });
+  private async ensureCvParse(
+    candidateDocumentId: string,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const existing = manager
+      ? await manager.findOne(CvParse, {
+          where: {
+            organizationId,
+            candidateDocumentId,
+          } as FindOptionsWhere<CvParse>,
+        })
+      : await this.cvParses.findOne({ where: { candidateDocumentId } });
     if (existing) return;
-    await this.cvParses.save(
-      this.cvParses.create({
-        candidateDocumentId,
-        status: 'pending',
-        extractedText: null,
-        structured: {},
-        score: null,
-        provider: null,
-        parsedAt: null,
-      }),
-    );
+    const payload = {
+      organizationId,
+      candidateDocumentId,
+      status: 'pending' as const,
+      extractedText: null,
+      structured: {},
+      score: null,
+      provider: null,
+      parsedAt: null,
+    };
+    if (manager) {
+      await manager.save(manager.create(CvParse, payload));
+    } else {
+      await this.cvParses.save(this.cvParses.create(payload));
+    }
+    // External side effect (Redis): cannot join the transaction, so it stays
+    // last and the parse job is at-least-once.
     await this.queue.add(QUEUES.default, JOBS.parseCv, {
       organizationId: this.tenantContext.getOrganizationId(),
       candidateDocumentId,

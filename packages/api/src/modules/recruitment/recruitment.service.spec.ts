@@ -207,7 +207,7 @@ describe('RecruitmentService', () => {
     expect(request.status).toBe('open');
     expect(request.tethrNote).toBe('Kicking off sourcing.');
     expect(request.positionId).toBe('position-1');
-    expect(positions.ensureByTitle).toHaveBeenCalledWith('Senior developer');
+    expect(positions.ensureByTitle).toHaveBeenCalledWith('Senior developer', undefined);
     // The link is a targeted conditional update — only positionId, and only
     // while the row is still open and unlinked — with its audit in the same
     // transaction.
@@ -319,7 +319,7 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed', undefined);
   });
 
   it('freezes the linked position when a request is put on hold', async () => {
@@ -336,7 +336,7 @@ describe('RecruitmentService', () => {
 
     // By id, never by title: titles are not unique and may have been renamed.
     expect(positions.getById).toHaveBeenCalledWith('position-1');
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'frozen');
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'frozen', undefined);
   });
 
   it('repairs a missed position transition when the same status is replayed', async () => {
@@ -359,7 +359,7 @@ describe('RecruitmentService', () => {
     });
 
     expect(positions.getById).toHaveBeenCalledWith('position-1');
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'open');
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'open', undefined);
   });
 
   it('never relinks an open request that already has a linked position', async () => {
@@ -437,7 +437,7 @@ describe('RecruitmentService', () => {
     });
 
     expect(positions.getById).toHaveBeenCalledWith('position-1');
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed', undefined);
     expect(positions.setStatus).not.toHaveBeenCalledWith('position-1', 'open');
   });
 
@@ -459,7 +459,7 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed', undefined);
     expect((repository.findById as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 

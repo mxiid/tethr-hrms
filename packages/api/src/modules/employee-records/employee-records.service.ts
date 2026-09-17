@@ -15,7 +15,7 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, type FindOptionsWhere } from 'typeorm';
+import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
@@ -447,32 +447,40 @@ export class EmployeeRecordsService {
 
   // Seeds the standard checklist for a new hire. Idempotent per (employee,
   // taskKey): the employee.created consumer may be retried by the outbox, and
-  // the rows may already have been created by an operator.
-  async seedOnboardingChecklist(employeeId: EmployeeId): Promise<number> {
+  // the rows may already have been created by an operator. The consumer passes
+  // its transaction manager so the tasks commit with the idempotency ledger row.
+  async seedOnboardingChecklist(
+    employeeId: EmployeeId,
+    manager?: EntityManager,
+  ): Promise<number> {
     const organizationId = this.tenantContext.getOrganizationId();
-    let created = 0;
-    for (const definition of ONBOARDING_TASK_DEFINITIONS) {
-      const existing = await this.onboardingTasks.findOne({
-        where: {
-          employeeId,
-          taskKey: definition.taskKey,
-        } as FindOptionsWhere<EmployeeOnboardingTask>,
-      });
-      if (existing) continue;
-      await this.onboardingTasks.save(
-        this.onboardingTasks.create({
-          organizationId,
-          employeeId,
-          taskKey: definition.taskKey,
-          title: definition.title,
-          status: 'notStarted',
-          dueDate: null,
-          notes: null,
-        }),
-      );
-      created += 1;
-    }
-    return created;
+    const run = async (target: EntityManager): Promise<number> => {
+      let created = 0;
+      for (const definition of ONBOARDING_TASK_DEFINITIONS) {
+        const existing = await target.findOne(EmployeeOnboardingTask, {
+          where: {
+            organizationId,
+            employeeId,
+            taskKey: definition.taskKey,
+          } as FindOptionsWhere<EmployeeOnboardingTask>,
+        });
+        if (existing) continue;
+        await target.save(
+          target.create(EmployeeOnboardingTask, {
+            organizationId,
+            employeeId,
+            taskKey: definition.taskKey,
+            title: definition.title,
+            status: 'notStarted',
+            dueDate: null,
+            notes: null,
+          }),
+        );
+        created += 1;
+      }
+      return created;
+    };
+    return manager ? run(manager) : this.dataSource.transaction(run);
   }
 
   // The aggregate read the checklist never had: everything complete, with the

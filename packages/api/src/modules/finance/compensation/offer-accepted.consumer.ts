@@ -33,15 +33,18 @@ export class OfferAcceptedCompensationConsumer implements OnModuleInit {
       return;
     }
     const { employeeId, annualAmount, currency, effectiveDate, acceptedByUserId } = event.payload;
-    await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
+    await this.idempotency.runOnce(CONSUMER_NAME, event, (manager) =>
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
-        const revision = await this.compensation.recordHireSalary({
-          employeeId,
-          annualAmount,
-          currency,
-          effectiveDate,
-          approvedByUserId: acceptedByUserId,
-        });
+        const revision = await this.compensation.recordHireSalary(
+          {
+            employeeId,
+            annualAmount,
+            currency,
+            effectiveDate,
+            approvedByUserId: acceptedByUserId,
+          },
+          manager,
+        );
         this.logger.log(
           revision
             ? `Recorded hire revision ${revision.id} for employee ${employeeId}`

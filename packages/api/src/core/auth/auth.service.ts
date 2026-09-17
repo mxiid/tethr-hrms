@@ -2,7 +2,7 @@ import type { EmployeeId, UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, type FindOptionsWhere } from 'typeorm';
+import { Repository, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { NotFoundError, UnauthenticatedError } from '../../common/errors';
 import { TenantContextService } from '../tenancy/tenant-context.service';
@@ -190,13 +190,20 @@ export class AuthService {
 
   // Disable any login linked to an employee. Naturally idempotent (re-running is
   // harmless), which makes it safe as an event-driven side effect (plan.md §5.2).
-  async disableUsersForEmployee(employeeId: EmployeeId): Promise<number> {
-    const users = await this.users.find({ where: { employeeId } as FindOptionsWhere<User> });
+  // The `employee.terminated` consumer passes its transaction manager so the
+  // disable commits with the idempotency ledger row.
+  async disableUsersForEmployee(employeeId: EmployeeId, manager?: EntityManager): Promise<number> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const users = manager
+      ? await manager.find(User, {
+          where: { organizationId, employeeId } as FindOptionsWhere<User>,
+        })
+      : await this.users.find({ where: { employeeId } as FindOptionsWhere<User> });
     let disabledCount = 0;
     for (const user of users) {
       if (user.status !== 'disabled') {
         user.status = 'disabled';
-        await this.users.save(user);
+        await (manager ? manager.save(user) : this.users.save(user));
         disabledCount += 1;
       }
     }

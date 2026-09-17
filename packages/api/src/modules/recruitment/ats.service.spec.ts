@@ -123,6 +123,48 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
   } as unknown as PlatformScopeService;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
 
+  // The projection runs on the transaction manager now; route its entity-scoped
+  // calls back to the repository mocks so tests keep steering one surface.
+  type RepositoryLike = {
+    findOne: jest.Mock;
+    find: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+  };
+  const pickRepository = (entity: unknown): RepositoryLike => {
+    const name = (entity as { name?: string }).name;
+    if (name === 'Application') return applications as unknown as RepositoryLike;
+    if (name === 'Candidate') return candidates as unknown as RepositoryLike;
+    if (name === 'CandidateDocument') return documents as unknown as RepositoryLike;
+    if (name === 'CvParse') return cvParses as unknown as RepositoryLike;
+    throw new Error(`No repository mock registered for ${String(name)}`);
+  };
+  const withRepositoryMarker = <T extends object>(value: T, repository: RepositoryLike): T => {
+    Object.defineProperty(value, '__repository', { value: repository, enumerable: false });
+    return value;
+  };
+  const manager = {
+    findOne: jest.fn(async (entity: unknown, options?: unknown) => {
+      const repository = pickRepository(entity);
+      const value = await repository.findOne(options);
+      return value && typeof value === 'object'
+        ? withRepositoryMarker(value as object, repository)
+        : value;
+    }),
+    find: jest.fn((entity: unknown, options?: unknown) => pickRepository(entity).find(options)),
+    create: jest.fn((entity: unknown, data: unknown) =>
+      withRepositoryMarker(pickRepository(entity).create(data) as object, pickRepository(entity)),
+    ),
+    save: jest.fn((value: Record<string, unknown>) => {
+      const repository = (value as { __repository?: RepositoryLike }).__repository;
+      return repository ? repository.save(value) : Promise.resolve(value);
+    }),
+    transaction: jest.fn((callback: (inner: unknown) => Promise<unknown>) => callback(manager)),
+  };
+  const dataSource = {
+    transaction: jest.fn((callback: (inner: unknown) => Promise<unknown>) => callback(manager)),
+  };
+
   return {
     service: new AtsService(
       jobPostings,
@@ -133,6 +175,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
       hiringRequests,
       forms,
       queue,
+      dataSource as never,
       tenantContext,
       platformScope,
       audit,
@@ -146,6 +189,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
     queue,
     platformScope,
     audit,
+    manager,
   };
 };
 describe('AtsService', () => {
@@ -175,7 +219,12 @@ describe('AtsService', () => {
       'parse-cv',
       expect.objectContaining({ candidateDocumentId: 'document-1' }),
     );
-    expect(forms.markSubmissionProjected).toHaveBeenCalledWith(SUBMISSION, 'application', 'application-1');
+    expect(forms.markSubmissionProjected).toHaveBeenCalledWith(
+      SUBMISSION,
+      'application',
+      'application-1',
+      expect.anything(),
+    );
   });
 
   it('ignores a submission with no posting context', async () => {
@@ -334,6 +383,7 @@ describe('AtsService intake integrity', () => {
     expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
       SUBMISSION,
       'A valid candidate email is required',
+      expect.anything(),
     );
   });
 
@@ -357,6 +407,7 @@ describe('AtsService intake integrity', () => {
     expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
       SUBMISSION,
       'The submission is missing its posting context',
+      expect.anything(),
     );
   });
 
@@ -370,6 +421,7 @@ describe('AtsService intake integrity', () => {
     expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
       SUBMISSION,
       'You already have an active application for this role',
+      expect.anything(),
     );
     expect(applications.save).not.toHaveBeenCalled();
   });
@@ -384,6 +436,7 @@ describe('AtsService intake integrity', () => {
     expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
       SUBMISSION,
       'You already have an active application for this role',
+      expect.anything(),
     );
   });
 
