@@ -13,7 +13,7 @@ import {
   type JobPostingId,
   type OrganizationId,
 } from '@hrms/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, type FindOptionsWhere, In } from 'typeorm';
 
@@ -126,6 +126,8 @@ const isActiveApplicationViolation = (cause: unknown): boolean => {
 // a narrow projection added with shortlists.
 @Injectable()
 export class AtsService {
+  private readonly logger = new Logger(AtsService.name);
+
   constructor(
     @Inject(JOB_POSTING_REPOSITORY) private readonly postings: TenantScopedRepository<JobPosting>,
     @Inject(CANDIDATE_REPOSITORY) private readonly candidates: TenantScopedRepository<Candidate>,
@@ -692,11 +694,50 @@ export class AtsService {
       await this.cvParses.save(this.cvParses.create(payload));
     }
     // External side effect (Redis): cannot join the transaction, so it stays
-    // last and the parse job is at-least-once.
-    await this.queue.add(QUEUES.default, JOBS.parseCv, {
-      organizationId: this.tenantContext.getOrganizationId(),
-      candidateDocumentId,
+    // last and the parse job is at-least-once. The jobId dedupes redeliveries;
+    // when the enqueue fails the row stays `pending` and
+    // `reconcilePendingCvParses` re-enqueues it later.
+    await this.enqueueCvParse(organizationId, candidateDocumentId);
+  }
+
+  // Re-enqueues every CvParse row still pending — an enqueue that failed when
+  // the projection committed. Idempotent: the jobId dedupes against a job
+  // already queued, and a successful parse flips the row out of `pending`.
+  async reconcilePendingCvParses(): Promise<number> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const pending = await this.cvParses.find({
+      where: { organizationId, status: 'pending' } as FindOptionsWhere<CvParse>,
     });
+    let enqueued = 0;
+    for (const parse of pending) {
+      const sent = await this.enqueueCvParse(organizationId, parse.candidateDocumentId);
+      if (sent) {
+        enqueued += 1;
+      }
+    }
+    return enqueued;
+  }
+
+  private async enqueueCvParse(
+    organizationId: OrganizationId,
+    candidateDocumentId: string,
+  ): Promise<boolean> {
+    try {
+      await this.queue.add(
+        QUEUES.default,
+        JOBS.parseCv,
+        { organizationId, candidateDocumentId },
+        { jobId: `parse-cv:${candidateDocumentId}` },
+      );
+      return true;
+    } catch (cause) {
+      this.logger.warn(
+        `Could not enqueue the CV parse for document ${candidateDocumentId}: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+      );
+      return false;
+    }
   }
 
   // Used by the resolver to label applications with their posting.

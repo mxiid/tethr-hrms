@@ -18,8 +18,9 @@ export class MessageQueueService implements OnModuleDestroy {
     queueName: QueueName,
     jobName: TJob,
     payload: JobPayloads[TJob],
+    options?: { readonly jobId?: string },
   ): Promise<void> {
-    await this.queue(queueName).add(jobName, payload);
+    await this.queue(queueName).add(jobName, payload, options);
   }
 
   async onModuleDestroy(): Promise<void> {

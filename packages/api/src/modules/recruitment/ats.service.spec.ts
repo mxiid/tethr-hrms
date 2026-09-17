@@ -67,6 +67,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
   } as unknown as TenantScopedRepository<CandidateDocument>;
   const cvParses = {
     findOne: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue([]),
     create: jest.fn((value: unknown) => value),
     save: jest.fn((value: unknown) => Promise.resolve({ id: 'parse-1', ...(value as object) })),
   } as unknown as TenantScopedRepository<CvParse>;
@@ -225,6 +226,7 @@ describe('AtsService', () => {
       'hrms-default',
       'parse-cv',
       expect.objectContaining({ candidateDocumentId: 'document-1' }),
+      { jobId: 'parse-cv:document-1' },
     );
     expect(forms.markSubmissionProjected).toHaveBeenCalledWith(
       SUBMISSION,
@@ -261,6 +263,23 @@ describe('AtsService', () => {
     expect(candidates.create).not.toHaveBeenCalled();
     expect(candidates.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'candidate-1', fullName: 'Ada Lovelace' }),
+    );
+  });
+
+  it('re-enqueues pending parses with the document id as the dedupe jobId', async () => {
+    const { service, cvParses, queue } = buildService();
+    (cvParses.find as jest.Mock).mockResolvedValue([
+      { id: 'parse-1', candidateDocumentId: 'document-1', status: 'pending' },
+    ]);
+
+    const enqueued = await service.reconcilePendingCvParses();
+
+    expect(enqueued).toBe(1);
+    expect(queue.add).toHaveBeenCalledWith(
+      'hrms-default',
+      'parse-cv',
+      expect.objectContaining({ candidateDocumentId: 'document-1' }),
+      { jobId: 'parse-cv:document-1' },
     );
   });
 
