@@ -1641,7 +1641,7 @@ button,
 
 .widget-density-half .dashboard-bar-trend-plot,
 .widget-density-full .dashboard-bar-trend-plot {
-  height: var(--hrms-layout-dashboard-trend-plot-compact);
+  height: var(--hrms-layout-dashboard-trend-plot-compact-height);
 }
 
 .dashboard-widget-grid.is-editing .dashboard-widget {
@@ -5204,7 +5204,7 @@ label.record-field-label {
   background: var(--hrms-color-background-primary);
   border: 1px solid var(--hrms-color-border-light);
   border-radius: var(--hrms-radius-md);
-  box-shadow: var(--hrms-color-box-shadow-light);
+  box-shadow: var(--hrms-box-shadow-light);
 }
 
 .auth-card {
@@ -5214,7 +5214,7 @@ label.record-field-label {
   background: var(--hrms-color-background-primary);
   border: 1px solid var(--hrms-color-border-light);
   border-radius: var(--hrms-radius-md);
-  box-shadow: var(--hrms-color-box-shadow-light);
+  box-shadow: var(--hrms-box-shadow-light);
 }
 
 .auth-title {

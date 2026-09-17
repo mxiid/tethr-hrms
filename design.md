@@ -214,7 +214,7 @@ Built from layered gray-alpha tokens — no diffuse colored glows.
 | `underline` | `0 1px 0 gray9α` |
 | `superHeavy` | three-layer (8px + 64px + 56px spreads) — modal lift |
 
-Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts). Emitted as `--hrms-box-shadow-*` (never under the color prefix).
 
 ---
 

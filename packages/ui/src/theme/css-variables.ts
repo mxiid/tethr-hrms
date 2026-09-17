@@ -22,9 +22,14 @@ const flatten = (value: unknown, path: readonly string[], out: Record<string, st
 
 // Flatten the themeable (string-valued) tokens of a theme into CSS variables.
 // Functions (e.g. spacing) are skipped — they stay in JS.
+// boxShadow is lifted out of the color family so the elevation tokens keep
+// their authored names (`--hrms-box-shadow-*`, design.md §4.6) instead of
+// inheriting the `--hrms-color-` prefix.
 export const themeToCssVariables = (theme: Theme): CssVariableMap => {
   const out: Record<string, string> = {};
-  flatten(theme.color, ['color'], out);
+  const { boxShadow, ...colors } = theme.color;
+  flatten(colors, ['color'], out);
+  flatten(boxShadow, ['box-shadow'], out);
   flatten(theme.space, ['space'], out);
   flatten(theme.betweenSiblingsGap, ['between-siblings-gap'], out);
   flatten(theme.borderRadius, ['radius'], out);
