@@ -270,37 +270,49 @@ export class EmployeeRecordsService {
     if (proposed.every((value) => value == null || value.trim() === '')) {
       throw new ValidationFailedError('At least one bank field is required');
     }
-    const request = await this.bankChangeRequests.save(
-      this.bankChangeRequests.create({
-        employeeId: input.employeeId,
-        bankName: input.bankName?.trim() || null,
-        bankAccountTitle: input.bankAccountTitle?.trim() || null,
-        bankAccountNumber: input.bankAccountNumber?.trim() || null,
-        bankIban: input.bankIban?.trim() || null,
-        status: 'pending',
-        approvalRequestId: null,
-        requestedByUserId: input.requestedByUserId ?? null,
-        decidedByUserId: null,
-        decidedAt: null,
-        decisionNote: null,
-      }),
-    );
-    // Ride the shared approval engine so bank changes aren't a second bespoke
-    // approval mechanism (finding 7).
-    if (input.requestedByUserId) {
-      const approval = await this.workflow.requestApproval({
-        subjectType: 'bankDetailChange',
-        subjectId: request.id,
-        requestedByUserId: input.requestedByUserId,
-      });
-      request.approvalRequestId = approval.id;
-      await this.bankChangeRequests.save(request);
-    }
-    await this.audit.record({
-      action: 'request',
-      resourceType: 'bank_detail_change_request',
-      resourceId: request.id,
-      after: { employeeId: request.employeeId },
+    const request = await this.dataSource.transaction(async (manager) => {
+      const organizationId = this.tenantContext.getOrganizationId();
+      const created = await manager.save(
+        manager.create(BankDetailChangeRequest, {
+          organizationId,
+          employeeId: input.employeeId,
+          bankName: input.bankName?.trim() || null,
+          bankAccountTitle: input.bankAccountTitle?.trim() || null,
+          bankAccountNumber: input.bankAccountNumber?.trim() || null,
+          bankIban: input.bankIban?.trim() || null,
+          status: 'pending',
+          approvalRequestId: null,
+          requestedByUserId: input.requestedByUserId ?? null,
+          decidedByUserId: null,
+          decidedAt: null,
+          decisionNote: null,
+        }),
+      );
+      // Ride the shared approval engine so bank changes aren't a second bespoke
+      // approval mechanism (finding 7). The approval row joins this transaction:
+      // no request without its approval, no orphan approval.
+      if (input.requestedByUserId) {
+        const approval = await this.workflow.requestApproval(
+          {
+            subjectType: 'bankDetailChange',
+            subjectId: created.id,
+            requestedByUserId: input.requestedByUserId,
+          },
+          manager,
+        );
+        created.approvalRequestId = approval.id;
+        await manager.save(created);
+      }
+      await this.audit.record(
+        {
+          action: 'request',
+          resourceType: 'bank_detail_change_request',
+          resourceId: created.id,
+          after: { employeeId: created.employeeId },
+        },
+        manager,
+      );
+      return created;
     });
     return request;
   }
@@ -316,91 +328,129 @@ export class EmployeeRecordsService {
   async decideBankDetailChange(
     input: DecideBankDetailChangeData,
   ): Promise<BankDetailChangeRequest> {
-    const request = await this.bankChangeRequests.findById(input.requestId);
-    if (!request) {
-      throw new NotFoundError('Bank detail change request not found', { id: input.requestId });
-    }
-    if (request.status !== 'pending') {
-      throw new ConflictError('This change request has already been decided');
-    }
-    if (request.approvalRequestId) {
-      await this.workflow.decide(
-        request.approvalRequestId,
-        input.decidedByUserId,
-        input.approve ? 'approved' : 'rejected',
-        input.note ?? undefined,
+    const organizationId = this.tenantContext.getOrganizationId();
+    // One transaction: lock the request, re-check its status, decide the
+    // workflow row, transition the request, apply the approved bank details,
+    // and audit — no partial state between any of the steps.
+    return this.dataSource.transaction(async (manager) => {
+      const request = await manager.findOne(BankDetailChangeRequest, {
+        where: {
+          id: input.requestId,
+          organizationId,
+        } as FindOptionsWhere<BankDetailChangeRequest>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!request) {
+        throw new NotFoundError('Bank detail change request not found', { id: input.requestId });
+      }
+      if (request.status !== 'pending') {
+        throw new ConflictError('This change request has already been decided');
+      }
+      if (request.approvalRequestId) {
+        await this.workflow.decide(
+          request.approvalRequestId,
+          input.decidedByUserId,
+          input.approve ? 'approved' : 'rejected',
+          input.note ?? undefined,
+          manager,
+        );
+      }
+      request.status = input.approve ? 'approved' : 'rejected';
+      request.decidedByUserId = input.decidedByUserId;
+      request.decidedAt = new Date();
+      request.decisionNote = input.note ?? null;
+      const saved = await manager.save(request);
+
+      if (input.approve) {
+        const existing = await manager.findOne(EmployeeHrRecord, {
+          where: {
+            organizationId,
+            employeeId: request.employeeId,
+          } as FindOptionsWhere<EmployeeHrRecord>,
+        });
+        const record =
+          existing ?? manager.create(EmployeeHrRecord, { organizationId, employeeId: request.employeeId });
+        if (request.bankName !== null) record.bankName = request.bankName;
+        if (request.bankAccountTitle !== null) record.bankAccountTitle = request.bankAccountTitle;
+        if (request.bankAccountNumber !== null) record.bankAccountNumber = request.bankAccountNumber;
+        if (request.bankIban !== null) record.bankIban = request.bankIban;
+        record.updatedByUserId = input.decidedByUserId;
+        await manager.save(record);
+      }
+
+      await this.audit.record(
+        {
+          action: input.approve ? 'approve' : 'reject',
+          resourceType: 'bank_detail_change_request',
+          resourceId: saved.id,
+          after: { employeeId: saved.employeeId, status: saved.status },
+        },
+        manager,
       );
-    }
-    request.status = input.approve ? 'approved' : 'rejected';
-    request.decidedByUserId = input.decidedByUserId;
-    request.decidedAt = new Date();
-    request.decisionNote = input.note ?? null;
-    const saved = await this.bankChangeRequests.save(request);
-
-    if (input.approve) {
-      const existing = await this.getHrRecord(request.employeeId);
-      const record = existing ?? this.hrRecords.create({ employeeId: request.employeeId });
-      if (request.bankName !== null) record.bankName = request.bankName;
-      if (request.bankAccountTitle !== null) record.bankAccountTitle = request.bankAccountTitle;
-      if (request.bankAccountNumber !== null) record.bankAccountNumber = request.bankAccountNumber;
-      if (request.bankIban !== null) record.bankIban = request.bankIban;
-      record.updatedByUserId = input.decidedByUserId;
-      await this.hrRecords.save(record);
-    }
-
-    await this.audit.record({
-      action: input.approve ? 'approve' : 'reject',
-      resourceType: 'bank_detail_change_request',
-      resourceId: saved.id,
-      after: { employeeId: saved.employeeId, status: saved.status },
+      return saved;
     });
-    return saved;
   }
 
   async updateHrRecord(input: UpdateEmployeeHrRecordData): Promise<EmployeeHrRecord> {
     if (!(await this.employeeDirectory.exists(input.employeeId))) {
       throw new NotFoundError('Employee not found', { id: input.employeeId });
     }
-    const existing = await this.getHrRecord(input.employeeId);
-    const record =
-      existing ??
-      this.hrRecords.create({
-        employeeId: input.employeeId,
+    const organizationId = this.tenantContext.getOrganizationId();
+    // The HR record and the employee's roleTitle are two tables; one transaction
+    // keeps them consistent (a roleTitle failure must not leave a saved record
+    // that disagrees with the employee row).
+    return this.dataSource.transaction(async (manager) => {
+      const existing = await manager.findOne(EmployeeHrRecord, {
+        where: {
+          organizationId,
+          employeeId: input.employeeId,
+        } as FindOptionsWhere<EmployeeHrRecord>,
       });
+      const record =
+        existing ??
+        manager.create(EmployeeHrRecord, {
+          organizationId,
+          employeeId: input.employeeId,
+        });
 
-    const patch = {
-      roleTitle: input.roleTitle,
-      salaryBreakdown: input.salaryBreakdown,
-      paymentMode: input.paymentMode,
-      bankName: input.bankName,
-      bankAccountTitle: input.bankAccountTitle,
-      bankAccountNumber: input.bankAccountNumber,
-      bankIban: input.bankIban,
-      hardwareInfo: input.hardwareInfo,
-      employeeRecordForm: input.employeeRecordForm,
-    };
-    for (const [key, value] of Object.entries(patch)) {
-      if (value !== undefined) {
-        (record as unknown as Record<string, string | null>)[key] = value;
+      const patch = {
+        roleTitle: input.roleTitle,
+        salaryBreakdown: input.salaryBreakdown,
+        paymentMode: input.paymentMode,
+        bankName: input.bankName,
+        bankAccountTitle: input.bankAccountTitle,
+        bankAccountNumber: input.bankAccountNumber,
+        bankIban: input.bankIban,
+        hardwareInfo: input.hardwareInfo,
+        employeeRecordForm: input.employeeRecordForm,
+      };
+      for (const [key, value] of Object.entries(patch)) {
+        if (value !== undefined) {
+          (record as unknown as Record<string, string | null>)[key] = value;
+        }
       }
-    }
-    record.updatedByUserId = input.updatedByUserId;
+      record.updatedByUserId = input.updatedByUserId;
 
-    const saved = await this.hrRecords.save(record);
-    if (input.roleTitle !== undefined) {
-      await this.employeeService.updateRoleTitle(
-        input.employeeId,
-        input.roleTitle,
-        input.updatedByUserId,
+      const saved = await manager.save(record);
+      if (input.roleTitle !== undefined) {
+        await this.employeeService.updateRoleTitle(
+          input.employeeId,
+          input.roleTitle,
+          input.updatedByUserId,
+          manager,
+        );
+      }
+      await this.audit.record(
+        {
+          action: existing ? 'update' : 'create',
+          resourceType: 'employee_hr_record',
+          resourceId: saved.id,
+          after: { employeeId: saved.employeeId },
+        },
+        manager,
       );
-    }
-    await this.audit.record({
-      action: existing ? 'update' : 'create',
-      resourceType: 'employee_hr_record',
-      resourceId: saved.id,
-      after: { employeeId: saved.employeeId },
+      return saved;
     });
-    return saved;
   }
 
   listAssessments(employeeId: EmployeeId): Promise<EmployeeAssessment[]> {

@@ -332,16 +332,17 @@ export class EmployeeService {
     id: EmployeeId,
     roleTitle: string | null,
     updatedByUserId: UserId,
+    manager?: EntityManager,
   ): Promise<Employee> {
     const organizationId = this.tenantContext.getOrganizationId();
-    const employee = await this.dataSource.transaction(async (manager) => {
-      const entity = await manager.findOne(Employee, { where: { id, organizationId } });
+    const run = async (target: EntityManager): Promise<Employee> => {
+      const entity = await target.findOne(Employee, { where: { id, organizationId } });
       if (!entity) {
         throw new NotFoundError('Employee not found', { id });
       }
       entity.roleTitle = roleTitle;
-      const saved = await manager.save(entity);
-      await this.publisher.publishWithin(manager, {
+      const saved = await target.save(entity);
+      await this.publisher.publishWithin(target, {
         name: 'employee.updated',
         payload: {
           employeeId: toId<EmployeeId>(saved.id),
@@ -349,7 +350,8 @@ export class EmployeeService {
         },
       });
       return saved;
-    });
+    };
+    const employee = manager ? await run(manager) : await this.dataSource.transaction(run);
 
     await this.audit.record({
       action: 'update',

@@ -45,6 +45,12 @@ export class PositionService {
       const positions = transactionManager.getRepository(Position);
       const jobs = transactionManager.getRepository(Job);
       const trimmed = title.trim() || 'Unassigned';
+      // Serialize per (workspace, title): find-then-insert without a unique
+      // index lets two concurrent calls each create a position for the same
+      // title. The advisory lock is released with the transaction.
+      await transactionManager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `position:${organizationId}:${trimmed}`,
+      ]);
       const existing = await positions.findOne({
         where: { title: trimmed, organizationId } as FindOptionsWhere<Position>,
       });

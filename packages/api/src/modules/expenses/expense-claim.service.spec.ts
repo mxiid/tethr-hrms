@@ -80,11 +80,15 @@ const buildService = () => {
     ),
     save: jest.fn(async (entity: unknown) => entity),
     remove: jest.fn(async (entity: unknown) => entity),
+    // Claim-number allocation reads through the transaction manager; tests
+    // steer it via `dataSource.query` (wired below).
+    query: jest.fn(async () => [] as unknown[]),
   };
   const dataSource = {
     transaction: jest.fn(async (work: (mgr: typeof manager) => Promise<unknown>) => work(manager)),
     query: jest.fn(async () => [] as unknown[]),
   };
+  manager.query = dataSource.query as typeof manager.query;
   const stableClaim = claimFixture();
   const claims = {
     // Stable instance: mutations made through the manager are visible to the
@@ -307,6 +311,7 @@ describe('ExpenseClaimService', () => {
     expect(submitted.status).toBe('submitted');
     expect(mocks.workflow.requestApproval).toHaveBeenCalledWith(
       expect.objectContaining({ subjectType: 'expenseClaim', subjectId: 'claim-1' }),
+      expect.anything(),
     );
     expect(submitted.approvalRequestId).toBe('approval-1');
   });
@@ -321,6 +326,34 @@ describe('ExpenseClaimService', () => {
     mocks.dataSource.query.mockResolvedValue([{ number: 'EXP-10000' }]);
     const submitted = await service.submitClaim('claim-1', selfActor);
     expect(submitted.claimNumber).toBe('EXP-10001');
+  });
+
+  it('keeps number, claim, and approval in one transaction when the approval fails', async () => {
+    const { service, mocks } = buildService();
+    mocks.claims.findById.mockResolvedValue(claimFixture({ status: 'draft', claimNumber: null }));
+    mocks.lines.find.mockResolvedValue([
+      { id: 'line-1', claimId: 'claim-1' } as ExpenseClaimLine,
+    ]);
+    mocks.workflow.requestApproval.mockRejectedValueOnce(new Error('workflow down'));
+
+    await expect(service.submitClaim('claim-1', selfActor)).rejects.toThrow('workflow down');
+
+    expect(mocks.dataSource.transaction).toHaveBeenCalled();
+    expect(mocks.claims.save).not.toHaveBeenCalled();
+  });
+
+  it('does not transition a claim when the workflow decision fails', async () => {
+    const { service, mocks } = buildService();
+    mocks.claims.findById.mockResolvedValue(
+      claimFixture({ status: 'submitted', approvalRequestId: 'approval-1' }),
+    );
+    mocks.workflow.decide.mockRejectedValueOnce(new Error('workflow down'));
+
+    await expect(service.decideClaim('claim-1', 'approved', null, USER)).rejects.toThrow(
+      'workflow down',
+    );
+
+    expect(mocks.manager.save).not.toHaveBeenCalled();
   });
 
   it('survives a concurrent default-category seed without failing the read', async () => {

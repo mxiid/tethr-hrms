@@ -200,6 +200,9 @@ const buildService = (links: EmployeeDocumentLink[] = []) => {
     onboardingTasks,
     hrRecords,
     documents,
+    bankChangeRequests,
+    manager,
+    workflow,
   };
 };
 
@@ -387,6 +390,38 @@ describe('EmployeeRecordsService', () => {
       EMPLOYEE,
       'Engineering lead',
       USER,
+      expect.anything(),
     );
+  });
+
+  it('fails the whole HR-record write when the roleTitle update fails', async () => {
+    const { service, employeeService } = buildService();
+    (employeeService.updateRoleTitle as jest.Mock).mockRejectedValueOnce(
+      new Error('role update failed'),
+    );
+
+    await expect(
+      service.updateHrRecord({
+        employeeId: EMPLOYEE,
+        roleTitle: 'Engineering lead',
+        updatedByUserId: USER,
+      }),
+    ).rejects.toThrow('role update failed');
+  });
+
+  it('keeps the bank-detail request and its approval in one transaction', async () => {
+    const { service, workflow, bankChangeRequests } = buildService();
+    (workflow.requestApproval as jest.Mock).mockRejectedValueOnce(new Error('workflow down'));
+
+    await expect(
+      service.requestBankDetailChange({
+        employeeId: EMPLOYEE,
+        bankName: 'New Bank',
+        requestedByUserId: USER,
+      }),
+    ).rejects.toThrow('workflow down');
+
+    expect(workflow.requestApproval).toHaveBeenCalledWith(expect.anything(), expect.anything());
+    expect(bankChangeRequests.save).not.toHaveBeenCalled();
   });
 });

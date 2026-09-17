@@ -1013,17 +1013,29 @@ export class InvoiceService {
       }
 
       const subTotal = round2(pending.reduce((sum, line) => sum + line.unitPrice, 0));
-      const invoice = await this.persistDraftInvoice(
-        toId<BillingGroupId>(group.id),
-        'services',
-        service,
-        window,
-        config,
-        subTotal,
-        summary.runId,
-        pending,
-        manager,
-      );
+      let invoice: Invoice;
+      try {
+        invoice = await this.persistDraftInvoice(
+          toId<BillingGroupId>(group.id),
+          'services',
+          service,
+          window,
+          config,
+          subTotal,
+          summary.runId,
+          pending,
+          manager,
+        );
+      } catch (cause) {
+        // The pre-check above lost a race with another draft for the same group
+        // and month: the winner's document stands, this one is skipped (the
+        // savepoint inside persistDraftInvoice keeps the shared transaction
+        // usable).
+        if (isUniqueViolation(cause)) {
+          continue;
+        }
+        throw cause;
+      }
       created.push(invoice);
     }
     await this.reconcileServiceMonth(summary, snapshot, manager);
@@ -1058,25 +1070,34 @@ export class InvoiceService {
     const config = await this.getConfig();
     const prior = addMonths(serviceYear, serviceMonth, -1);
     const window = anchoredWindow(prior.year, prior.month, config.anchorDay);
-    return this.invoices.save(
-      this.invoices.create({
-        groupId,
-        type: 'expenses',
-        status: 'draft',
-        serviceYear,
-        serviceMonth,
-        periodStart: window.start,
-        periodEndExclusive: window.endExclusive,
-        currency: config.feeCurrency,
-        receiverName: config.receiverName,
-        receiverAddress: config.receiverAddress,
-        receiverEmail: config.receiverEmail,
-        receiverPhone: config.receiverPhone,
-        receiverZipCode: config.receiverZipCode,
-        receiverCity: config.receiverCity,
-        receiverCountry: config.receiverCountry,
-      }),
-    );
+    try {
+      return await this.invoices.save(
+        this.invoices.create({
+          groupId,
+          type: 'expenses',
+          status: 'draft',
+          serviceYear,
+          serviceMonth,
+          periodStart: window.start,
+          periodEndExclusive: window.endExclusive,
+          currency: config.feeCurrency,
+          receiverName: config.receiverName,
+          receiverAddress: config.receiverAddress,
+          receiverEmail: config.receiverEmail,
+          receiverPhone: config.receiverPhone,
+          receiverZipCode: config.receiverZipCode,
+          receiverCity: config.receiverCity,
+          receiverCountry: config.receiverCountry,
+        }),
+      );
+    } catch (cause) {
+      // The duplicate pre-check raced the partial unique index; report the same
+      // conflict the check would have.
+      if (isUniqueViolation(cause)) {
+        throw new ConflictError('An expenses invoice already exists for this group and month');
+      }
+      throw cause;
+    }
   }
 
   // Published pass-through for approved employee expense claims: find or open
@@ -1272,27 +1293,41 @@ export class InvoiceService {
       }
       employeeName = `${employee.firstName} ${employee.lastName}`;
     }
-    const count = await this.lines.count({
-      where: { invoiceId } as FindOptionsWhere<InvoiceLine>,
-    });
     const quantity = input.quantity ?? 1;
     const total = round2(quantity * input.unitPrice);
-    const line = await this.lines.save(
-      this.lines.create({
-        invoiceId,
-        kind,
-        employeeId,
-        employeeName,
-        monthLabel: input.monthLabel ?? null,
-        description: (input.description?.trim() || 'Expense').slice(0, 200),
-        quantity: toMoneyString(quantity),
-        unitPrice: toMoneyString(input.unitPrice),
-        total: toMoneyString(total),
-        sortOrder: count,
-      }),
-    );
-    await this.recomputeTotals(invoiceId);
-    return line;
+    const organizationId = this.tenantContext.getOrganizationId();
+    // Lock the invoice before allocating the sort order: two concurrent adds
+    // would otherwise read the same line count and write colliding orders.
+    return this.dataSource.transaction(async (manager) => {
+      const invoice = await manager.findOne(Invoice, {
+        where: { id: invoiceId, organizationId } as FindOptionsWhere<Invoice>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!invoice) {
+        throw new NotFoundError('Invoice not found', { id: invoiceId });
+      }
+      assertEditable(invoice.status);
+      const lockedCount = await manager.count(InvoiceLine, {
+        where: { organizationId, invoiceId } as FindOptionsWhere<InvoiceLine>,
+      });
+      const line = await manager.save(
+        manager.create(InvoiceLine, {
+          organizationId,
+          invoiceId,
+          kind,
+          employeeId,
+          employeeName,
+          monthLabel: input.monthLabel ?? null,
+          description: (input.description?.trim() || 'Expense').slice(0, 200),
+          quantity: toMoneyString(quantity),
+          unitPrice: toMoneyString(input.unitPrice),
+          total: toMoneyString(total),
+          sortOrder: lockedCount,
+        }),
+      );
+      await recomputeTotalsWithin(manager, invoiceId, organizationId);
+      return line;
+    });
   }
 
   async updateDraftLine(input: UpdateInvoiceLineData): Promise<InvoiceLine> {
@@ -1723,7 +1758,7 @@ export class InvoiceService {
       }
       return saved;
     };
-    return manager ? run(manager) : this.dataSource.transaction((target) => run(target));
+    return manager ? manager.transaction(run) : this.dataSource.transaction((target) => run(target));
   }
 
   private async getDraft(invoiceId: InvoiceId): Promise<Invoice> {
@@ -1753,12 +1788,6 @@ export class InvoiceService {
       throw new NotFoundError('Invoice line not found', { id: lineId });
     }
     return line;
-  }
-
-  private async recomputeTotals(invoiceId: InvoiceId): Promise<void> {
-    await this.dataSource.transaction((manager) =>
-      recomputeTotalsWithin(manager, invoiceId, this.tenantContext.getOrganizationId()),
-    );
   }
 }
 

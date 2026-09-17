@@ -474,42 +474,62 @@ export class ExpenseClaimService {
 
   private async assignNumberAndSubmit(claim: ExpenseClaim, userId: UserId): Promise<ExpenseClaim> {
     const maxAttempts = 3;
+    const organizationId = this.tenantContext.getOrganizationId();
     for (let attempt = 1; ; attempt += 1) {
       try {
-        // Numeric ordering, not text: after EXP-10000 exists, EXP-9999 must not
-        // sort above it. Explicit org filter because this reads outside the
-        // tenant-scoped repository (the unique index is still the backstop and a
-        // concurrent winner just advances the max for the retry).
-        const rows = await this.dataSource.query<{ number: string | null }[]>(
-          `SELECT "claimNumber" AS number FROM expense_claims
-            WHERE "organizationId" = $1 AND "claimNumber" IS NOT NULL
-            ORDER BY CAST(SUBSTRING("claimNumber" FROM 5) AS INTEGER) DESC
-            LIMIT 1`,
-          [this.tenantContext.getOrganizationId()],
-        );
-        const highestNumber = Number(rows[0]?.number?.slice('EXP-'.length) ?? '0') || 0;
-        claim.claimNumber = `EXP-${pad4(highestNumber + 1)}`;
-        claim.status = 'submitted';
-        claim.submittedAt = new Date();
-        const saved = await this.claims.save(claim);
-        const approval = await this.workflow.requestApproval({
-          subjectType: 'expenseClaim',
-          subjectId: saved.id,
-          requestedByUserId: userId,
+        // Number allocation, the claim write, the approval request, and the
+        // link are one transaction: no submitted claim without its approval
+        // row, and no approval row for a rolled-back claim. Each attempt is its
+        // own transaction, so a unique-index loss rolls back cleanly and the
+        // retry reads the winner's number.
+        return await this.dataSource.transaction(async (manager) => {
+          // Numeric ordering, not text: after EXP-10000 exists, EXP-9999 must not
+          // sort above it. Explicit org filter because this reads outside the
+          // tenant-scoped repository (the unique index is still the backstop and a
+          // concurrent winner just advances the max for the retry).
+          const rows = await manager.query<{ number: string | null }[]>(
+            `SELECT "claimNumber" AS number FROM expense_claims
+              WHERE "organizationId" = $1 AND "claimNumber" IS NOT NULL
+              ORDER BY CAST(SUBSTRING("claimNumber" FROM 5) AS INTEGER) DESC
+              LIMIT 1`,
+            [organizationId],
+          );
+          const highestNumber = Number(rows[0]?.number?.slice('EXP-'.length) ?? '0') || 0;
+          claim.claimNumber = `EXP-${pad4(highestNumber + 1)}`;
+          claim.status = 'submitted';
+          claim.submittedAt = new Date();
+          const saved = await manager.save(claim);
+          const approval = await this.workflow.requestApproval(
+            {
+              subjectType: 'expenseClaim',
+              subjectId: saved.id,
+              requestedByUserId: userId,
+            },
+            manager,
+          );
+          saved.approvalRequestId = approval.id;
+          const withApproval = await manager.save(saved);
+          await this.audit.record(
+            {
+              action: 'submit',
+              resourceType: 'expense_claim',
+              resourceId: withApproval.id,
+              after: {
+                claimNumber: withApproval.claimNumber,
+                total: Number(withApproval.totalAmount),
+              },
+            },
+            manager,
+          );
+          return withApproval;
         });
-        saved.approvalRequestId = approval.id;
-        const withApproval = await this.claims.save(saved);
-        await this.audit.record({
-          action: 'submit',
-          resourceType: 'expense_claim',
-          resourceId: withApproval.id,
-          after: { claimNumber: withApproval.claimNumber, total: Number(withApproval.totalAmount) },
-        });
-        return withApproval;
       } catch (cause) {
         if (attempt >= maxAttempts || !isUniqueViolation(cause)) {
           throw cause;
         }
+        // The failed attempt assigned an id before rolling back; clear it so the
+        // retry inserts instead of updating a row that no longer exists.
+        delete (claim as unknown as { id?: string }).id;
       }
     }
   }
@@ -558,22 +578,47 @@ export class ExpenseClaimService {
     if (!claim) {
       throw new NotFoundError('Expense claim not found', { id: claimId });
     }
-    if (claim.status !== 'submitted') {
-      throw new ConflictError(`Only submitted claims can be decided (status: ${claim.status})`);
-    }
-    if (claim.approvalRequestId) {
-      await this.workflow.decide(claim.approvalRequestId, userId, decision, note ?? undefined);
-    }
-    claim.status = decision;
-    claim.decidedByUserId = userId;
-    claim.decidedAt = new Date();
-    claim.decisionNote = note?.slice(0, 300) ?? null;
-    const saved = await this.claims.save(claim);
-    await this.audit.record({
-      action: decision === 'approved' ? 'approve' : 'reject',
-      resourceType: 'expense_claim',
-      resourceId: saved.id,
-      after: { claimNumber: saved.claimNumber, note: saved.decisionNote },
+    // One transaction: lock the claim, re-check its status, decide the workflow
+    // row, transition the claim, and write the audit together — two concurrent
+    // decisions cannot both pass, and a failure cannot leave the workflow and
+    // the claim disagreeing.
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const locked = await manager.findOne(ExpenseClaim, {
+        where: { id: claimId, organizationId } as FindOptionsWhere<ExpenseClaim>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) {
+        throw new NotFoundError('Expense claim not found', { id: claimId });
+      }
+      if (locked.status !== 'submitted') {
+        throw new ConflictError(
+          `Only submitted claims can be decided (status: ${locked.status})`,
+        );
+      }
+      if (locked.approvalRequestId) {
+        await this.workflow.decide(
+          locked.approvalRequestId,
+          userId,
+          decision,
+          note ?? undefined,
+          manager,
+        );
+      }
+      locked.status = decision;
+      locked.decidedByUserId = userId;
+      locked.decidedAt = new Date();
+      locked.decisionNote = note?.slice(0, 300) ?? null;
+      const persisted = await manager.save(locked);
+      await this.audit.record(
+        {
+          action: decision === 'approved' ? 'approve' : 'reject',
+          resourceType: 'expense_claim',
+          resourceId: persisted.id,
+          after: { claimNumber: persisted.claimNumber, note: persisted.decisionNote },
+        },
+        manager,
+      );
+      return persisted;
     });
     return this.getClaimDetail(saved.id);
   }

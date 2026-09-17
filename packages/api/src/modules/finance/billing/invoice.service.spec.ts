@@ -111,6 +111,7 @@ const buildService = () => {
     find: jest.fn(async () => []) as jest.Mock,
     findOne: jest.fn(async () => null) as jest.Mock,
     findById: jest.fn(async () => null) as jest.Mock,
+    create: jest.fn((value: unknown) => value),
     save: jest.fn(async (v: unknown) => v),
     count: jest.fn(async () => 0),
   };
@@ -637,6 +638,41 @@ describe('InvoiceService.addExpenseClaimLines', () => {
     ]);
     const retry = await service.addExpenseClaimLines(claimLines);
     expect(retry.addedLines).toBe(0);
+  });
+
+  it('locks the invoice before allocating a line sort order', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findById.mockResolvedValue({ id: INVOICE_ID, status: 'draft' });
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'draft',
+      organizationId: ORG,
+    }));
+    mocks.manager.count = jest.fn(async () => 2);
+    (mocks.manager.create as jest.Mock).mockImplementation(
+      (_entity: unknown, value: Record<string, unknown>) => value,
+    );
+    (mocks.manager.save as jest.Mock).mockImplementation(
+      async (value: Record<string, unknown>) => ({ id: 'line-3', ...value }),
+    );
+
+    await service.addDraftLine(INVOICE_ID, { description: 'Taxi', unitPrice: 100 });
+
+    expect(mocks.manager.findOne).toHaveBeenCalledWith(
+      Invoice,
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+    expect(mocks.manager.save).toHaveBeenCalledWith(expect.objectContaining({ sortOrder: 2 }));
+  });
+
+  it('reports a duplicate expenses invoice as a conflict when the pre-check races', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findOne.mockResolvedValue(null);
+    mocks.invoices.save.mockRejectedValueOnce({ driverError: { code: '23505' } });
+
+    await expect(service.openDraftExpensesInvoice(GROUP, 2026, 9)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
   });
 });
 
