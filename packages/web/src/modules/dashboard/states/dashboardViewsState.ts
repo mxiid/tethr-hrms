@@ -64,7 +64,9 @@ export const dashboardStorageKey = (organizationId: string, userId: string): str
 // usable while its widget still exists, its size is one that widget offers, and
 // its metrics still exist — retired metric ids are dropped here so they never
 // reach state (fitting and enlargement count only what can render), and the
-// next save writes the repaired layout back.
+// next save writes the repaired layout back. A selection whose metrics have all
+// retired falls back to the widget's defaults instead of restoring a blank
+// tile; a selection the user deliberately emptied stays empty.
 const parseWidgetLayout = (value: unknown): WidgetLayout | null => {
   if (typeof value !== 'object' || value === null) {
     return null;
@@ -85,12 +87,30 @@ const parseWidgetLayout = (value: unknown): WidgetLayout | null => {
     return null;
   }
   const knownFieldIds = new Set(definition.fields.map((field) => field.id));
+  const savedFieldIds = candidate.fieldIds.filter((fieldId) => knownFieldIds.has(fieldId));
+  const allRetired = candidate.fieldIds.length > 0 && savedFieldIds.length === 0;
   return {
     id: definition.id,
     size: candidate.size,
-    fieldIds: candidate.fieldIds.filter((fieldId) => knownFieldIds.has(fieldId)),
+    fieldIds: allRetired ? definition.defaultFieldIds : savedFieldIds,
     displayMode: candidate.displayMode,
   };
+};
+
+// One entry per widget id, first saved wins — the widget grid and the drag
+// handlers match by id, so duplicates would make one edit touch several tiles.
+const parseWidgetList = (values: readonly unknown[]): readonly WidgetLayout[] => {
+  const seenIds = new Set<string>();
+  const widgets: WidgetLayout[] = [];
+  for (const value of values) {
+    const parsed = parseWidgetLayout(value);
+    if (parsed === null || seenIds.has(parsed.id)) {
+      continue;
+    }
+    seenIds.add(parsed.id);
+    widgets.push(parsed);
+  }
+  return widgets;
 };
 
 /**
@@ -116,23 +136,23 @@ export const loadDashboardViews = (key: string): DashboardViewsState | null => {
     if (!Array.isArray(state.views) || state.views.length === 0) {
       return null;
     }
+    // One view per id, first saved wins — the widget atom updates every view
+    // whose id matches the active one, so duplicates would fan one edit out to
+    // several saved views.
+    const seenViewIds = new Set<string>();
     const views = state.views
       .map((view): DashboardView | null => {
         const candidate = view as { id?: unknown; name?: unknown; widgets?: unknown };
         if (
           typeof candidate.id !== 'string' ||
           typeof candidate.name !== 'string' ||
-          !Array.isArray(candidate.widgets)
+          !Array.isArray(candidate.widgets) ||
+          seenViewIds.has(candidate.id)
         ) {
           return null;
         }
-        return {
-          id: candidate.id,
-          name: candidate.name,
-          widgets: candidate.widgets
-            .map(parseWidgetLayout)
-            .filter((entry): entry is WidgetLayout => entry !== null),
-        };
+        seenViewIds.add(candidate.id);
+        return { id: candidate.id, name: candidate.name, widgets: parseWidgetList(candidate.widgets) };
       })
       .filter((view): view is DashboardView => view !== null);
     if (views.length === 0) {

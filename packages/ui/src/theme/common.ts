@@ -102,6 +102,25 @@ export const layout = {
   sidebarWidth: '248px',
   topBarHeight: '48px',
   sidePanelWidth: '500px',
+  // The dashboard's tile rhythm and its decorative size glyphs (design.md
+  // §6.6). These are design geometry, not component internals — components
+  // carry no literal interface dimensions.
+  dashboard: {
+    rowUnit: '36px',
+    glyph: {
+      width: '18px',
+      height: '14px',
+      half: '9px',
+      tall: '26px',
+      wide: '34px',
+      borderWidth: '1.5px',
+      radius: '3px',
+    },
+    trendPlotHeight: '120px',
+    trendPlotCompactHeight: '72px',
+    ordinalLabelWidth: '84px',
+    ordinalTrackHeight: '10px',
+  },
   table: {
     horizontalCellMargin: '8px',
     horizontalCellPadding: '8px',
