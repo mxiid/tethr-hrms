@@ -8,11 +8,6 @@
     "noEmit": true,
     "useDefineForClassFields": true,
     "allowImportingTsExtensions": false,
-    "baseUrl": "./src",
-    "paths": {
-      "@/*": ["modules/*"],
-      "~/*": ["*"]
-    },
     "composite": false
   },
   "include": ["src", "vite.config.ts"]

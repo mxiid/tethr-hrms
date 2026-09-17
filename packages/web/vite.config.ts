@@ -12,8 +12,6 @@ export default defineConfig({
       // still type-checks against the packages' published .d.ts.
       '@hrms/ui': fileURLToPath(new URL('../ui/src/index.ts', import.meta.url)),
       '@hrms/shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url)),
-      '@': fileURLToPath(new URL('./src/modules', import.meta.url)),
-      '~': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: { port: 5173 },
