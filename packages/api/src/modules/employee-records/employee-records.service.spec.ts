@@ -126,7 +126,7 @@ const buildService = (links: EmployeeDocumentLink[] = []) => {
     }),
     findOne: jest.fn((entity: unknown) =>
       (entity as { name?: string } | null)?.name === 'EmployeeOnboardingTask'
-        ? onboardingTasks.findOne()
+        ? (onboardingTasks.findOne as unknown as jest.Mock)()
         : Promise.resolve(null),
     ),
   } as unknown as EntityManager;

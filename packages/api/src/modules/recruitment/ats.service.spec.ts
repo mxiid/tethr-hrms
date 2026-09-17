@@ -143,7 +143,14 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
     Object.defineProperty(value, '__repository', { value: repository, enumerable: false });
     return value;
   };
-  const manager = {
+  type ManagerMock = {
+    findOne: jest.Mock;
+    find: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    transaction: jest.Mock;
+  };
+  const manager: ManagerMock = {
     findOne: jest.fn(async (entity: unknown, options?: unknown) => {
       const repository = pickRepository(entity);
       const value = await repository.findOne(options);

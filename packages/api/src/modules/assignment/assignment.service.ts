@@ -10,13 +10,16 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
+import type { EntityManager } from 'typeorm';
 import { DataSource } from 'typeorm';
 import type { FindOptionsWhere } from 'typeorm';
 
-import { EffectiveDatingError, NotFoundError } from '../../common/errors';
+import { ConflictError, EffectiveDatingError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+import { EmployeeDirectoryService } from '../employee/employee-directory.service';
+import { PositionService } from '../position/position.service';
 
 import { ASSIGNMENT_REPOSITORY } from './assignment.tokens';
 import { Assignment } from './entities/assignment.entity';
@@ -47,20 +50,36 @@ export class AssignmentService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly publisher: DomainEventPublisher,
     private readonly tenantContext: TenantContextService,
+    private readonly employeeDirectory: EmployeeDirectoryService,
+    private readonly positions: PositionService,
   ) {}
 
-  async create(input: CreateAssignmentInput): Promise<Assignment> {
-    const isPrimary = input.isPrimary ?? true;
-    if (isPrimary) {
-      await this.assertNoPrimaryOverlap(input.employeeId, {
+  // The caller can pass a transaction manager (offer acceptance, reporting-line
+  // change) so the close+open pair commits or rolls back as one unit; without
+  // one the create opens its own transaction.
+  async create(input: CreateAssignmentInput, manager?: EntityManager): Promise<Assignment> {
+    const validTo = input.validTo ?? null;
+    if (validTo !== null && input.validFrom > validTo) {
+      throw new ValidationFailedError('validFrom must be on or before validTo', {
         validFrom: input.validFrom,
-        validTo: input.validTo ?? null,
+        validTo,
       });
     }
-
+    const isPrimary = input.isPrimary ?? true;
     const organizationId = this.tenantContext.getOrganizationId();
-    return this.dataSource.transaction(async (manager) => {
-      const entity = manager.create(Assignment, {
+    const run = async (target: EntityManager): Promise<Assignment> => {
+      if (!(await this.employeeDirectory.exists(input.employeeId))) {
+        throw new NotFoundError('Employee not found', { id: input.employeeId });
+      }
+      // Throws NotFoundError when the position does not exist.
+      await this.positions.getById(input.positionId);
+      if (isPrimary) {
+        await this.assertNoPrimaryOverlap(target, input.employeeId, {
+          validFrom: input.validFrom,
+          validTo,
+        });
+      }
+      const entity = target.create(Assignment, {
         organizationId,
         employeeId: input.employeeId,
         positionId: input.positionId,
@@ -68,10 +87,10 @@ export class AssignmentService {
         reportsToEmployeeId: input.reportsToEmployeeId ?? null,
         isPrimary,
         validFrom: input.validFrom,
-        validTo: input.validTo ?? null,
+        validTo,
       });
-      const saved = await manager.save(entity);
-      await this.publisher.publishWithin(manager, {
+      const saved = await target.save(entity);
+      await this.publisher.publishWithin(target, {
         name: 'assignment.created',
         payload: {
           assignmentId: toId<AssignmentId>(saved.id),
@@ -81,24 +100,43 @@ export class AssignmentService {
         },
       });
       return saved;
-    });
+    };
+    return manager ? run(manager) : this.dataSource.transaction(run);
   }
 
-  async end(id: string, effectiveDate: IsoDate): Promise<Assignment> {
+  async end(id: string, effectiveDate: IsoDate, manager?: EntityManager): Promise<Assignment> {
     const organizationId = this.tenantContext.getOrganizationId();
-    return this.dataSource.transaction(async (manager) => {
-      const entity = await manager.findOne(Assignment, { where: { id, organizationId } });
+    const run = async (target: EntityManager): Promise<Assignment> => {
+      const entity = await target.findOne(Assignment, { where: { id, organizationId } });
       if (!entity) {
         throw new NotFoundError('Assignment not found', { id });
       }
+      if (entity.validTo !== null) {
+        throw new ConflictError('Assignment has already ended', {
+          id,
+          validTo: entity.validTo,
+        });
+      }
+      if (effectiveDate < entity.validFrom) {
+        throw new ValidationFailedError('effectiveDate cannot precede the assignment start', {
+          id,
+          effectiveDate,
+          validFrom: entity.validFrom,
+        });
+      }
       entity.validTo = effectiveDate;
-      const saved = await manager.save(entity);
-      await this.publisher.publishWithin(manager, {
+      const saved = await target.save(entity);
+      await this.publisher.publishWithin(target, {
         name: 'assignment.ended',
-        payload: { assignmentId: toId<AssignmentId>(saved.id), employeeId: entity.employeeId, effectiveDate },
+        payload: {
+          assignmentId: toId<AssignmentId>(saved.id),
+          employeeId: entity.employeeId,
+          effectiveDate,
+        },
       });
       return saved;
-    });
+    };
+    return manager ? run(manager) : this.dataSource.transaction(run);
   }
 
   listForEmployee(employeeId: EmployeeId): Promise<Assignment[]> {
@@ -106,10 +144,23 @@ export class AssignmentService {
   }
 
   /** The primary assignment in force on a date, if any. */
-  async currentPrimary(employeeId: EmployeeId, asOf: IsoDate): Promise<Assignment | null> {
-    const all = await this.assignments.find({
-      where: { employeeId, isPrimary: true } as FindOptionsWhere<Assignment>,
-    });
+  async currentPrimary(
+    employeeId: EmployeeId,
+    asOf: IsoDate,
+    manager?: EntityManager,
+  ): Promise<Assignment | null> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const all = manager
+      ? await manager.find(Assignment, {
+          where: {
+            organizationId,
+            employeeId,
+            isPrimary: true,
+          } as FindOptionsWhere<Assignment>,
+        })
+      : await this.assignments.find({
+          where: { employeeId, isPrimary: true } as FindOptionsWhere<Assignment>,
+        });
     return (
       all.find(
         (assignment) =>
@@ -122,6 +173,8 @@ export class AssignmentService {
    * Changes who someone reports to, effective from a date. Reporting lines are
    * effective-dated like every other backbone fact (plan.md §1), so this closes
    * the assignment in force and opens a new one rather than editing history.
+   * Close and open share one transaction: a failure between them can never leave
+   * the employee unassigned.
    */
   async setReportingLine(input: SetReportingLineInput): Promise<Assignment> {
     if (input.reportsToEmployeeId === input.employeeId) {
@@ -129,54 +182,66 @@ export class AssignmentService {
         employeeId: input.employeeId,
       });
     }
-    if (input.reportsToEmployeeId) {
-      await this.assertNoReportingCycle(
+
+    return this.dataSource.transaction(async (manager) => {
+      if (input.reportsToEmployeeId) {
+        await this.assertNoReportingCycle(
+          input.employeeId,
+          input.reportsToEmployeeId,
+          input.effectiveDate,
+          manager,
+        );
+      }
+
+      const current = await this.currentPrimary(
         input.employeeId,
-        input.reportsToEmployeeId,
         input.effectiveDate,
+        manager,
       );
-    }
 
-    const current = await this.currentPrimary(input.employeeId, input.effectiveDate);
+      // A change on the day the assignment starts is a correction, not a new dated
+      // fact: nothing was ever true under the old line. Edit the row in place so
+      // history does not fill with zero-length ranges.
+      if (current && current.validFrom === input.effectiveDate) {
+        return this.correctReportingLine(current, input.reportsToEmployeeId, manager);
+      }
 
-    // A change on the day the assignment starts is a correction, not a new dated
-    // fact: nothing was ever true under the old line. Edit the row in place so
-    // history does not fill with zero-length ranges.
-    if (current && current.validFrom === input.effectiveDate) {
-      return this.correctReportingLine(current, input.reportsToEmployeeId);
-    }
+      if (current) {
+        // Ranges are half-open, so closing at the effective date leaves no gap and
+        // no overlap with one starting the same day.
+        await this.end(current.id, input.effectiveDate, manager);
+      }
 
-    if (current) {
-      // Ranges are half-open, so closing at the effective date leaves no gap and
-      // no overlap with one starting the same day.
-      await this.end(current.id, input.effectiveDate);
-    }
+      const positionId = input.positionId ?? (current ? toId<PositionId>(current.positionId) : null);
+      if (!positionId) {
+        throw new NotFoundError('No position to assign this employee to', {
+          employeeId: input.employeeId,
+        });
+      }
 
-    const positionId = input.positionId ?? (current ? toId<PositionId>(current.positionId) : null);
-    if (!positionId) {
-      throw new NotFoundError('No position to assign this employee to', {
-        employeeId: input.employeeId,
-      });
-    }
-
-    return this.create({
-      employeeId: input.employeeId,
-      positionId,
-      validFrom: input.effectiveDate,
-      assignmentType: current?.assignmentType ?? 'primary',
-      isPrimary: true,
-      reportsToEmployeeId: input.reportsToEmployeeId,
+      return this.create(
+        {
+          employeeId: input.employeeId,
+          positionId,
+          validFrom: input.effectiveDate,
+          assignmentType: current?.assignmentType ?? 'primary',
+          isPrimary: true,
+          reportsToEmployeeId: input.reportsToEmployeeId,
+        },
+        manager,
+      );
     });
   }
 
   private async correctReportingLine(
     assignment: Assignment,
     reportsToEmployeeId: EmployeeId | null,
+    manager?: EntityManager,
   ): Promise<Assignment> {
-    return this.dataSource.transaction(async (manager) => {
+    const run = async (target: EntityManager): Promise<Assignment> => {
       assignment.reportsToEmployeeId = reportsToEmployeeId;
-      const saved = await manager.save(assignment);
-      await this.publisher.publishWithin(manager, {
+      const saved = await target.save(assignment);
+      await this.publisher.publishWithin(target, {
         name: 'assignment.updated',
         payload: {
           assignmentId: toId<AssignmentId>(saved.id),
@@ -186,7 +251,8 @@ export class AssignmentService {
         },
       });
       return saved;
-    });
+    };
+    return manager ? run(manager) : this.dataSource.transaction(run);
   }
 
   // Walks up from the proposed manager. If the employee appears anywhere on that
@@ -195,6 +261,7 @@ export class AssignmentService {
     employeeId: EmployeeId,
     managerId: EmployeeId,
     asOf: IsoDate,
+    manager?: EntityManager,
   ): Promise<void> {
     const seen = new Set<string>([employeeId]);
     let cursor: EmployeeId | null = managerId;
@@ -207,7 +274,7 @@ export class AssignmentService {
         });
       }
       seen.add(cursor);
-      const assignment: Assignment | null = await this.currentPrimary(cursor, asOf);
+      const assignment: Assignment | null = await this.currentPrimary(cursor, asOf, manager);
       cursor = assignment?.reportsToEmployeeId
         ? toId<EmployeeId>(assignment.reportsToEmployeeId)
         : null;
@@ -216,9 +283,18 @@ export class AssignmentService {
 
   // A person holds at most one primary assignment at any moment. Reuses the
   // shared half-open range math so the overlap rule is identical everywhere.
-  private async assertNoPrimaryOverlap(employeeId: EmployeeId, range: DateRange): Promise<void> {
-    const existing = await this.assignments.find({
-      where: { employeeId, isPrimary: true } as FindOptionsWhere<Assignment>,
+  private async assertNoPrimaryOverlap(
+    manager: EntityManager,
+    employeeId: EmployeeId,
+    range: DateRange,
+  ): Promise<void> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const existing = await manager.find(Assignment, {
+      where: {
+        organizationId,
+        employeeId,
+        isPrimary: true,
+      } as FindOptionsWhere<Assignment>,
     });
     const conflict = existing.find((assignment) =>
       rangesOverlap({ validFrom: assignment.validFrom, validTo: assignment.validTo }, range),
