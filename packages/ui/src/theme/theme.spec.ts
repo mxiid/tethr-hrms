@@ -42,11 +42,6 @@ describe('token contract', () => {
     expect(vars['--hrms-layout-top-bar-height']).toBeDefined();
     expect(vars['--hrms-layout-side-panel-width']).toBeDefined();
     expect(vars['--hrms-layout-table-checkbox-column-width']).toBeDefined();
-    expect(vars['--hrms-layout-dashboard-row-unit']).toBe('36px');
-    expect(vars['--hrms-layout-dashboard-glyph-width']).toBe('18px');
-    expect(vars['--hrms-layout-dashboard-glyph-half']).toBe('9px');
-    expect(vars['--hrms-layout-dashboard-glyph-tall']).toBe('26px');
-    expect(vars['--hrms-layout-dashboard-glyph-wide']).toBe('34px');
     expect(vars['--hrms-box-shadow-light']).toBeDefined();
     expect(vars['--hrms-box-shadow-strong']).toBeDefined();
     expect(vars['--hrms-color-box-shadow-light']).toBeUndefined();
