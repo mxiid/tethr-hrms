@@ -60,26 +60,37 @@ const STORAGE_VERSION = 1;
 export const dashboardStorageKey = (organizationId: string, userId: string): string =>
   `hrms.dashboard.views.${organizationId}.${userId}`;
 
-// A saved entry is only usable while its widget still exists and its size is
-// one that widget offers — a layout saved before a widget or size changed
-// drops the entry instead of carrying dead state forward.
-const isWidgetLayout = (value: unknown): value is WidgetLayout => {
+// Validates a saved entry and prunes it on the way in. A saved layout is only
+// usable while its widget still exists, its size is one that widget offers, and
+// its metrics still exist — retired metric ids are dropped here so they never
+// reach state (fitting and enlargement count only what can render), and the
+// next save writes the repaired layout back.
+const parseWidgetLayout = (value: unknown): WidgetLayout | null => {
   if (typeof value !== 'object' || value === null) {
-    return false;
+    return null;
   }
   const candidate = value as Record<string, unknown>;
   const definition =
     typeof candidate.id === 'string'
       ? WIDGET_REGISTRY.find((widget) => widget.id === candidate.id)
       : undefined;
-  return (
-    definition !== undefined &&
-    isWidgetSize(candidate.size) &&
-    definition.sizeOptions.includes(candidate.size) &&
-    Array.isArray(candidate.fieldIds) &&
-    candidate.fieldIds.every((fieldId) => typeof fieldId === 'string') &&
-    (candidate.displayMode === 'chart' || candidate.displayMode === 'plain')
-  );
+  if (
+    definition === undefined ||
+    !isWidgetSize(candidate.size) ||
+    !definition.sizeOptions.includes(candidate.size) ||
+    !Array.isArray(candidate.fieldIds) ||
+    !candidate.fieldIds.every((fieldId) => typeof fieldId === 'string') ||
+    (candidate.displayMode !== 'chart' && candidate.displayMode !== 'plain')
+  ) {
+    return null;
+  }
+  const knownFieldIds = new Set(definition.fields.map((field) => field.id));
+  return {
+    id: definition.id,
+    size: candidate.size,
+    fieldIds: candidate.fieldIds.filter((fieldId) => knownFieldIds.has(fieldId)),
+    displayMode: candidate.displayMode,
+  };
 };
 
 /**
@@ -115,7 +126,13 @@ export const loadDashboardViews = (key: string): DashboardViewsState | null => {
         ) {
           return null;
         }
-        return { id: candidate.id, name: candidate.name, widgets: candidate.widgets.filter(isWidgetLayout) };
+        return {
+          id: candidate.id,
+          name: candidate.name,
+          widgets: candidate.widgets
+            .map(parseWidgetLayout)
+            .filter((entry): entry is WidgetLayout => entry !== null),
+        };
       })
       .filter((view): view is DashboardView => view !== null);
     if (views.length === 0) {

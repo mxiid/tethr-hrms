@@ -17,13 +17,15 @@ import { useAuth } from '../../auth/hooks/useAuth';
 import { useGettingStartedSteps } from './gettingStartedSteps';
 
 // Collapsing is a glance-level choice; "Not now" and the once-per-session
-// completion prompt hide it for the tab's lifetime. All three are session
-// atoms (not useState) so navigating away from the dashboard and back does not
-// resurrect the panel — a reload still starts a fresh session. Dismissal is
-// permanent per workspace once the user confirms it.
+// completion prompt hide the panel for the tab's lifetime. All three are
+// session atoms (not useState) so navigating away from the dashboard and back
+// does not resurrect the panel — a reload still starts a fresh session.
+// Dismissal is permanent per workspace once the user confirms it, so the
+// session flags are keyed by workspace too: switching workspaces mid-tab must
+// not hide the destination's onboarding.
 const collapsedAtom = atom(false);
-const sessionDismissedAtom = atom(false);
-const askedThisSessionAtom = atom(false);
+const sessionDismissedAtom = atom<Readonly<Record<string, true>>>({});
+const askedThisSessionAtom = atom<Readonly<Record<string, true>>>({});
 
 export const DashboardGettingStarted = () => {
   const { theme } = useTheme();
@@ -31,10 +33,13 @@ export const DashboardGettingStarted = () => {
   const confirm = useConfirm();
   const { steps, loading, error } = useGettingStartedSteps();
   const [collapsed, setCollapsed] = useAtom(collapsedAtom);
-  const [sessionDismissed, setSessionDismissed] = useAtom(sessionDismissedAtom);
-  const [askedThisSession, setAskedThisSession] = useAtom(askedThisSessionAtom);
+  const [sessionDismissedByWorkspace, setSessionDismissedByWorkspace] =
+    useAtom(sessionDismissedAtom);
+  const [askedByWorkspace, setAskedByWorkspace] = useAtom(askedThisSessionAtom);
 
   const organizationId = user?.organizationId ?? 'none';
+  const sessionDismissed = sessionDismissedByWorkspace[organizationId] === true;
+  const askedThisSession = askedByWorkspace[organizationId] === true;
   const dismissedAtom = useMemo(
     () =>
       atomWithStorage(`hrms.dashboard.gettingStartedDismissed.${organizationId}`, false, undefined, {
@@ -50,8 +55,8 @@ export const DashboardGettingStarted = () => {
   // Closing it (or crossing the last step) always hides it now; the dialog only
   // decides whether that hiding is permanent for this workspace.
   const promptDismiss = async (): Promise<void> => {
-    setSessionDismissed(true);
-    setAskedThisSession(true);
+    setSessionDismissedByWorkspace((current) => ({ ...current, [organizationId]: true }));
+    setAskedByWorkspace((current) => ({ ...current, [organizationId]: true }));
     const keepHidden = await confirm({
       title: "Don't show getting started again?",
       body: 'It stays hidden for this workspace.',
