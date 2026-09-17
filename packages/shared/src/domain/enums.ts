@@ -199,4 +199,4 @@ export type ExitInterviewDecision = 'retained' | 'exitConfirmed';
 
 export type PaymentMode = 'bank' | 'cash' | 'cheque';
 
-export type EmployeeOffboardingTaskStatus = 'notStarted' | 'inProgress' | 'completed' | 'blocked';
+export type EmployeeOffboardingTaskStatus = EmployeeOnboardingTaskStatus;

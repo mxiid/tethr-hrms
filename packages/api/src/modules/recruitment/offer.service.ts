@@ -1,4 +1,4 @@
-import { addIsoDays, toId, type EmployeeId, type HiringRequestId, type OrganizationId, type UserId } from '@hrms/shared';
+import { addIsoDays, toId, type ApplicationId, type EmployeeId, type HiringRequestId, type OrganizationId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
@@ -265,7 +265,7 @@ export class OfferService {
             name: 'offer.accepted',
             payload: {
               offerId: offer.id,
-              applicationId: application.id,
+              applicationId: toId<ApplicationId>(application.id),
               employeeId: toId<EmployeeId>(hired.id),
               annualAmount: Number(offer.baseSalary),
               currency: offer.salaryCurrency,

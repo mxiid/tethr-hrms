@@ -2,6 +2,20 @@
 
 > As of 2026-09-04 (`feat/attendance-module-and-ux-revamp`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## Phase 6: dead code & cleanup (2026-09-17)
+
+The Sept 2026 audit's cleanup phase, all four workstreams. No migrations, no behavior change.
+
+**P6.1 — web.** `ActionMenu.tsx` (zero importers) is gone, along with the unused `EXPENSE_CATEGORIES_QUERY` and `CANCEL_MY_EXPENSE_CLAIM_MUTATION` documents. One `CreateWorkspaceUser` document now exists (the full selection in `auth.operations.ts`; the partial copy in `employee.operations.ts` was two cache shapes for one mutation) and both callers import it. The same-domain `modules/client/` and `modules/clients/` directories merged into one owner: `ClientWorkspacePage` + `client-workspace.operations.ts` now live under `modules/clients/`. The audit's empty `src/lib/`/`src/components/ui/` directories no longer existed.
+
+**P6.2 — API.** Removed the `void GqlArgumentsHost.create(host)` no-op, the two unreachable error mappings (the filter now types its status map to the codes that actually have a `DomainError` subclass, leaving the reserved `IMMUTABLE_RECORD`/`INTERNAL_ERROR` codes in the shared contract), the unused `ConfigService.isProduction` and `TenantContextService.getContextOrNull`, the never-read `request.user` assignment, and the `void claim;`/`void lines;` statements (`renderInvoicePdf` dropped its unused parameter). `OutboxRelay` is no longer exported from `EventsModule` (no external injector). `payroll.module.ts`'s split import was collapsed. The audit's "mojibake in `finance.module.ts`" was a **false positive** — a byte-level scan shows the file (and every other flagged file) carries correct UTF-8 em dashes and zero replacement characters, so nothing was "fixed".
+
+**P6.3 — build tooling.** The `@/`/`~/` path aliases had zero importers repo-wide, so the aliases, `baseUrl`, the `tsc-alias` build step and `tsconfig-paths/register` loader, both devDependencies, the api jest module-name mapping, and the Vite aliases were removed; `npm install` pruned 19 packages. The "Key decisions" bullet below now records the no-alias convention.
+
+**P6.4 — shared contracts.** `EmployeeOffboardingTaskStatus` is now an alias of `EmployeeOnboardingTaskStatus` (one definition, both names kept). The `parse-cv` job's `candidateDocumentId` uses the `CandidateDocumentId` brand; `offer.accepted.applicationId` uses `ApplicationId`; and ten event payload fields that were raw `string` now use the shared unions they always meant (`SeparationType`, offboarding status, `HiringRequestStatus`, `FormTarget`, `AnnouncementAudience`, `FeedbackCategory`, `FeedbackStatus`, `EmployeeDocumentVisibility`, `InvoiceType`) — publishers already carried union-typed entity values, so nothing widened. Ten zero-reference branded IDs (`PermissionId`, `PayBandId`, `LeaveBalanceId`, `HolidayId`, `TimeEntryId`, `ClockEventId`, `RegularizationId`, `FormFieldId`, `AuditEventId`, `OutboxMessageId`) plus `idEquals` were deleted. The tested utility surface (`isDefined`, `isNonEmptyString`, `isRecord`, `assertNever`, `assertDefined`) was **kept and noted**: it is referenced by its specs, `assertNever` is named in architecture.md, and `isDefined` is used by `assertDefined` — deleting it would be churn, not cleanup.
+
+**Verification.** `npm run typecheck`, `npm run lint` (0 errors), `npm test` (**272 API / 21 shared / 5 UI**), `npm run build` all green; grep confirms no alias imports, no references to any deleted export, and no `void x;` statements outside the intentional compile-time assertion in `domain-event.ts`.
+
 ## Hiring flow: the ten flagged gaps closed (2026-09-15, local — not pushed)
 
 The hiring-flow ambiguities recorded in [process-flows.md](process-flows.md) are fixed, with one migration (`ApplicationsUniqueActive`) and new consumers; the notes below are the audit trail.
@@ -527,8 +541,10 @@ place for them.
 
 - **npm workspaces over Nx** (architecture.md §15 deviation) — zero-install,
   fully verifiable. TS project-reference-free; packages build in explicit order.
-- **Within-package imports are relative; `@/`,`~/` aliases** are wired via
-  tsc-alias (build) + jest mapper. Cross-package uses real package names.
+- **Within-package imports are relative; no path aliases.** The `@/`/`~/`
+  aliases (and the tsc-alias build step + jest mapper they required) were dead
+  weight and were removed in Phase 6 — re-add deliberately if ever needed.
+  Cross-package uses real package names.
 - **`@typescript-eslint/consistent-type-imports` is OFF** — it conflicts with
   NestJS constructor injection (its autofix turns DI class imports into
   `import type`, erasing the `emitDecoratorMetadata` reference and breaking DI).

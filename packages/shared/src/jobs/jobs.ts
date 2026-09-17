@@ -1,4 +1,4 @@
-import type { OrganizationId } from '../ids/branded-id';
+import type { CandidateDocumentId, OrganizationId } from '../ids/branded-id';
 
 // The worker's contract lives in @hrms/shared so the API (producer) and the
 // worker (consumer) agree on names, queues and payload shapes at compile time —
@@ -27,6 +27,6 @@ export type JobPayloads = {
   // into this one processor later (recruitment-ats-plan.md Phase 3).
   'parse-cv': {
     readonly organizationId: OrganizationId;
-    readonly candidateDocumentId: string;
+    readonly candidateDocumentId: CandidateDocumentId;
   };
 };
