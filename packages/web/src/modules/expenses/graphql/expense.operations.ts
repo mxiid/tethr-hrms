@@ -38,20 +38,6 @@ export const EXPENSE_CLAIM_FIELDS = `
   }
 `;
 
-export const EXPENSE_CATEGORIES_QUERY = gql`
-  query ExpenseCategories {
-    expenseCategories {
-      id
-      code
-      name
-      description
-      requiresReceipt
-      billableToClient
-      isActive
-    }
-  }
-`;
-
 export const MY_EXPENSE_CATEGORIES_QUERY = gql`
   query MyExpenseCategories {
     myExpenseCategories {
@@ -194,14 +180,6 @@ export const REMOVE_MY_EXPENSE_CLAIM_LINE_MUTATION = gql`
 export const SUBMIT_MY_EXPENSE_CLAIM_MUTATION = gql`
   mutation SubmitMyExpenseClaim($claimId: ID!) {
     submitMyExpenseClaim(claimId: $claimId) {
-      ${EXPENSE_CLAIM_FIELDS}
-    }
-  }
-`;
-
-export const CANCEL_MY_EXPENSE_CLAIM_MUTATION = gql`
-  mutation CancelMyExpenseClaim($claimId: ID!) {
-    cancelMyExpenseClaim(claimId: $claimId) {
       ${EXPENSE_CLAIM_FIELDS}
     }
   }
