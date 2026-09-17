@@ -159,6 +159,7 @@ export const DashboardWidgetCard = ({
             fields={fields}
             onEnlarge={onEnlarge}
             onReorderFields={onReorderFields}
+            onShowPlain={canShowChart && showChart ? onToggleDisplayMode : undefined}
             onToggleField={onToggleField}
             selectedFieldIds={selectedFieldIds}
             sizeLabel={WIDGET_SIZE_LABELS[size]}

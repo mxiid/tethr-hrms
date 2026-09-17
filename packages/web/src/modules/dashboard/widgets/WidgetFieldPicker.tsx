@@ -33,6 +33,8 @@ type WidgetFieldPickerProps = {
   readonly onReorderFields: (fieldIds: readonly string[]) => void;
   /** Present when a larger allowed size would render everything selected. */
   readonly onEnlarge?: () => void;
+  /** Present while a chart occupies the room hidden metrics would need. */
+  readonly onShowPlain?: () => void;
 };
 
 type FieldRowProps = {
@@ -101,9 +103,11 @@ const PlainFieldRow = ({ field, onToggleField }: FieldRowProps) => (
 /**
  * The metrics picker: one ordered list shared by every size. Drag the grips to
  * set display order (the first N render at the current size), metrics beyond
- * the size's capacity read muted, and when the selection outgrows the size a
- * single "Enlarge to add" action switches to the size that shows them all —
- * every control here affects what the widget actually renders.
+ * that read muted, and hidden metrics always come with a way back: enlarge to
+ * the smallest size that renders them all, drop the chart to free the room
+ * when no larger size exists, and otherwise a note — the muted rows themselves
+ * are draggable, so reordering decides which metrics show. Every control here
+ * affects what the widget actually renders.
  */
 export const WidgetFieldPicker = ({
   title,
@@ -114,9 +118,12 @@ export const WidgetFieldPicker = ({
   onToggleField,
   onReorderFields,
   onEnlarge,
+  onShowPlain,
 }: WidgetFieldPickerProps) => {
+  const { theme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -129,7 +136,12 @@ export const WidgetFieldPicker = ({
       setIsOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setIsOpen(false);
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        // Deliberate closes return focus to the trigger; outside clicks do not
+        // (the click's own target keeps focus).
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onClickOutside);
     document.addEventListener('keydown', onKeyDown);
@@ -144,7 +156,9 @@ export const WidgetFieldPicker = ({
     .filter((field): field is WidgetFieldDefinition => field !== undefined);
   const unselectedFields = fields.filter((field) => !selectedFieldIds.includes(field.id));
   const showing = Math.min(visibleCount, selectedFields.length);
-  const canEnlarge = selectedFields.length > visibleCount && onEnlarge !== undefined;
+  const hiddenCount = selectedFields.length - showing;
+  const canEnlarge = hiddenCount > 0 && onEnlarge !== undefined;
+  const canShowPlain = hiddenCount > 0 && !canEnlarge && onShowPlain !== undefined;
 
   const onDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event;
@@ -161,9 +175,10 @@ export const WidgetFieldPicker = ({
         aria-label={`Choose metrics for ${title}`}
         className="icon-button"
         onClick={() => setIsOpen((open) => !open)}
+        ref={triggerRef}
         type="button"
       >
-        <IconSettings aria-hidden="true" size={16} stroke={2} />
+        <IconSettings aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
       </button>
       {isOpen ? (
         <div
@@ -197,6 +212,20 @@ export const WidgetFieldPicker = ({
               <button className="link-button field-picker-enlarge" onClick={onEnlarge} type="button">
                 Enlarge to add
               </button>
+            ) : null}
+            {canShowPlain ? (
+              <button
+                className="link-button field-picker-enlarge"
+                onClick={onShowPlain}
+                type="button"
+              >
+                Show metrics only
+              </button>
+            ) : null}
+            {hiddenCount > 0 && !canEnlarge && !canShowPlain ? (
+              <span className="field-picker-note">
+                No larger size — reorder or unselect metrics
+              </span>
             ) : null}
           </div>
         </div>

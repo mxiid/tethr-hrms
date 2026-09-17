@@ -7,7 +7,7 @@ import {
 } from '@tabler/icons-react';
 import { atom, useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useConfirm } from '../../../components/confirm/ConfirmProvider';
@@ -16,9 +16,14 @@ import { useAuth } from '../../auth/hooks/useAuth';
 
 import { useGettingStartedSteps } from './gettingStartedSteps';
 
-// Collapsing is a glance-level choice and stays session-only; dismissal is
+// Collapsing is a glance-level choice; "Not now" and the once-per-session
+// completion prompt hide it for the tab's lifetime. All three are session
+// atoms (not useState) so navigating away from the dashboard and back does not
+// resurrect the panel — a reload still starts a fresh session. Dismissal is
 // permanent per workspace once the user confirms it.
 const collapsedAtom = atom(false);
+const sessionDismissedAtom = atom(false);
+const askedThisSessionAtom = atom(false);
 
 export const DashboardGettingStarted = () => {
   const { theme } = useTheme();
@@ -26,8 +31,8 @@ export const DashboardGettingStarted = () => {
   const confirm = useConfirm();
   const { steps, loading, error } = useGettingStartedSteps();
   const [collapsed, setCollapsed] = useAtom(collapsedAtom);
-  const [sessionDismissed, setSessionDismissed] = useState(false);
-  const [askedThisSession, setAskedThisSession] = useState(false);
+  const [sessionDismissed, setSessionDismissed] = useAtom(sessionDismissedAtom);
+  const [askedThisSession, setAskedThisSession] = useAtom(askedThisSessionAtom);
 
   const organizationId = user?.organizationId ?? 'none';
   const dismissedAtom = useMemo(

@@ -2067,6 +2067,12 @@ button,
   font-variant-numeric: tabular-nums;
 }
 
+.field-picker-note {
+  flex-basis: 100%;
+  color: var(--hrms-color-text-tertiary);
+  font-size: var(--hrms-font-size-xxs);
+}
+
 .field-picker-enlarge {
   padding: 0;
   background: none;

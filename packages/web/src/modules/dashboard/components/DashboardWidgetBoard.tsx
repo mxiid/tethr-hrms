@@ -22,7 +22,7 @@ import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
   activeViewWidgetsAtom,
-  dashboardSeededAtom,
+  dashboardSeededKeyAtom,
   dashboardStorageKey,
   dashboardViewsState,
   loadDashboardViews,
@@ -59,7 +59,7 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
   const confirm = useConfirm();
   const [layout, setLayout] = useAtom(activeViewWidgetsAtom);
   const viewsState = useAtomValue(dashboardViewsState);
-  const [seeded, setSeeded] = useAtom(dashboardSeededAtom);
+  const [seededKey, setSeededKey] = useAtom(dashboardSeededKeyAtom);
   const setViews = useSetAtom(dashboardViewsState);
   const [editing, setEditing] = useState(false);
   const [announcement, setAnnouncement] = useState('');
@@ -70,10 +70,14 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
 
   const storageKey = user !== null ? dashboardStorageKey(user.organizationId, user.id) : null;
 
-  // Seed once per session: this browser's saved layout when one exists,
+  // Seed once per storage key: this browser's saved layout when one exists,
   // otherwise the portal's defaults. A ?view= link wins over the stored view.
+  // Tracking the key (not a boolean) keeps a workspace switch or a login as a
+  // different user from reusing — or overwriting — the previous identity's
+  // layout.
   useEffect(() => {
-    if (seeded || user === null || user.portal === 'none' || storageKey === null) return;
+    if (user === null || user.portal === 'none' || storageKey === null) return;
+    if (seededKey === storageKey) return;
     const stored = loadDashboardViews(storageKey);
     const base = stored ?? {
       views: [{ id: 'overview', name: 'Overview', widgets: defaultWidgetsForPortal(user.portal) }],
@@ -85,14 +89,16 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
         ? paramView
         : base.activeViewId;
     setViews({ ...base, activeViewId });
-    setSeeded(true);
-  }, [seeded, user, storageKey, setViews, setSeeded]);
+    setSeededKey(storageKey);
+  }, [seededKey, user, storageKey, setViews, setSeededKey]);
 
-  // Persist every layout or view change for this workspace + user.
+  // Persist every layout or view change for this workspace + user — and only
+  // once this key is the one that seeded the state, so a key change never
+  // writes the previous identity's layout.
   useEffect(() => {
-    if (!seeded || storageKey === null) return;
+    if (storageKey === null || seededKey !== storageKey) return;
     saveDashboardViews(storageKey, viewsState);
-  }, [seeded, storageKey, viewsState]);
+  }, [seededKey, storageKey, viewsState]);
 
   const visibleWidgets = layout
     .map((entry) => {
@@ -143,24 +149,30 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
     );
   };
 
-  // The enlarge target: the smallest allowed size whose guaranteed metric count
-  // covers the selection. Measurement covers the rest of the truth — the picker
-  // only offers this when the tile actually hides a selected metric.
+  // The enlarge target: the smallest allowed size that is strictly larger than
+  // the current one and whose metric count covers the selection. Measurement
+  // decides when the action is offered — the picker only shows it when the tile
+  // actually hides a selected metric, so a size the current box already
+  // satisfies is never a target.
   const enlargeTarget = (id: WidgetId): WidgetSize | null => {
     const definition = WIDGET_REGISTRY.find((widget) => widget.id === id);
     const entry = layout.find((widget) => widget.id === id);
     if (!definition || !entry) return null;
+    const currentArea = WIDGET_SIZE_GEOMETRY[entry.size].columns * WIDGET_SIZE_GEOMETRY[entry.size].rows;
     const fitting = definition.sizeOptions
-      .filter(
-        (option) =>
-          WIDGET_DENSITY_LIMITS[WIDGET_SIZE_DENSITY[option]].fields >= entry.fieldIds.length,
-      )
+      .filter((option) => {
+        const geometry = WIDGET_SIZE_GEOMETRY[option];
+        return (
+          geometry.columns * geometry.rows > currentArea &&
+          WIDGET_DENSITY_LIMITS[WIDGET_SIZE_DENSITY[option]].fields >= entry.fieldIds.length
+        );
+      })
       .sort((left, right) => {
         const leftGeometry = WIDGET_SIZE_GEOMETRY[left];
         const rightGeometry = WIDGET_SIZE_GEOMETRY[right];
         return leftGeometry.columns * leftGeometry.rows - rightGeometry.columns * rightGeometry.rows;
       })[0];
-    return fitting !== undefined && fitting !== entry.size ? fitting : null;
+    return fitting ?? null;
   };
 
   const enlargeWidget = (id: WidgetId): void => {
@@ -191,9 +203,10 @@ export const DashboardWidgetBoard = ({ showViewTabs = true }: DashboardWidgetBoa
     });
   };
 
-  // One frame while the layout is seeded — avoids flashing the empty state
-  // before the effect runs.
-  if (!seeded) return null;
+  // One frame while the layout is seeding — avoids flashing the empty state
+  // before the effect runs, and hides the board entirely while the signed-in
+  // identity is still switching (storageKey !== the seeded key).
+  if (storageKey === null || seededKey !== storageKey) return null;
 
   return (
     <div className="dashboard-board">

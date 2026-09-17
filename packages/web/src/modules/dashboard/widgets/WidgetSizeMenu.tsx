@@ -21,7 +21,16 @@ export const WidgetSizeMenu = ({ title, size, options, onChange }: WidgetSizeMen
   const { theme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Deliberate closes (Escape, picking a size) return focus to the trigger,
+  // which would otherwise sink to the body when the focused menu item unmounts.
+  // Outside clicks keep focus on their own target.
+  const closeMenu = (): void => {
+    setIsOpen(false);
+    triggerRef.current?.focus();
+  };
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -35,7 +44,7 @@ export const WidgetSizeMenu = ({ title, size, options, onChange }: WidgetSizeMen
       setIsOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setIsOpen(false);
+      if (event.key === 'Escape') closeMenu();
     };
     document.addEventListener('mousedown', onClickOutside);
     document.addEventListener('keydown', onKeyDown);
@@ -53,6 +62,7 @@ export const WidgetSizeMenu = ({ title, size, options, onChange }: WidgetSizeMen
         aria-label={`Size of ${title} widget`}
         className="icon-button"
         onClick={() => setIsOpen((open) => !open)}
+        ref={triggerRef}
         type="button"
       >
         <IconLayoutGrid aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
@@ -73,7 +83,7 @@ export const WidgetSizeMenu = ({ title, size, options, onChange }: WidgetSizeMen
               key={option}
               onClick={() => {
                 onChange(option);
-                setIsOpen(false);
+                closeMenu();
               }}
               role="menuitemradio"
               type="button"

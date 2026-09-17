@@ -1,5 +1,6 @@
 import { atom } from 'jotai';
 
+import { WIDGET_REGISTRY } from '../widgets/registry';
 import type { WidgetLayout } from '../widgets/types';
 import { isWidgetSize } from '../widgets/widgetSizes';
 
@@ -16,11 +17,12 @@ export type DashboardViewsState = {
 
 const DEFAULT_VIEW_ID = 'overview';
 
-// The atom starts empty; DashboardPage seeds the active view once per session —
-// from this browser's saved layout when one exists, otherwise from
-// `defaultWidgetsForPortal(user.portal)` (see `dashboardSeededAtom`). Saved
-// layouts persist per workspace + user in localStorage; a refresh restores
-// them, and corrupt or legacy data falls back to the portal defaults.
+// The atom starts empty; DashboardWidgetBoard seeds the active view once per
+// workspace + user — from this browser's saved layout when one exists,
+// otherwise from `defaultWidgetsForPortal(user.portal)` (see
+// `dashboardSeededKeyAtom`). Saved layouts persist per workspace + user in
+// localStorage; a refresh restores them, and corrupt or legacy data falls back
+// to the portal defaults.
 const DEFAULT_STATE: DashboardViewsState = {
   views: [{ id: DEFAULT_VIEW_ID, name: 'Overview', widgets: [] }],
   activeViewId: DEFAULT_VIEW_ID,
@@ -28,9 +30,11 @@ const DEFAULT_STATE: DashboardViewsState = {
 
 export const dashboardViewsState = atom<DashboardViewsState>(DEFAULT_STATE);
 
-// Flipped true after DashboardPage has seeded the layout, so navigating away
-// and back keeps in-session customizations instead of reseeding.
-export const dashboardSeededAtom = atom(false);
+// The storage key the board has seeded for, or null before any seeding. A key
+// (not a boolean) because the signed-in workspace + user can change without a
+// reload — switching workspaces, logging out — and each identity needs its own
+// seed + persistence, never the previous identity's layout.
+export const dashboardSeededKeyAtom = atom<string | null>(null);
 
 // The widget layout list of whichever view is currently active. Reading/writing
 // through this keeps the widget grid's own logic (add/remove/reorder/resize)
@@ -56,14 +60,22 @@ const STORAGE_VERSION = 1;
 export const dashboardStorageKey = (organizationId: string, userId: string): string =>
   `hrms.dashboard.views.${organizationId}.${userId}`;
 
+// A saved entry is only usable while its widget still exists and its size is
+// one that widget offers — a layout saved before a widget or size changed
+// drops the entry instead of carrying dead state forward.
 const isWidgetLayout = (value: unknown): value is WidgetLayout => {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
   const candidate = value as Record<string, unknown>;
+  const definition =
+    typeof candidate.id === 'string'
+      ? WIDGET_REGISTRY.find((widget) => widget.id === candidate.id)
+      : undefined;
   return (
-    typeof candidate.id === 'string' &&
+    definition !== undefined &&
     isWidgetSize(candidate.size) &&
+    definition.sizeOptions.includes(candidate.size) &&
     Array.isArray(candidate.fieldIds) &&
     candidate.fieldIds.every((fieldId) => typeof fieldId === 'string') &&
     (candidate.displayMode === 'chart' || candidate.displayMode === 'plain')
