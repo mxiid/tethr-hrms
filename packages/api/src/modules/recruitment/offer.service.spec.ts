@@ -14,6 +14,7 @@ import { JobPosting } from './entities/job-posting.entity';
 import { Offer } from './entities/offer.entity';
 import { OfferService } from './offer.service';
 import type { RecruitmentService } from './recruitment.service';
+import type { AssignmentService } from '../assignment/assignment.service';
 
 const TETHR = toId<OrganizationId>('org-tethr');
 const CLIENT = toId<OrganizationId>('org-client');
@@ -109,6 +110,9 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
     ensureByTitle: jest.fn().mockResolvedValue({ id: 'position-1', status: 'open' }),
     setStatus: jest.fn().mockResolvedValue(undefined),
   } as unknown as PositionService;
+  const assignments = {
+    create: jest.fn().mockResolvedValue({ id: 'assignment-1' }),
+  } as unknown as AssignmentService;
   const publisher = {
     publishWithin: jest.fn().mockResolvedValue(undefined),
   } as unknown as DomainEventPublisher;
@@ -134,6 +138,7 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
       postings,
       employees,
       positions,
+      assignments,
       publisher,
       recruitment,
       platformScope,
@@ -147,6 +152,7 @@ const buildService = (options: { offers?: Partial<Offer>[]; offer?: Partial<Offe
     postings,
     employees,
     positions,
+    assignments,
     publisher,
     recruitment,
     platformScope,
@@ -255,6 +261,7 @@ describe('OfferService', () => {
       manager,
       employees,
       positions,
+      assignments,
       publisher,
       recruitment,
       platformScope,
@@ -310,6 +317,27 @@ describe('OfferService', () => {
     // never used when a linked position exists.
     expect(positions.ensureByTitle).not.toHaveBeenCalled();
     expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'filled', expect.anything());
+    // The joiner is assigned from the offer's start date on the filled position.
+    expect(assignments.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        employeeId: 'employee-1',
+        positionId: 'position-1',
+        validFrom: '2026-10-01',
+        assignmentType: 'primary',
+        isPrimary: true,
+        reportsToEmployeeId: null,
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('creates no assignment when the hire fails', async () => {
+    const { service, employees, assignments } = buildService();
+    (employees.create as jest.Mock).mockRejectedValue(new Error('hire write failed'));
+
+    await expect(service.accept(OFFER_ID, USER)).rejects.toThrow('hire write failed');
+
+    expect(assignments.create).not.toHaveBeenCalled();
   });
 
   it('falls back to the title lookup only when the request has no linked position', async () => {

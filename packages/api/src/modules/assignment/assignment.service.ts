@@ -68,7 +68,7 @@ export class AssignmentService {
     const isPrimary = input.isPrimary ?? true;
     const organizationId = this.tenantContext.getOrganizationId();
     const run = async (target: EntityManager): Promise<Assignment> => {
-      if (!(await this.employeeDirectory.exists(input.employeeId))) {
+      if (!(await this.employeeDirectory.exists(input.employeeId, target))) {
         throw new NotFoundError('Employee not found', { id: input.employeeId });
       }
       // Throws NotFoundError when the position does not exist.
