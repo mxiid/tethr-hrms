@@ -13,7 +13,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager } from 'typeorm';
 
-import { NotFoundError } from '../../common/errors';
+import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
@@ -23,6 +23,8 @@ import { EMPLOYEE_REPOSITORY } from './employee.tokens';
 import { EmployeeOffboardingTask } from './entities/employee-offboarding-task.entity';
 import { EmployeeSeparation } from './entities/employee-separation.entity';
 import { Employee } from './entities/employee.entity';
+
+const todayIso = (): IsoDate => new Date().toISOString().slice(0, 10);
 
 type CreateEmployeeData = {
   readonly employeeNumber: string;
@@ -228,6 +230,19 @@ export class EmployeeService {
       });
       if (!entity) {
         throw new NotFoundError('Employee not found', { id: input.employeeId });
+      }
+      if (entity.employmentStatus === 'terminated') {
+        throw new ConflictError('Employee is already terminated', { id: input.employeeId });
+      }
+      // Scheduled application does not exist yet (BACKLOG-1): applying a
+      // future-dated separation now would disable login, close pay/benefits,
+      // and settle on the spot. Reject until the date arrives.
+      const today = todayIso();
+      if (input.effectiveDate > today) {
+        throw new ValidationFailedError('effectiveDate cannot be in the future', {
+          effectiveDate: input.effectiveDate,
+          today,
+        });
       }
       entity.employmentStatus = 'terminated';
       entity.terminationDate = input.effectiveDate;
