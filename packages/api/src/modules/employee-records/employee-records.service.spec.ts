@@ -24,11 +24,11 @@ import type { WorkflowService } from '../../core/workflow';
 import type { EmployeeDirectoryService, EmployeeService } from '../employee';
 
 import { EmployeeRecordsService } from './employee-records.service';
+import type { BankDetailChangeRequest } from './entities/bank-detail-change-request.entity';
 import type { EmployeeAssessment } from './entities/employee-assessment.entity';
 import type { EmployeeDocumentLink } from './entities/employee-document-link.entity';
 import type { EmployeeHrRecord } from './entities/employee-hr-record.entity';
 import type { EmployeeOnboardingTask } from './entities/employee-onboarding-task.entity';
-import type { BankDetailChangeRequest } from './entities/bank-detail-change-request.entity';
 
 const ORG = toId<OrganizationId>('org-1');
 const EMPLOYEE = toId<EmployeeId>('employee-1');

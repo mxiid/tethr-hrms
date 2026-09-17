@@ -10,8 +10,8 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import type { EntityManager } from 'typeorm';
 import { DataSource } from 'typeorm';
+import type { EntityManager } from 'typeorm';
 import type { FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, EffectiveDatingError, NotFoundError, ValidationFailedError } from '../../common/errors';

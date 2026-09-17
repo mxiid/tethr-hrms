@@ -4,6 +4,7 @@ import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EventBus } from '../../../core/events/event-bus.service';
 import { IdempotencyService } from '../../../core/events/idempotency.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
+
 import { CompensationService } from './compensation.service';
 
 const CONSUMER_NAME = 'compensation.record-hire-salary-on-offer-accepted';

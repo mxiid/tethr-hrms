@@ -7,8 +7,9 @@ import type { IdempotencyService } from '../../../core/events/idempotency.servic
 import type { NotificationService } from '../../../core/notifications/notification.service';
 import type { PlatformScopeService } from '../../../core/tenancy/platform-scope.service';
 import type { TenantContextService } from '../../../core/tenancy/tenant-context.service';
-import { HiringRequestUpdatedConsumer } from './hiring-request-updated.consumer';
 import type { RecruitmentService } from '../recruitment.service';
+
+import { HiringRequestUpdatedConsumer } from './hiring-request-updated.consumer';
 
 const CLIENT = toId<OrganizationId>('org-client');
 const TETHR = toId<OrganizationId>('org-tethr');

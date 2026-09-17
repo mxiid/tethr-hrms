@@ -4,6 +4,7 @@ import type { DomainEventPublisher } from '../../core/events/domain-event-publis
 import type { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
 import type { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+import type { AssignmentService } from '../assignment/assignment.service';
 import type { EmployeeService } from '../employee/employee.service';
 import type { PositionService } from '../position/position.service';
 
@@ -14,7 +15,6 @@ import { JobPosting } from './entities/job-posting.entity';
 import { Offer } from './entities/offer.entity';
 import { OfferService } from './offer.service';
 import type { RecruitmentService } from './recruitment.service';
-import type { AssignmentService } from '../assignment/assignment.service';
 
 const TETHR = toId<OrganizationId>('org-tethr');
 const CLIENT = toId<OrganizationId>('org-client');
