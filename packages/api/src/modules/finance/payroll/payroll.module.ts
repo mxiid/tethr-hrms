@@ -14,9 +14,7 @@ import { CompensationModule } from '../compensation';
 import { FinalSettlement } from './entities/final-settlement.entity';
 import { PayrollRunLineComponent } from './entities/payroll-run-line-component.entity';
 import { PayrollRunLine } from './entities/payroll-run-line.entity';
-import {
-  PayrollRun,
-} from './entities/payroll-run.entity';
+import { PayrollRun } from './entities/payroll-run.entity';
 import { PayslipLine } from './entities/payslip-line.entity';
 import { Payslip } from './entities/payslip.entity';
 import { TaxSlabGroup, TaxSlab } from './entities/tax-slab.entity';

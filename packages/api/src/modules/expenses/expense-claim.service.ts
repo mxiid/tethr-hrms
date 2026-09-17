@@ -835,8 +835,7 @@ export class ExpenseClaimService {
 
   async getReceiptUrl(lineId: string, actor: ExpenseActor): Promise<string> {
     const line = await this.loadLine(lineId);
-    const claim = await this.loadVisibleClaim(line.claimId, actor);
-    void claim;
+    await this.loadVisibleClaim(line.claimId, actor);
     if (!line.receiptStorageKey) {
       throw new NotFoundError('This line has no receipt');
     }

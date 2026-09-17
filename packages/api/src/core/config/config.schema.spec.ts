@@ -17,8 +17,7 @@ describe('loadConfig', () => {
   });
 
   it('fails fast when a required variable is missing', () => {
-    const { JWT_SECRET, ...withoutSecret } = validEnv;
-    void JWT_SECRET;
+    const { JWT_SECRET: _jwtSecret, ...withoutSecret } = validEnv;
     expect(() => loadConfig(withoutSecret as NodeJS.ProcessEnv)).toThrow(
       /Invalid environment configuration/,
     );
