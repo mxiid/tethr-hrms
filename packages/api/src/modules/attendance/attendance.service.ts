@@ -1,15 +1,17 @@
+import type { EmployeeId, IsoDate } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Between, DataSource, type FindOptionsWhere } from 'typeorm';
+import { Between, DataSource, LessThanOrEqual, MoreThanOrEqual, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError } from '../../common/errors';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
-import { CLOCK_EVENT_REPOSITORY, TIME_ENTRY_REPOSITORY } from './attendance.tokens';
+
+import { TIME_ENTRY_REPOSITORY } from './attendance.tokens';
 import { ClockEvent, type ClockSource } from './entities/clock-event.entity';
 import { TimeEntry } from './entities/time-entry.entity';
+import { Timesheet } from './entities/timesheet.entity';
 
-import type { EmployeeId, IsoDate } from '@hrms/shared';
 
 const MILLISECONDS_PER_HOUR = 3_600_000;
 const toAmount = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
@@ -26,20 +28,48 @@ type RecordTimeEntryData = {
 @Injectable()
 export class AttendanceService {
   constructor(
-    @Inject(CLOCK_EVENT_REPOSITORY) private readonly clockEvents: TenantScopedRepository<ClockEvent>,
     @Inject(TIME_ENTRY_REPOSITORY) private readonly timeEntries: TenantScopedRepository<TimeEntry>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly tenantContext: TenantContextService,
   ) {}
 
-  clockIn(employeeId: EmployeeId, occurredAt?: string, source: ClockSource = 'web'): Promise<ClockEvent> {
-    const event = this.clockEvents.create({
-      employeeId,
-      type: 'in',
-      occurredAt: occurredAt ? new Date(occurredAt) : new Date(),
-      source,
+  async clockIn(
+    employeeId: EmployeeId,
+    occurredAt?: string,
+    source: ClockSource = 'web',
+  ): Promise<ClockEvent> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const at = occurredAt ? new Date(occurredAt) : new Date();
+    return this.dataSource.transaction(async (manager) => {
+      // Serialize punches per employee: two concurrent clock-ins must not both
+      // see the last event as `out` and leave two open punches.
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `clock:${organizationId}:${employeeId}`,
+      ]);
+      const last = await manager.findOne(ClockEvent, {
+        where: { organizationId, employeeId },
+        order: { occurredAt: 'DESC' },
+      });
+      if (last?.type === 'in') {
+        throw new ConflictError('Already clocked in — clock out before clocking in again', {
+          employeeId,
+        });
+      }
+      if (last && at.getTime() <= last.occurredAt.getTime()) {
+        throw new ConflictError('clock-in must be after the last clock event', {
+          employeeId,
+          lastOccurredAt: last.occurredAt.toISOString(),
+        });
+      }
+      const event = manager.create(ClockEvent, {
+        organizationId,
+        employeeId,
+        type: 'in',
+        occurredAt: at,
+        source,
+      });
+      return manager.save(event);
     });
-    return this.clockEvents.save(event);
   }
 
   // Close the open clock-in and reduce the session to a TimeEntry, atomically.
@@ -51,12 +81,23 @@ export class AttendanceService {
     const organizationId = this.tenantContext.getOrganizationId();
     const at = occurredAt ? new Date(occurredAt) : new Date();
     return this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `clock:${organizationId}:${employeeId}`,
+      ]);
       const last = await manager.findOne(ClockEvent, {
         where: { organizationId, employeeId },
         order: { occurredAt: 'DESC' },
+        lock: { mode: 'pessimistic_write' },
       });
       if (!last || last.type === 'out') {
         throw new ConflictError('No open clock-in to close for this employee');
+      }
+      // Out-of-order punches would produce negative hours.
+      if (at.getTime() <= last.occurredAt.getTime()) {
+        throw new ConflictError('clock-out must be after the open clock-in', {
+          employeeId,
+          clockedInAt: last.occurredAt.toISOString(),
+        });
       }
       const outEvent = manager.create(ClockEvent, {
         organizationId,
@@ -71,6 +112,7 @@ export class AttendanceService {
       const entry = manager.create(TimeEntry, {
         organizationId,
         employeeId,
+        timesheetId: null,
         date: at.toISOString().slice(0, 10),
         hours: toAmount(hours),
         source: 'clock',
@@ -80,15 +122,37 @@ export class AttendanceService {
     });
   }
 
-  recordEntry(input: RecordTimeEntryData): Promise<TimeEntry> {
-    const entry = this.timeEntries.create({
-      employeeId: input.employeeId,
-      date: input.date,
-      hours: toAmount(input.hours),
-      source: 'manual',
-      note: input.note ?? null,
+  // Manual hours cannot land in a locked period: locking freezes the timesheet's
+  // entries, so a new entry would silently change a document Payroll consumed.
+  async recordEntry(input: RecordTimeEntryData): Promise<TimeEntry> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    return this.dataSource.transaction(async (manager) => {
+      const locked = await manager.findOne(Timesheet, {
+        where: {
+          organizationId,
+          employeeId: input.employeeId,
+          status: 'locked',
+          periodStart: LessThanOrEqual(input.date),
+          periodEnd: MoreThanOrEqual(input.date),
+        } as FindOptionsWhere<Timesheet>,
+      });
+      if (locked) {
+        throw new ConflictError('The period is locked; its timesheet cannot change', {
+          timesheetId: locked.id,
+          date: input.date,
+        });
+      }
+      const entry = manager.create(TimeEntry, {
+        organizationId,
+        employeeId: input.employeeId,
+        timesheetId: null,
+        date: input.date,
+        hours: toAmount(input.hours),
+        source: 'manual',
+        note: input.note ?? null,
+      });
+      return manager.save(entry);
     });
-    return this.timeEntries.save(entry);
   }
 
   listEntries(employeeId: EmployeeId, from: IsoDate, to: IsoDate): Promise<TimeEntry[]> {

@@ -1,13 +1,14 @@
 import { toId, type EmployeeId, type OrganizationId, type UserId } from '@hrms/shared';
 import type { DataSource, EntityManager } from 'typeorm';
 
-import { TimesheetService } from './timesheet.service';
 
 import type { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import type { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+
 import type { TimeEntry } from './entities/time-entry.entity';
 import type { Timesheet } from './entities/timesheet.entity';
+import { TimesheetService } from './timesheet.service';
 
 const ORG = toId<OrganizationId>('org-1');
 const EMPLOYEE = toId<EmployeeId>('emp-1');
@@ -82,5 +83,21 @@ describe('TimesheetService.lock', () => {
   it('refuses to lock a timesheet that is not approved', async () => {
     const { service } = buildService({ timesheet: baseTimesheet('open') });
     await expect(service.lock('ts-1')).rejects.toThrow(/approved before locking/);
+  });
+
+  it('stamps every in-period entry with the timesheet id when locking', async () => {
+    const entry = {
+      id: 'entry-1',
+      hours: '8.00',
+      timesheetId: null,
+    } as unknown as TimeEntry;
+    const { service } = buildService({
+      timesheet: baseTimesheet('approved'),
+      entries: [entry],
+    });
+
+    await service.lock('ts-1');
+
+    expect(entry.timesheetId).toBe('ts-1');
   });
 });

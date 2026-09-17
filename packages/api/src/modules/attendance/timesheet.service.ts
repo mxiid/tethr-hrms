@@ -1,3 +1,4 @@
+import { toId, type EmployeeId, type IsoDate, type TimesheetId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Between, DataSource, type FindOptionsWhere } from 'typeorm';
@@ -6,11 +7,11 @@ import { ConflictError, NotFoundError } from '../../common/errors';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+
 import { TIMESHEET_REPOSITORY } from './attendance.tokens';
 import { TimeEntry } from './entities/time-entry.entity';
 import { Timesheet } from './entities/timesheet.entity';
 
-import { toId, type EmployeeId, type IsoDate, type TimesheetId, type UserId } from '@hrms/shared';
 
 const toAmount = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
 
@@ -118,6 +119,19 @@ export class TimesheetService {
         throw new ConflictError('Timesheet must be approved before locking', {
           status: timesheet.status,
         });
+      }
+      // Freeze the period: every entry it covers is stamped with the timesheet
+      // id, so later `recordEntry` calls can see the period is locked.
+      const entries = await manager.find(TimeEntry, {
+        where: {
+          organizationId,
+          employeeId: timesheet.employeeId,
+          date: Between(timesheet.periodStart, timesheet.periodEnd),
+        },
+      });
+      for (const entry of entries) {
+        entry.timesheetId = timesheet.id;
+        await manager.save(entry);
       }
       timesheet.status = 'locked';
       const saved = await manager.save(timesheet);
