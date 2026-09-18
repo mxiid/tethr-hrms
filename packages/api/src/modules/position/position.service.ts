@@ -45,12 +45,23 @@ export class PositionService {
       const positions = transactionManager.getRepository(Position);
       const jobs = transactionManager.getRepository(Job);
       const trimmed = title.trim() || 'Unassigned';
+      // Serialize per (workspace, title): find-then-insert without a unique
+      // index lets two concurrent calls each create a position for the same
+      // title. The advisory lock is released with the transaction.
+      await transactionManager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `position:${organizationId}:${trimmed}`,
+      ]);
       const existing = await positions.findOne({
         where: { title: trimmed, organizationId } as FindOptionsWhere<Position>,
       });
       if (existing) return existing;
 
       const jobTitle = 'General';
+      // The position lock above is per title, so calls for different titles can
+      // still race the shared 'General' job: lock that key separately.
+      await transactionManager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `job:${organizationId}:${jobTitle}`,
+      ]);
       const job =
         (await jobs.findOne({
           where: { title: jobTitle, organizationId } as FindOptionsWhere<Job>,
@@ -110,8 +121,15 @@ export class PositionService {
       : this.dataSource.transaction((transactionManager) => run(transactionManager));
   }
 
-  async getById(id: string): Promise<Position> {
-    const position = await this.positions.findById(id);
+  async getById(id: string, manager?: EntityManager): Promise<Position> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    // Callers inside a unit of work pass their manager so a position created
+    // earlier in that same transaction is visible (offer acceptance).
+    const position = manager
+      ? await manager.getRepository(Position).findOne({
+          where: { id, organizationId } as FindOptionsWhere<Position>,
+        })
+      : await this.positions.findById(id);
     if (!position) {
       throw new NotFoundError('Position not found', { id });
     }

@@ -33,9 +33,9 @@ export class EmployeeCreatedOnboardingConsumer implements OnModuleInit {
       return;
     }
     const { employeeId } = event.payload;
-    await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
+    await this.idempotency.runOnce(CONSUMER_NAME, event, (manager) =>
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
-        const created = await this.records.seedOnboardingChecklist(employeeId);
+        const created = await this.records.seedOnboardingChecklist(employeeId, manager);
         this.logger.log(`Seeded ${created} onboarding task(s) for employee ${employeeId}`);
       }),
     );

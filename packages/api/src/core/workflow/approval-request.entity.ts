@@ -27,4 +27,7 @@ export class ApprovalRequest extends TenantScopedEntity {
 
   @Column({ type: 'text', nullable: true })
   decisionNote!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true, default: null })
+  decidedAt!: Date | null;
 }

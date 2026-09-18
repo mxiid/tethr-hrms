@@ -674,36 +674,55 @@ export class PayrollRunService {
   // Published write for the `compensation.revised` consumer (plan Phase 2 #14):
   // flag any DRAFT run whose period is on/after the raise so finance regenerates
   // before finalizing. Finalized runs are never touched — their history is frozen.
-  async markDraftsStaleForSalaryRevision(effectiveDate: IsoDate): Promise<number> {
+  async markDraftsStaleForSalaryRevision(
+    effectiveDate: IsoDate,
+    manager?: EntityManager,
+  ): Promise<number> {
     return this.markDraftsStaleForChange(
       effectiveDate,
       `Salary revised effective ${effectiveDate}`,
+      manager,
     );
   }
 
-  async markDraftsStaleForTaxProfile(effectiveDate: IsoDate): Promise<number> {
+  async markDraftsStaleForTaxProfile(
+    effectiveDate: IsoDate,
+    manager?: EntityManager,
+  ): Promise<number> {
     return this.markDraftsStaleForChange(
       effectiveDate,
       `Tax profile changed effective ${effectiveDate}`,
+      manager,
     );
   }
 
-  async markDraftsStaleForBenefitsChange(effectiveDate: IsoDate): Promise<number> {
+  async markDraftsStaleForBenefitsChange(
+    effectiveDate: IsoDate,
+    manager?: EntityManager,
+  ): Promise<number> {
     return this.markDraftsStaleForChange(
       effectiveDate,
       `Benefits changed effective ${effectiveDate}`,
+      manager,
     );
   }
 
   // A change effective on or before a draft's period end means the draft's
-  // snapshotted amounts are out of date; flag it so finance regenerates.
+  // snapshotted amounts are out of date; flag it so finance regenerates. The
+  // consumer passes its transaction manager so the flag joins the ledger row.
   private async markDraftsStaleForChange(
     effectiveDate: IsoDate,
     reason: string,
+    manager?: EntityManager,
   ): Promise<number> {
-    const drafts = await this.runs.find({
-      where: { status: 'draft' } as FindOptionsWhere<PayrollRun>,
-    });
+    const organizationId = this.tenantContext.getOrganizationId();
+    const drafts = manager
+      ? await manager.find(PayrollRun, {
+          where: { organizationId, status: 'draft' } as FindOptionsWhere<PayrollRun>,
+        })
+      : await this.runs.find({
+          where: { status: 'draft' } as FindOptionsWhere<PayrollRun>,
+        });
     let marked = 0;
     for (const run of drafts) {
       const { endExclusive } = isoMonthRange(run.periodYear, run.periodMonth);
@@ -716,7 +735,7 @@ export class PayrollRunService {
       }
       run.isStale = true;
       run.staleReason = reason;
-      await this.runs.save(run);
+      await (manager ? manager.save(run) : this.runs.save(run));
       marked += 1;
     }
     return marked;

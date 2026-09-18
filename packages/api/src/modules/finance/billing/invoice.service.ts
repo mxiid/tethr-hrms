@@ -417,25 +417,51 @@ export class InvoiceService {
 
   // Published write for the `employee.terminated` consumer: stop billing after
   // the employee's last working day. No-op when there is no open membership.
-  async closeMembershipAt(employeeId: EmployeeId, lastCoveredDate: IsoDate): Promise<void> {
-    const open = await this.members.findOne({
-      where: { employeeId, validTo: IsNull() } as FindOptionsWhere<BillingGroupMember>,
-    });
-    if (!open) {
+  // The consumer passes its transaction manager so the close, the stale flag,
+  // and the audit commit with the idempotency ledger row.
+  async closeMembershipAt(
+    employeeId: EmployeeId,
+    lastCoveredDate: IsoDate,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const run = async (target: EntityManager): Promise<void> => {
+      const open = await target.findOne(BillingGroupMember, {
+        where: {
+          organizationId,
+          employeeId,
+          validTo: IsNull(),
+        } as FindOptionsWhere<BillingGroupMember>,
+      });
+      if (!open) {
+        return;
+      }
+      // validTo is exclusive: cover through the last day, stop the next day. Never
+      // end a membership before it started.
+      const exclusiveEnd = addIsoDays(lastCoveredDate, 1);
+      open.validTo =
+        compareIsoDate(exclusiveEnd, open.validFrom) < 0 ? open.validFrom : exclusiveEnd;
+      await target.save(open);
+      await this.markDraftsStaleForEmployee(
+        employeeId,
+        'Membership closed after this draft was created',
+        target,
+      );
+      await this.audit.record(
+        {
+          action: 'closeMembership',
+          resourceType: 'billing_group_member',
+          resourceId: open.id,
+          after: { employeeId, validTo: open.validTo },
+        },
+        target,
+      );
+    };
+    if (manager) {
+      await run(manager);
       return;
     }
-    // validTo is exclusive: cover through the last day, stop the next day. Never
-    // end a membership before it started.
-    const exclusiveEnd = addIsoDays(lastCoveredDate, 1);
-    open.validTo =
-      compareIsoDate(exclusiveEnd, open.validFrom) < 0 ? open.validFrom : exclusiveEnd;
-    await this.members.save(open);
-    await this.audit.record({
-      action: 'closeMembership',
-      resourceType: 'billing_group_member',
-      resourceId: open.id,
-      after: { employeeId, validTo: open.validTo },
-    });
+    await this.dataSource.transaction((target) => run(target));
   }
 
   // Current memberships only (open ranges). History is reachable through the
@@ -533,35 +559,40 @@ export class InvoiceService {
   private async recordCostSnapshot(
     summary: RunBillingSummary,
     config: ClientBillingConfig,
+    manager?: EntityManager,
   ): Promise<PayrollCostSnapshot> {
+    if (manager) {
+      // Shared transaction (payroll.finalized consumer): no unique-violation
+      // recovery here — a lost race aborts the handler transaction, and the
+      // outbox retry finds the winner's row and proceeds. The raw manager
+      // bypasses the tenant repository's stamping, so the organization is set
+      // explicitly and scopes the lookup.
+      const organizationId = this.tenantContext.getOrganizationId();
+      const existing = await manager.findOne(PayrollCostSnapshot, {
+        where: {
+          organizationId,
+          payrollRunId: summary.runId,
+        } as FindOptionsWhere<PayrollCostSnapshot>,
+      });
+      if (existing) {
+        return existing;
+      }
+      return manager.save(
+        manager.create(PayrollCostSnapshot, {
+          organizationId,
+          ...(await this.costSnapshotPayload(summary, config)),
+        }),
+      );
+    }
     const existing = await this.costSnapshots.findOne({
       where: { payrollRunId: summary.runId } as FindOptionsWhere<PayrollCostSnapshot>,
     });
     if (existing) {
       return existing;
     }
-    const billingCurrency = config.feeCurrency;
-    const fxRate = await this.fx.getRate(summary.payrollCurrency, billingCurrency, summary.payDate);
     try {
       return await this.costSnapshots.save(
-        this.costSnapshots.create({
-          payrollRunId: summary.runId,
-          periodYear: summary.periodYear,
-          periodMonth: summary.periodMonth,
-          payDate: summary.payDate,
-          payrollCurrency: summary.payrollCurrency,
-          billingCurrency,
-          fxRate: fxRate === null ? null : fxRate.toFixed(8),
-          grossTotal: toMoneyString(summary.grossTotal),
-          employerCostTotal: toMoneyString(summary.employerCostTotal),
-          convertedEmployerCost:
-            fxRate === null ? null : toMoneyString(summary.employerCostTotal * fxRate),
-          employeeCosts: summary.payslips.map((payslip) => ({
-            employeeId: payslip.employeeId,
-            grossAmount: payslip.grossAmount,
-            employerCostAmount: payslip.employerCostAmount,
-          })),
-        }),
+        this.costSnapshots.create(await this.costSnapshotPayload(summary, config)),
       );
     } catch (cause) {
       // Drafting and the void refresh can race for the same run; the loser's
@@ -580,6 +611,32 @@ export class InvoiceService {
     }
   }
 
+  private async costSnapshotPayload(
+    summary: RunBillingSummary,
+    config: ClientBillingConfig,
+  ): Promise<Partial<PayrollCostSnapshot>> {
+    const billingCurrency = config.feeCurrency;
+    const fxRate = await this.fx.getRate(summary.payrollCurrency, billingCurrency, summary.payDate);
+    return {
+      payrollRunId: summary.runId,
+      periodYear: summary.periodYear,
+      periodMonth: summary.periodMonth,
+      payDate: summary.payDate,
+      payrollCurrency: summary.payrollCurrency,
+      billingCurrency,
+      fxRate: fxRate === null ? null : fxRate.toFixed(8),
+      grossTotal: toMoneyString(summary.grossTotal),
+      employerCostTotal: toMoneyString(summary.employerCostTotal),
+      convertedEmployerCost:
+        fxRate === null ? null : toMoneyString(summary.employerCostTotal * fxRate),
+      employeeCosts: summary.payslips.map((payslip) => ({
+        employeeId: payslip.employeeId,
+        grossAmount: payslip.grossAmount,
+        employerCostAmount: payslip.employerCostAmount,
+      })),
+    };
+  }
+
   // Compare what was billed for the run's own month against the month's actual
   // cost, then record the period close. Lines are matched by their month label,
   // not their invoice's service month, because a catch-up line for August can
@@ -590,25 +647,44 @@ export class InvoiceService {
   private async reconcileServiceMonth(
     summary: RunBillingSummary,
     snapshot: PayrollCostSnapshot,
+    manager?: EntityManager,
   ): Promise<void> {
+    const organizationId = this.tenantContext.getOrganizationId();
     const label = formatMonthLabel(summary.periodYear, summary.periodMonth);
-    const monthLines = await this.lines.find({
-      where: {
-        monthLabel: label,
-        kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
-      } as FindOptionsWhere<InvoiceLine>,
-    });
+    const monthLines = manager
+      ? await manager.find(InvoiceLine, {
+          where: {
+            organizationId,
+            monthLabel: label,
+            kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
+          } as FindOptionsWhere<InvoiceLine>,
+        })
+      : await this.lines.find({
+          where: {
+            monthLabel: label,
+            kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
+          } as FindOptionsWhere<InvoiceLine>,
+        });
     const invoiceIds = [...new Set(monthLines.map((line) => line.invoiceId))];
     const invoicesForMonth =
       invoiceIds.length === 0
         ? []
-        : await this.invoices.find({
-            where: {
-              id: In(invoiceIds),
-              type: 'services',
-              status: Not('voided'),
-            } as FindOptionsWhere<Invoice>,
-          });
+        : manager
+          ? await manager.find(Invoice, {
+              where: {
+                organizationId,
+                id: In(invoiceIds),
+                type: 'services',
+                status: Not('voided'),
+              } as FindOptionsWhere<Invoice>,
+            })
+          : await this.invoices.find({
+              where: {
+                id: In(invoiceIds),
+                type: 'services',
+                status: Not('voided'),
+              } as FindOptionsWhere<Invoice>,
+            });
     const validInvoiceIds = new Set(invoicesForMonth.map((invoice) => invoice.id));
     const billableLines = monthLines.filter((line) => validInvoiceIds.has(line.invoiceId));
 
@@ -635,7 +711,7 @@ export class InvoiceService {
             : 'variance';
       invoice.payrollCostAmount = convertedCost === null ? null : toMoneyString(convertedCost);
       invoice.reconciledAt = now;
-      await this.invoices.save(invoice);
+      await (manager ? manager.save(invoice) : this.invoices.save(invoice));
       totalInvoiced = round2(totalInvoiced + invoiced);
     }
 
@@ -644,18 +720,32 @@ export class InvoiceService {
     const payrollCost =
       snapshot.convertedEmployerCost === null ? null : Number(snapshot.convertedEmployerCost);
     const variance = payrollCost === null ? null : round2(totalInvoiced - payrollCost);
-    const existingClose = await this.periodCloses.findOne({
-      where: {
-        serviceYear: summary.periodYear,
-        serviceMonth: summary.periodMonth,
-      } as FindOptionsWhere<BillingPeriodClose>,
-    });
+    const existingClose = manager
+      ? await manager.findOne(BillingPeriodClose, {
+          where: {
+            organizationId,
+            serviceYear: summary.periodYear,
+            serviceMonth: summary.periodMonth,
+          } as FindOptionsWhere<BillingPeriodClose>,
+        })
+      : await this.periodCloses.findOne({
+          where: {
+            serviceYear: summary.periodYear,
+            serviceMonth: summary.periodMonth,
+          } as FindOptionsWhere<BillingPeriodClose>,
+        });
     const close =
       existingClose ??
-      this.periodCloses.create({
-        serviceYear: summary.periodYear,
-        serviceMonth: summary.periodMonth,
-      });
+      (manager
+        ? manager.create(BillingPeriodClose, {
+            organizationId,
+            serviceYear: summary.periodYear,
+            serviceMonth: summary.periodMonth,
+          })
+        : this.periodCloses.create({
+            serviceYear: summary.periodYear,
+            serviceMonth: summary.periodMonth,
+          }));
     close.payrollRunId = summary.runId;
     close.payDate = summary.payDate;
     close.currency = snapshot.billingCurrency;
@@ -669,7 +759,7 @@ export class InvoiceService {
         : withinTolerance(totalInvoiced, payrollCost)
           ? 'balanced'
           : 'variance';
-    await this.periodCloses.save(close);
+    await (manager ? manager.save(close) : this.periodCloses.save(close));
   }
 
   // The reconciliation board: every month with salary/catch-up lines, what was
@@ -786,10 +876,10 @@ export class InvoiceService {
    * month; before it, the run's own month. Re-running for an already-covered
    * period is a no-op (uniqueness by group + type + service month).
    */
-  async draftInvoicesFromRun(runId: string): Promise<Invoice[]> {
+  async draftInvoicesFromRun(runId: string, manager?: EntityManager): Promise<Invoice[]> {
     const summary: RunBillingSummary = await this.payrollRuns.getFinalizedRunSummary(toId(runId));
     const config = await this.getConfig();
-    const snapshot = await this.recordCostSnapshot(summary, config);
+    const snapshot = await this.recordCostSnapshot(summary, config, manager);
 
     // The run's own pay date decides the service month (advance billing: cut
     // on/after the anchor day covers the following month). Anchoring to the run
@@ -805,7 +895,7 @@ export class InvoiceService {
     const groups = await this.listGroups();
     const allMembers = await this.members.find();
     if (groups.length === 0 || allMembers.length === 0) {
-      await this.reconcileServiceMonth(summary, snapshot);
+      await this.reconcileServiceMonth(summary, snapshot, manager);
       return [];
     }
 
@@ -813,7 +903,10 @@ export class InvoiceService {
     // Months already billed are tracked globally across the whole draft call, so
     // an employee whose membership moved between groups mid-stream is billed for
     // any given month exactly once (and never double-fee'd).
-    const covered = await this.loadCoveredMonths(allMembers.map((member) => member.employeeId));
+    const covered = await this.loadCoveredMonths(
+      allMembers.map((member) => member.employeeId),
+      manager,
+    );
     const feesBilled = new Set<string>();
     for (const group of groups) {
       const memberships = allMembers.filter((member) => member.groupId === group.id);
@@ -903,33 +996,58 @@ export class InvoiceService {
         continue;
       }
 
-      const duplicate = await this.invoices.findOne({
-        where: {
-          groupId: group.id,
-          type: 'services',
-          status: Not('voided'),
-          serviceYear: service.year,
-          serviceMonth: service.month,
-        } as FindOptionsWhere<Invoice>,
-      });
+      const organizationId = this.tenantContext.getOrganizationId();
+      const duplicate = manager
+        ? await manager.findOne(Invoice, {
+            where: {
+              organizationId,
+              groupId: group.id,
+              type: 'services',
+              status: Not('voided'),
+              serviceYear: service.year,
+              serviceMonth: service.month,
+            } as FindOptionsWhere<Invoice>,
+          })
+        : await this.invoices.findOne({
+            where: {
+              groupId: group.id,
+              type: 'services',
+              status: Not('voided'),
+              serviceYear: service.year,
+              serviceMonth: service.month,
+            } as FindOptionsWhere<Invoice>,
+          });
       if (duplicate) {
         continue;
       }
 
       const subTotal = round2(pending.reduce((sum, line) => sum + line.unitPrice, 0));
-      const invoice = await this.persistDraftInvoice(
-        toId<BillingGroupId>(group.id),
-        'services',
-        service,
-        window,
-        config,
-        subTotal,
-        summary.runId,
-        pending,
-      );
+      let invoice: Invoice;
+      try {
+        invoice = await this.persistDraftInvoice(
+          toId<BillingGroupId>(group.id),
+          'services',
+          service,
+          window,
+          config,
+          subTotal,
+          summary.runId,
+          pending,
+          manager,
+        );
+      } catch (cause) {
+        // The pre-check above lost a race with another draft for the same group
+        // and month: the winner's document stands, this one is skipped (the
+        // savepoint inside persistDraftInvoice keeps the shared transaction
+        // usable).
+        if (isUniqueViolation(cause)) {
+          continue;
+        }
+        throw cause;
+      }
       created.push(invoice);
     }
-    await this.reconcileServiceMonth(summary, snapshot);
+    await this.reconcileServiceMonth(summary, snapshot, manager);
     return created;
   }
 
@@ -961,25 +1079,34 @@ export class InvoiceService {
     const config = await this.getConfig();
     const prior = addMonths(serviceYear, serviceMonth, -1);
     const window = anchoredWindow(prior.year, prior.month, config.anchorDay);
-    return this.invoices.save(
-      this.invoices.create({
-        groupId,
-        type: 'expenses',
-        status: 'draft',
-        serviceYear,
-        serviceMonth,
-        periodStart: window.start,
-        periodEndExclusive: window.endExclusive,
-        currency: config.feeCurrency,
-        receiverName: config.receiverName,
-        receiverAddress: config.receiverAddress,
-        receiverEmail: config.receiverEmail,
-        receiverPhone: config.receiverPhone,
-        receiverZipCode: config.receiverZipCode,
-        receiverCity: config.receiverCity,
-        receiverCountry: config.receiverCountry,
-      }),
-    );
+    try {
+      return await this.invoices.save(
+        this.invoices.create({
+          groupId,
+          type: 'expenses',
+          status: 'draft',
+          serviceYear,
+          serviceMonth,
+          periodStart: window.start,
+          periodEndExclusive: window.endExclusive,
+          currency: config.feeCurrency,
+          receiverName: config.receiverName,
+          receiverAddress: config.receiverAddress,
+          receiverEmail: config.receiverEmail,
+          receiverPhone: config.receiverPhone,
+          receiverZipCode: config.receiverZipCode,
+          receiverCity: config.receiverCity,
+          receiverCountry: config.receiverCountry,
+        }),
+      );
+    } catch (cause) {
+      // The duplicate pre-check raced the partial unique index; report the same
+      // conflict the check would have.
+      if (isUniqueViolation(cause)) {
+        throw new ConflictError('An expenses invoice already exists for this group and month');
+      }
+      throw cause;
+    }
   }
 
   // Published pass-through for approved employee expense claims: find or open
@@ -1175,27 +1302,41 @@ export class InvoiceService {
       }
       employeeName = `${employee.firstName} ${employee.lastName}`;
     }
-    const count = await this.lines.count({
-      where: { invoiceId } as FindOptionsWhere<InvoiceLine>,
-    });
     const quantity = input.quantity ?? 1;
     const total = round2(quantity * input.unitPrice);
-    const line = await this.lines.save(
-      this.lines.create({
-        invoiceId,
-        kind,
-        employeeId,
-        employeeName,
-        monthLabel: input.monthLabel ?? null,
-        description: (input.description?.trim() || 'Expense').slice(0, 200),
-        quantity: toMoneyString(quantity),
-        unitPrice: toMoneyString(input.unitPrice),
-        total: toMoneyString(total),
-        sortOrder: count,
-      }),
-    );
-    await this.recomputeTotals(invoiceId);
-    return line;
+    const organizationId = this.tenantContext.getOrganizationId();
+    // Lock the invoice before allocating the sort order: two concurrent adds
+    // would otherwise read the same line count and write colliding orders.
+    return this.dataSource.transaction(async (manager) => {
+      const invoice = await manager.findOne(Invoice, {
+        where: { id: invoiceId, organizationId } as FindOptionsWhere<Invoice>,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!invoice) {
+        throw new NotFoundError('Invoice not found', { id: invoiceId });
+      }
+      assertEditable(invoice.status);
+      const lockedCount = await manager.count(InvoiceLine, {
+        where: { organizationId, invoiceId } as FindOptionsWhere<InvoiceLine>,
+      });
+      const line = await manager.save(
+        manager.create(InvoiceLine, {
+          organizationId,
+          invoiceId,
+          kind,
+          employeeId,
+          employeeName,
+          monthLabel: input.monthLabel ?? null,
+          description: (input.description?.trim() || 'Expense').slice(0, 200),
+          quantity: toMoneyString(quantity),
+          unitPrice: toMoneyString(input.unitPrice),
+          total: toMoneyString(total),
+          sortOrder: lockedCount,
+        }),
+      );
+      await recomputeTotalsWithin(manager, invoiceId, organizationId);
+      return line;
+    });
   }
 
   async updateDraftLine(input: UpdateInvoiceLineData): Promise<InvoiceLine> {
@@ -1489,44 +1630,74 @@ export class InvoiceService {
   private async markDraftsStaleForEmployee(
     employeeId: EmployeeId,
     reason: string,
+    manager?: EntityManager,
   ): Promise<void> {
-    const employeeLines = await this.lines.find({
-      where: { employeeId } as FindOptionsWhere<InvoiceLine>,
-    });
+    const organizationId = this.tenantContext.getOrganizationId();
+    const employeeLines = manager
+      ? await manager.find(InvoiceLine, {
+          where: { organizationId, employeeId } as FindOptionsWhere<InvoiceLine>,
+        })
+      : await this.lines.find({
+          where: { employeeId } as FindOptionsWhere<InvoiceLine>,
+        });
     const invoiceIds = [...new Set(employeeLines.map((line) => line.invoiceId))];
     if (invoiceIds.length === 0) {
       return;
     }
-    const drafts = await this.invoices.find({
-      where: { id: In(invoiceIds), status: 'draft' } as FindOptionsWhere<Invoice>,
-    });
+    const drafts = manager
+      ? await manager.find(Invoice, {
+          where: {
+            organizationId,
+            id: In(invoiceIds),
+            status: 'draft',
+          } as FindOptionsWhere<Invoice>,
+        })
+      : await this.invoices.find({
+          where: { id: In(invoiceIds), status: 'draft' } as FindOptionsWhere<Invoice>,
+        });
     for (const draft of drafts) {
       draft.isStale = true;
       draft.staleReason = reason;
-      await this.invoices.save(draft);
+      await (manager ? manager.save(draft) : this.invoices.save(draft));
     }
   }
 
   // Month labels already billed per employee across ALL invoices — drafts count,
   // so a manual draft covering September suppresses the next auto-draft's
   // September line instead of double-billing.
-  private async loadCoveredMonths(employeeIds: readonly EmployeeId[]): Promise<Set<string>> {
+  private async loadCoveredMonths(
+    employeeIds: readonly EmployeeId[],
+    manager?: EntityManager,
+  ): Promise<Set<string>> {
     const covered = new Set<string>();
     if (employeeIds.length === 0) {
       return covered;
     }
-    const rows = await this.lines.find({
-      where: {
-        employeeId: In(employeeIds as unknown as string[]),
-        kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
-      } as unknown as FindOptionsWhere<InvoiceLine>,
-    });
+    const organizationId = this.tenantContext.getOrganizationId();
+    const rows = manager
+      ? await manager.find(InvoiceLine, {
+          where: {
+            organizationId,
+            employeeId: In(employeeIds as unknown as string[]),
+            kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
+          } as unknown as FindOptionsWhere<InvoiceLine>,
+        })
+      : await this.lines.find({
+          where: {
+            employeeId: In(employeeIds as unknown as string[]),
+            kind: In(['salary', 'catchup'] as InvoiceLineKind[]),
+          } as unknown as FindOptionsWhere<InvoiceLine>,
+        });
     const invoiceIds = [...new Set(rows.map((row) => row.invoiceId))];
     const voidedInvoiceIds = new Set<string>();
     if (invoiceIds.length > 0) {
-      const owners = await this.invoices.find({
-        where: { id: In(invoiceIds) } as FindOptionsWhere<Invoice>,
-      });
+      const owners = manager
+        ? await manager.find(Invoice, {
+            where: { organizationId, id: In(invoiceIds) } as FindOptionsWhere<Invoice>,
+          })
+        : await this.invoices.find({
+            where: { id: In(invoiceIds) } as FindOptionsWhere<Invoice>,
+          });
       for (const owner of owners) {
         if (owner.status === 'voided') {
           voidedInvoiceIds.add(owner.id);
@@ -1550,10 +1721,11 @@ export class InvoiceService {
     subTotal: number,
     sourcePayrollRunId: string | null,
     pending: readonly PendingLine[],
+    manager?: EntityManager,
   ): Promise<Invoice> {
     const organizationId = this.tenantContext.getOrganizationId();
-    return this.dataSource.transaction(async (manager) => {
-      const invoice = manager.create(Invoice, {
+    const run = async (target: EntityManager): Promise<Invoice> => {
+      const invoice = target.create(Invoice, {
         organizationId,
         groupId,
         type,
@@ -1574,11 +1746,11 @@ export class InvoiceService {
         totalAmount: toMoneyString(subTotal),
         sourcePayrollRunId,
       });
-      const saved = await manager.save(invoice);
+      const saved = await target.save(invoice);
       let sortOrder = 0;
       for (const line of pending) {
-        await manager.save(
-          manager.create(InvoiceLine, {
+        await target.save(
+          target.create(InvoiceLine, {
             organizationId,
             invoiceId: saved.id,
             kind: line.kind,
@@ -1594,7 +1766,8 @@ export class InvoiceService {
         );
       }
       return saved;
-    });
+    };
+    return manager ? manager.transaction(run) : this.dataSource.transaction((target) => run(target));
   }
 
   private async getDraft(invoiceId: InvoiceId): Promise<Invoice> {
@@ -1624,12 +1797,6 @@ export class InvoiceService {
       throw new NotFoundError('Invoice line not found', { id: lineId });
     }
     return line;
-  }
-
-  private async recomputeTotals(invoiceId: InvoiceId): Promise<void> {
-    await this.dataSource.transaction((manager) =>
-      recomputeTotalsWithin(manager, invoiceId, this.tenantContext.getOrganizationId()),
-    );
   }
 }
 

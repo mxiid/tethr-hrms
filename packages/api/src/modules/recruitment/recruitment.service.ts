@@ -386,8 +386,11 @@ export class RecruitmentService {
   // `sourceHiringRequestId` has no uniqueness guarantee, so without the
   // predicate a posting owned by another workspace could be matched and
   // unpublished.
-  async unpublishPostingsForRequest(hiringRequestId: string): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
+  async unpublishPostingsForRequest(
+    hiringRequestId: string,
+    externalManager?: EntityManager,
+  ): Promise<void> {
+    const run = async (manager: EntityManager): Promise<void> => {
       const postings = await manager.find(JobPosting, {
         where: {
           sourceHiringRequestId: hiringRequestId,
@@ -411,7 +414,12 @@ export class RecruitmentService {
           manager,
         );
       }
-    });
+    };
+    if (externalManager) {
+      await run(externalManager);
+      return;
+    }
+    await this.dataSource.transaction(run);
   }
 
   // Fresh-state entry point for position reconciliation: loads the request,
@@ -425,12 +433,15 @@ export class RecruitmentService {
   // Returns the latest request (or null when it no longer exists). Decisions
   // that must reflect reality — the cleanup consumer's publication gate — read
   // this value, never an event payload's status.
-  async reconcilePositionForRequest(hiringRequestId: string): Promise<HiringRequest | null> {
+  async reconcilePositionForRequest(
+    hiringRequestId: string,
+    manager?: EntityManager,
+  ): Promise<HiringRequest | null> {
     const maxAttempts = 3;
-    let request = await this.hiringRequests.findById(hiringRequestId);
+    let request = await this.findRequest(hiringRequestId, manager);
     for (let attempt = 0; attempt < maxAttempts && request; attempt += 1) {
-      await this.reconcilePosition(request);
-      const latest = await this.hiringRequests.findById(hiringRequestId);
+      await this.reconcilePosition(request, manager);
+      const latest = await this.findRequest(hiringRequestId, manager);
       if (!latest || latest.status === request.status) {
         return latest;
       }
@@ -441,9 +452,27 @@ export class RecruitmentService {
       // observed state once more, so the returned request is reconciled rather
       // than merely observed. Any further change is picked up by the next
       // event or update.
-      await this.reconcilePosition(request);
+      await this.reconcilePosition(request, manager);
     }
     return request;
+  }
+
+  // Fresh reads join the caller's transaction when one is supplied, so an
+  // in-transaction link is visible on the reload; otherwise the tenant
+  // repository serves the committed state.
+  private findRequest(
+    hiringRequestId: string,
+    manager?: EntityManager,
+  ): Promise<HiringRequest | null> {
+    if (manager) {
+      return manager.findOne(HiringRequest, {
+        where: {
+          id: hiringRequestId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<HiringRequest>,
+      });
+    }
+    return this.hiringRequests.findById(hiringRequestId);
   }
 
   // Links an unlinked request to a position with a targeted update: only
@@ -491,42 +520,51 @@ export class RecruitmentService {
   // closes it. State-based, so replaying the same status repairs divergence and
   // a retry after a partial failure converges. Kept outside the request
   // transaction on purpose — positions are a different aggregate.
-  async reconcilePosition(request: HiringRequest): Promise<HiringRequest> {
+  async reconcilePosition(request: HiringRequest, manager?: EntityManager): Promise<HiringRequest> {
     if (request.status === 'open') {
       // Once a position is linked, follow it by id: titles are not unique and
       // may have been renamed, so re-resolving by title here could relink the
       // request to a different row and reopen the wrong position. Title lookup
       // is only for the first open that has no link yet.
       if (request.positionId) {
-        const position = await this.positions.getById(request.positionId);
+        const position = await this.positions.getById(request.positionId, manager);
         if (position.status !== 'open') {
-          await this.positions.setStatus(position.id, 'open');
+          await this.positions.setStatus(position.id, 'open', manager);
         }
         return request;
       }
-      const position = await this.positions.ensureByTitle(request.positionTitle);
+      const position = await this.positions.ensureByTitle(request.positionTitle, manager);
       // Link conditionally: a concurrent transition may have changed the status
       // while the position was being resolved, and an unconditional entity save
       // would write the stale snapshot back. Only a row that is still open and
       // unlinked is updated, and its link audit commits with it; otherwise the
       // caller reloads and reconciles the newer state — and the position is not
       // opened, because it may not belong to this request any more.
-      const linked = await this.dataSource.transaction((manager) =>
-        this.linkPositionForRequest(
-          {
-            hiringRequestId: request.id,
-            positionId: position.id,
-            expectedStatus: 'open',
-          },
-          manager,
-        ),
-      );
+      const linked = manager
+        ? await this.linkPositionForRequest(
+            {
+              hiringRequestId: request.id,
+              positionId: position.id,
+              expectedStatus: 'open',
+            },
+            manager,
+          )
+        : await this.dataSource.transaction((target) =>
+            this.linkPositionForRequest(
+              {
+                hiringRequestId: request.id,
+                positionId: position.id,
+                expectedStatus: 'open',
+              },
+              target,
+            ),
+          );
       if (!linked) {
         return request;
       }
       request.positionId = position.id;
       if (position.status !== 'open') {
-        await this.positions.setStatus(position.id, 'open');
+        await this.positions.setStatus(position.id, 'open', manager);
       }
       return request;
     }
@@ -536,15 +574,15 @@ export class RecruitmentService {
     }
     // Every non-open transition targets the linked position by id — never by
     // title, which is not unique and may have been renamed.
-    const position = await this.positions.getById(request.positionId);
+    const position = await this.positions.getById(request.positionId, manager);
     if (request.status === 'onHold' && position.status === 'open') {
-      await this.positions.setStatus(position.id, 'frozen');
+      await this.positions.setStatus(position.id, 'frozen', manager);
     }
     if (request.status === 'filled' && position.status !== 'filled') {
-      await this.positions.setStatus(position.id, 'filled');
+      await this.positions.setStatus(position.id, 'filled', manager);
     }
     if (request.status === 'cancelled' && position.status !== 'closed') {
-      await this.positions.setStatus(position.id, 'closed');
+      await this.positions.setStatus(position.id, 'closed', manager);
     }
     return request;
   }

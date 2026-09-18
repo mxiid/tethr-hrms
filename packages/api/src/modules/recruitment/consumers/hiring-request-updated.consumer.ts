@@ -43,7 +43,7 @@ export class HiringRequestUpdatedConsumer implements OnModuleInit {
       return;
     }
     const { hiringRequestId, status, positionTitle } = event.payload;
-    await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
+    await this.idempotency.runOnce(CONSUMER_NAME, event, (manager) =>
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
         // Positions live in the request's workspace, so reconcile under the
         // event's tenant — for every status change, a resume included: the
@@ -51,7 +51,10 @@ export class HiringRequestUpdatedConsumer implements OnModuleInit {
         // durable retry that repairs it. The returned request is the freshest
         // state, which every decision below follows instead of the event's
         // status: a retried stale event must not undo a newer transition.
-        const current = await this.recruitment.reconcilePositionForRequest(hiringRequestId);
+        const current = await this.recruitment.reconcilePositionForRequest(
+          hiringRequestId,
+          manager,
+        );
         if (current && UNPUBLISH_STATUSES.includes(current.status)) {
           // Postings live in the operator's workspace: step over there as the
           // system principal (the unpublish writes its own audit records), no
@@ -59,9 +62,11 @@ export class HiringRequestUpdatedConsumer implements OnModuleInit {
           const tethrOrganizationId = await this.platformScope.resolveTethrOrganizationId();
           await this.tenantContext.run(
             { organizationId: tethrOrganizationId, userId: null },
-            () => this.recruitment.unpublishPostingsForRequest(hiringRequestId),
+            () => this.recruitment.unpublishPostingsForRequest(hiringRequestId, manager),
           );
         }
+        // Slack is an external side effect: it cannot join the transaction and
+        // is therefore at-least-once (a retried event may notify twice).
         if (current?.status === status) {
           await this.notifications.sendSlack({
             templateKey: 'hiringRequestUpdated',

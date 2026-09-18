@@ -1,4 +1,4 @@
-import { addIsoDays, toId, type ApplicationId, type EmployeeId, type HiringRequestId, type OrganizationId, type UserId } from '@hrms/shared';
+import { addIsoDays, toId, type ApplicationId, type EmployeeId, type HiringRequestId, type OrganizationId, type PositionId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
@@ -9,6 +9,7 @@ import { DomainEventPublisher } from '../../core/events/domain-event-publisher.s
 import { PlatformScopeService } from '../../core/tenancy/platform-scope.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+import { AssignmentService } from '../assignment/assignment.service';
 import { EmployeeService } from '../employee/employee.service';
 import { PositionService } from '../position/position.service';
 
@@ -53,6 +54,7 @@ export class OfferService {
     @Inject(JOB_POSTING_REPOSITORY) private readonly postings: TenantScopedRepository<JobPosting>,
     private readonly employees: EmployeeService,
     private readonly positions: PositionService,
+    private readonly assignments: AssignmentService,
     private readonly publisher: DomainEventPublisher,
     private readonly recruitment: RecruitmentService,
     private readonly platformScope: PlatformScopeService,
@@ -313,8 +315,10 @@ export class OfferService {
           // lookup is only the fallback for a request with no established link
           // (titles are neither unique nor immutable, so resolving by title
           // here could fill a different position than the request owns).
+          let filledPositionId: string | null = null;
           if (filled.positionId) {
             await this.positions.setStatus(filled.positionId, 'filled', manager);
+            filledPositionId = filled.positionId;
           } else {
             const position = await this.positions.ensureByTitle(posting.title, manager);
             // Link before filling: if a competing transaction linked the request
@@ -332,6 +336,7 @@ export class OfferService {
             if (linked) {
               filled.positionId = position.id;
               await this.positions.setStatus(position.id, 'filled', manager);
+              filledPositionId = position.id;
             } else {
               // A competing link won: fill the request's actual position, and
               // touch nothing when there is none (the durable consumer
@@ -344,8 +349,26 @@ export class OfferService {
               });
               if (current?.positionId) {
                 await this.positions.setStatus(current.positionId, 'filled', manager);
+                filledPositionId = current.positionId;
               }
             }
+          }
+
+          // The hire's position link, in the same client-org transaction as the
+          // employee and the filled position: the new joiner is assigned from
+          // day one (startDate), not only once someone edits their manager.
+          if (filledPositionId) {
+            await this.assignments.create(
+              {
+                employeeId: toId<EmployeeId>(employee.id),
+                positionId: toId<PositionId>(filledPositionId),
+                validFrom: offer.startDate,
+                assignmentType: 'primary',
+                isPrimary: true,
+                reportsToEmployeeId: null,
+              },
+              manager,
+            );
           }
         },
         manager,

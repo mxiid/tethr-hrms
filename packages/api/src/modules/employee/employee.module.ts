@@ -8,7 +8,7 @@ import { AssignmentModule } from '../assignment/assignment.module';
 import { OrganizationModule } from '../organization/organization.module';
 import { PositionModule } from '../position/position.module';
 
-import { EmployeeDirectoryService } from './employee-directory.service';
+import { EmployeeDirectoryModule } from './employee-directory.module';
 import { EmployeeEducationService } from './employee-education.service';
 import { EmployeeExitInterviewService } from './employee-exit-interview.service';
 import { EmployeeOffboardingService } from './employee-offboarding.service';
@@ -24,7 +24,6 @@ import {
   EMPLOYEE_OFFBOARDING_TASK_REPOSITORY,
   EMPLOYEE_PERSONAL_DETAILS_REPOSITORY,
   EMPLOYEE_PROFILE_REPOSITORY,
-  EMPLOYEE_REPOSITORY,
   EMPLOYEE_SEPARATION_REPOSITORY,
   EMPLOYEE_WORK_HISTORY_REPOSITORY,
 } from './employee.tokens';
@@ -54,10 +53,10 @@ import { Employee } from './entities/employee.entity';
     AssignmentModule,
     PositionModule,
     OrganizationModule,
+    EmployeeDirectoryModule,
   ],
   providers: [
     EmployeeService,
-    EmployeeDirectoryService,
     EmployeeProfileService,
     EmployeePersonalDetailsService,
     EmployeeEducationService,
@@ -66,7 +65,6 @@ import { Employee } from './entities/employee.entity';
     EmployeeExitInterviewService,
     EmployeeOffboardingService,
     EmployeeResolver,
-    provideTenantScopedRepository(EMPLOYEE_REPOSITORY, Employee),
     provideTenantScopedRepository(EMPLOYEE_PROFILE_REPOSITORY, EmployeeProfile),
     provideTenantScopedRepository(EMPLOYEE_PERSONAL_DETAILS_REPOSITORY, EmployeePersonalDetails),
     provideTenantScopedRepository(EMPLOYEE_EDUCATION_REPOSITORY, EmployeeEducation),
@@ -77,7 +75,7 @@ import { Employee } from './entities/employee.entity';
   ],
   exports: [
     EmployeeService,
-    EmployeeDirectoryService,
+    EmployeeDirectoryModule,
     EmployeeProfileService,
     EmployeePersonalDetailsService,
     EmployeeEducationService,

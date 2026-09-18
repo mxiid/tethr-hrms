@@ -7,9 +7,12 @@ export class DecideLeaveRequestInput {
   @IsUUID()
   leaveRequestId!: string;
 
-  @Field(() => ID)
+  // Deprecated and ignored: decisions are recorded as the session user. Kept
+  // optional so existing clients that still send it keep working.
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
   @IsUUID()
-  decidedByUserId!: string;
+  decidedByUserId?: string;
 
   @Field(() => String, { nullable: true })
   @IsOptional()

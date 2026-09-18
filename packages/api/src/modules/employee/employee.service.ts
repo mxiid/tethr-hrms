@@ -13,7 +13,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type EntityManager } from 'typeorm';
 
-import { NotFoundError } from '../../common/errors';
+import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
@@ -23,6 +23,8 @@ import { EMPLOYEE_REPOSITORY } from './employee.tokens';
 import { EmployeeOffboardingTask } from './entities/employee-offboarding-task.entity';
 import { EmployeeSeparation } from './entities/employee-separation.entity';
 import { Employee } from './entities/employee.entity';
+
+const todayIso = (): IsoDate => new Date().toISOString().slice(0, 10);
 
 type CreateEmployeeData = {
   readonly employeeNumber: string;
@@ -225,9 +227,25 @@ export class EmployeeService {
     const result = await this.dataSource.transaction(async (manager) => {
       const entity = await manager.findOne(Employee, {
         where: { id: input.employeeId, organizationId },
+        // Lock the row: two concurrent separations must not both pass the
+        // status check and write duplicate separation rows/events.
+        lock: { mode: 'pessimistic_write' },
       });
       if (!entity) {
         throw new NotFoundError('Employee not found', { id: input.employeeId });
+      }
+      if (entity.employmentStatus === 'terminated') {
+        throw new ConflictError('Employee is already terminated', { id: input.employeeId });
+      }
+      // Scheduled application does not exist yet (BACKLOG-1): applying a
+      // future-dated separation now would disable login, close pay/benefits,
+      // and settle on the spot. Reject until the date arrives.
+      const today = todayIso();
+      if (input.effectiveDate > today) {
+        throw new ValidationFailedError('effectiveDate cannot be in the future', {
+          effectiveDate: input.effectiveDate,
+          today,
+        });
       }
       entity.employmentStatus = 'terminated';
       entity.terminationDate = input.effectiveDate;
@@ -317,32 +335,37 @@ export class EmployeeService {
     id: EmployeeId,
     roleTitle: string | null,
     updatedByUserId: UserId,
+    manager?: EntityManager,
   ): Promise<Employee> {
     const organizationId = this.tenantContext.getOrganizationId();
-    const employee = await this.dataSource.transaction(async (manager) => {
-      const entity = await manager.findOne(Employee, { where: { id, organizationId } });
+    const run = async (target: EntityManager): Promise<Employee> => {
+      const entity = await target.findOne(Employee, { where: { id, organizationId } });
       if (!entity) {
         throw new NotFoundError('Employee not found', { id });
       }
       entity.roleTitle = roleTitle;
-      const saved = await manager.save(entity);
-      await this.publisher.publishWithin(manager, {
+      const saved = await target.save(entity);
+      await this.publisher.publishWithin(target, {
         name: 'employee.updated',
         payload: {
           employeeId: toId<EmployeeId>(saved.id),
           changedFields: ['roleTitle'],
         },
       });
+      // Audited in the same transaction: a caller rollback must not leave an
+      // audit row for an update that did not commit.
+      await this.audit.record(
+        {
+          action: 'update',
+          resourceType: 'employee',
+          resourceId: saved.id,
+          after: { roleTitle: saved.roleTitle, updatedByUserId },
+        },
+        target,
+      );
       return saved;
-    });
-
-    await this.audit.record({
-      action: 'update',
-      resourceType: 'employee',
-      resourceId: employee.id,
-      after: { roleTitle: employee.roleTitle, updatedByUserId },
-    });
-    return employee;
+    };
+    return manager ? run(manager) : this.dataSource.transaction(run);
   }
 
   list(): Promise<Employee[]> {

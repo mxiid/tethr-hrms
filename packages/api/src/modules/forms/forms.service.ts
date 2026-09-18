@@ -7,7 +7,7 @@ import {
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { NotFoundError, ValidationFailedError } from '../../common/errors';
 import { ConfigService } from '../../core/config/config.service';
@@ -236,9 +236,12 @@ export class FormsService {
     const tickets = await this.verifyUploadTickets(publicForm.fields, input.data);
 
     // Claim every ticket and insert the submission in one transaction: a ticket
-    // can back exactly one submission even under concurrent requests.
+    // can back exactly one submission even under concurrent requests. The
+    // form.submitted event joins the same transaction (transactional outbox) —
+    // a crash between the insert and the publish can no longer drop the ATS
+    // intake, and a rolled-back submission never emits.
     const organizationId = this.tenantContext.getOrganizationId();
-    const submission = await this.dataSource.transaction(async (manager) => {
+    return this.dataSource.transaction(async (manager) => {
       for (const ticket of tickets) {
         const claim = await manager
           .createQueryBuilder()
@@ -251,7 +254,7 @@ export class FormsService {
           throw new ValidationFailedError('That uploaded file was already submitted');
         }
       }
-      return manager.save(
+      const submission = await manager.save(
         manager.create(FormSubmission, {
           organizationId,
           formId: input.formId,
@@ -265,16 +268,16 @@ export class FormsService {
           targetRefId: null,
         }),
       );
+      await this.publisher.publishWithin(manager, {
+        name: 'form.submitted',
+        payload: {
+          formId: input.formId,
+          submissionId: toId<FormSubmissionId>(submission.id),
+          target: publicForm.form.target,
+        },
+      });
+      return submission;
     });
-    await this.publisher.publish({
-      name: 'form.submitted',
-      payload: {
-        formId: input.formId,
-        submissionId: toId<FormSubmissionId>(submission.id),
-        target: publicForm.form.target,
-      },
-    });
-    return submission;
   }
 
   // The application form's template. Idempotent by slug; the first consumer of
@@ -311,24 +314,43 @@ export class FormsService {
     submissionId: FormSubmissionId,
     refType: string,
     refId: string,
+    manager?: EntityManager,
   ): Promise<void> {
-    const submission = await this.submissions.findById(submissionId);
+    const submission = manager
+      ? await manager.findOne(FormSubmission, {
+          where: {
+            id: submissionId,
+            organizationId: this.tenantContext.getOrganizationId(),
+          } as FindOptionsWhere<FormSubmission>,
+        })
+      : await this.submissions.findById(submissionId);
     if (!submission) return;
     submission.status = 'projected';
     submission.statusReason = null;
     submission.targetRefType = refType;
     submission.targetRefId = refId;
-    await this.submissions.save(submission);
+    await (manager ? manager.save(submission) : this.submissions.save(submission));
   }
 
   // The target refused the submission (e.g. the posting closed before it
   // arrived). Kept with a reason rather than dropped.
-  async markSubmissionRejected(submissionId: FormSubmissionId, reason: string): Promise<void> {
-    const submission = await this.submissions.findById(submissionId);
+  async markSubmissionRejected(
+    submissionId: FormSubmissionId,
+    reason: string,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const submission = manager
+      ? await manager.findOne(FormSubmission, {
+          where: {
+            id: submissionId,
+            organizationId: this.tenantContext.getOrganizationId(),
+          } as FindOptionsWhere<FormSubmission>,
+        })
+      : await this.submissions.findById(submissionId);
     if (!submission) return;
     submission.status = 'rejected';
     submission.statusReason = reason;
-    await this.submissions.save(submission);
+    await (manager ? manager.save(submission) : this.submissions.save(submission));
   }
 
   private assertFieldDefinition(field: CreateFormFieldData): void {

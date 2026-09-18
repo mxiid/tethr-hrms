@@ -90,6 +90,7 @@ const buildService = (options: {
     save: jest.fn((value: Record<string, unknown>) =>
       Promise.resolve(value.id ? value : { id: 'revision-1', ...value }),
     ),
+    query: jest.fn().mockResolvedValue(undefined),
   } as unknown as EntityManager;
   const taxProfiles = {
     find: jest.fn(async () => []),
@@ -195,6 +196,36 @@ describe('CompensationService.reviseSalary', () => {
         annualAmount: 132000,
       }),
     ).rejects.toThrow(/future revision/);
+  });
+
+  it('serializes concurrent revisions with an advisory lock', async () => {
+    const { service, manager } = buildService({});
+
+    await service.reviseSalary({
+      employeeId: EMPLOYEE,
+      salaryStructureId: STRUCTURE,
+      effectiveDate: '2026-07-01',
+      annualAmount: 132000,
+    });
+
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [expect.stringContaining('salary-revision:')],
+    );
+  });
+
+  it('translates a unique-index loss into a clean conflict', async () => {
+    const { service, manager } = buildService({});
+    (manager.save as jest.Mock).mockRejectedValueOnce({ driverError: { code: '23505' } });
+
+    await expect(
+      service.reviseSalary({
+        employeeId: EMPLOYEE,
+        salaryStructureId: STRUCTURE,
+        effectiveDate: '2026-07-01',
+        annualAmount: 132000,
+      }),
+    ).rejects.toThrow(/already exists/);
   });
 
   it('requires the employee to exist through the employee directory interface', async () => {

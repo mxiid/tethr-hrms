@@ -34,11 +34,11 @@ export class EmployeeLifecycleConsumer implements OnModuleInit {
       return;
     }
     const { employeeId } = event.payload;
-    await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
+    await this.idempotency.runOnce(CONSUMER_NAME, event, (manager) =>
       // The relay runs outside any request, so establish the tenant from the
       // event before touching tenant-scoped data.
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
-        const disabled = await this.authService.disableUsersForEmployee(employeeId);
+        const disabled = await this.authService.disableUsersForEmployee(employeeId, manager);
         this.logger.log(`Disabled ${disabled} login(s) for a terminated employee`);
       }),
     );

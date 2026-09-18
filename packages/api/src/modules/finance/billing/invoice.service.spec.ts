@@ -99,7 +99,12 @@ const buildService = () => {
     findOne: jest.fn(),
     count: jest.fn(async () => 0),
     remove: jest.fn(async (entity: unknown) => entity),
+    // Nested transactions are savepoints in TypeORM; run the callback inline.
+    transaction: jest.fn(),
   };
+  (manager.transaction as jest.Mock).mockImplementation(
+    (callback: (m: typeof manager) => Promise<unknown>) => callback(manager),
+  );
   const dataSource = {
     transaction: jest.fn(async (cb: (mgr: typeof manager) => Promise<unknown>) => cb(manager)),
   };
@@ -111,6 +116,7 @@ const buildService = () => {
     find: jest.fn(async () => []) as jest.Mock,
     findOne: jest.fn(async () => null) as jest.Mock,
     findById: jest.fn(async () => null) as jest.Mock,
+    create: jest.fn((value: unknown) => value),
     save: jest.fn(async (v: unknown) => v),
     count: jest.fn(async () => 0),
   };
@@ -191,6 +197,21 @@ describe('InvoiceService.draftInvoicesFromRun', () => {
     // Aug catch-up: 900 × 14/21 working days; Sep full rate; PEPM fee.
     expect(amounts).toEqual(['600.00', '900.00', '300.00']);
     expect(Number(invoiceAttrs.totalAmount)).toBe(1800);
+  });
+
+  it('stamps the tenant on a caller-transaction cost snapshot', async () => {
+    const { service, mocks } = buildService();
+
+    await service.draftInvoicesFromRun('run-1', mocks.manager as unknown as EntityManager);
+
+    const snapshotAttrs = mocks.manager.create.mock.calls.find(
+      ([target]) => target === PayrollCostSnapshot,
+    )?.[1] as Record<string, unknown> | undefined;
+    expect(snapshotAttrs?.organizationId).toBe(ORG);
+    expect(mocks.manager.findOne).toHaveBeenCalledWith(
+      PayrollCostSnapshot,
+      expect.objectContaining({ where: expect.objectContaining({ organizationId: ORG }) }),
+    );
   });
 
   it('is a no-op when the service month is already covered for the group', async () => {
@@ -637,6 +658,41 @@ describe('InvoiceService.addExpenseClaimLines', () => {
     ]);
     const retry = await service.addExpenseClaimLines(claimLines);
     expect(retry.addedLines).toBe(0);
+  });
+
+  it('locks the invoice before allocating a line sort order', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findById.mockResolvedValue({ id: INVOICE_ID, status: 'draft' });
+    mocks.manager.findOne = jest.fn(async () => ({
+      id: INVOICE_ID,
+      status: 'draft',
+      organizationId: ORG,
+    }));
+    mocks.manager.count = jest.fn(async () => 2);
+    (mocks.manager.create as jest.Mock).mockImplementation(
+      (_entity: unknown, value: Record<string, unknown>) => value,
+    );
+    (mocks.manager.save as jest.Mock).mockImplementation(
+      async (value: Record<string, unknown>) => ({ id: 'line-3', ...value }),
+    );
+
+    await service.addDraftLine(INVOICE_ID, { description: 'Taxi', unitPrice: 100 });
+
+    expect(mocks.manager.findOne).toHaveBeenCalledWith(
+      Invoice,
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+    expect(mocks.manager.save).toHaveBeenCalledWith(expect.objectContaining({ sortOrder: 2 }));
+  });
+
+  it('reports a duplicate expenses invoice as a conflict when the pre-check races', async () => {
+    const { service, mocks } = buildService();
+    mocks.invoices.findOne.mockResolvedValue(null);
+    mocks.invoices.save.mockRejectedValueOnce({ driverError: { code: '23505' } });
+
+    await expect(service.openDraftExpensesInvoice(GROUP, 2026, 9)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
   });
 });
 
