@@ -285,8 +285,17 @@ export class AtsService {
     return this.candidates.find({ order: { createdAt: 'DESC' } });
   }
 
-  async getCandidate(id: CandidateId): Promise<Candidate> {
-    const candidate = await this.candidates.findById(id);
+  async getCandidate(id: CandidateId, manager?: EntityManager): Promise<Candidate> {
+    // Callers inside a unit of work pass their manager so a candidate created
+    // earlier in that same transaction is visible (application intake).
+    const candidate = manager
+      ? await manager.getRepository(Candidate).findOne({
+          where: {
+            id,
+            organizationId: this.tenantContext.getOrganizationId(),
+          } as FindOptionsWhere<Candidate>,
+        })
+      : await this.candidates.findById(id);
     if (!candidate) {
       throw new NotFoundError('Candidate not found', { id });
     }

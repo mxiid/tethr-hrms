@@ -1,10 +1,12 @@
 import {
   toId,
+  type CandidateId,
   type FormId,
   type FormSubmissionId,
   type HiringRequestId,
   type OrganizationId,
 } from '@hrms/shared';
+import type { EntityManager } from 'typeorm';
 
 import type { AuditService } from '../../core/audit/audit.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
@@ -145,6 +147,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
     return value;
   };
   type ManagerMock = {
+    getRepository: jest.Mock;
     findOne: jest.Mock;
     find: jest.Mock;
     create: jest.Mock;
@@ -152,6 +155,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
     transaction: jest.Mock;
   };
   const manager: ManagerMock = {
+    getRepository: jest.fn((entity: unknown) => pickRepository(entity)),
     findOne: jest.fn(async (entity: unknown, options?: unknown) => {
       const repository = pickRepository(entity);
       const value = await repository.findOne(options);
@@ -278,6 +282,24 @@ describe('AtsService', () => {
       expect.objectContaining({ candidateDocumentId: 'document-1' }),
       { jobId: 'parse-cv:document-1' },
     );
+  });
+
+  it('reads a candidate through the caller transaction when supplied', async () => {
+    const { service, candidates, manager } = buildService();
+    // The default connection cannot see a candidate the same transaction just
+    // created; the manager-bound read can.
+    (candidates.findById as jest.Mock).mockResolvedValue(null);
+    (candidates.findOne as jest.Mock).mockResolvedValue({
+      id: 'candidate-1',
+      email: 'ada@example.com',
+    });
+
+    const candidate = await service.getCandidate(
+      toId<CandidateId>('candidate-1'),
+      manager as unknown as EntityManager,
+    );
+
+    expect(candidate.id).toBe('candidate-1');
   });
 
   it('validates application updates', async () => {

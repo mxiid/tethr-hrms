@@ -584,4 +584,23 @@ describe('RecruitmentService', () => {
       expect.objectContaining({ order: { createdAt: 'ASC' } }),
     );
   });
+
+  it('reloads a reconciliation through the caller transaction when a manager is supplied', async () => {
+    const { service, manager } = buildService(makeRequest({ status: 'open', positionId: null }));
+    // The transaction links the request; the manager-bound reload sees the
+    // in-transaction positionId instead of the stale committed row.
+    (manager.findOne as jest.Mock)
+      .mockResolvedValueOnce(makeRequest({ status: 'open', positionId: null }))
+      .mockResolvedValueOnce(makeRequest({ status: 'open', positionId: 'position-1' }));
+
+    const latest = await service.reconcilePositionForRequest(REQUEST, manager);
+
+    expect(latest?.positionId).toBe('position-1');
+    expect(manager.findOne).toHaveBeenCalledWith(
+      HiringRequest,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: REQUEST, organizationId: ORGANIZATION }),
+      }),
+    );
+  });
 });

@@ -185,6 +185,11 @@ describe('AssignmentService.end', () => {
       expect.anything(),
       expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
     );
+    // Direct ends share setReportingLine's serialization boundary.
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [expect.stringContaining('reporting-line:')],
+    );
   });
 });
 

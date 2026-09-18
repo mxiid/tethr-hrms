@@ -438,10 +438,10 @@ export class RecruitmentService {
     manager?: EntityManager,
   ): Promise<HiringRequest | null> {
     const maxAttempts = 3;
-    let request = await this.hiringRequests.findById(hiringRequestId);
+    let request = await this.findRequest(hiringRequestId, manager);
     for (let attempt = 0; attempt < maxAttempts && request; attempt += 1) {
       await this.reconcilePosition(request, manager);
-      const latest = await this.hiringRequests.findById(hiringRequestId);
+      const latest = await this.findRequest(hiringRequestId, manager);
       if (!latest || latest.status === request.status) {
         return latest;
       }
@@ -455,6 +455,24 @@ export class RecruitmentService {
       await this.reconcilePosition(request, manager);
     }
     return request;
+  }
+
+  // Fresh reads join the caller's transaction when one is supplied, so an
+  // in-transaction link is visible on the reload; otherwise the tenant
+  // repository serves the committed state.
+  private findRequest(
+    hiringRequestId: string,
+    manager?: EntityManager,
+  ): Promise<HiringRequest | null> {
+    if (manager) {
+      return manager.findOne(HiringRequest, {
+        where: {
+          id: hiringRequestId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<HiringRequest>,
+      });
+    }
+    return this.hiringRequests.findById(hiringRequestId);
   }
 
   // Links an unlinked request to a position with a targeted update: only

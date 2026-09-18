@@ -43,6 +43,7 @@ export class ApplicationIntakeConsumer implements OnModuleInit {
 
         const candidate = await this.ats.getCandidate(
           toId<CandidateId>(application.candidateId),
+          manager,
         );
         const postings = await this.ats.postingsByIds([application.jobPostingId]);
         // Email is an external side effect: it cannot join the transaction and

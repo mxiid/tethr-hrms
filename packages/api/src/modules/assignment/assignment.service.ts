@@ -120,6 +120,12 @@ export class AssignmentService {
   async end(id: string, effectiveDate: IsoDate, manager?: EntityManager): Promise<Assignment> {
     const organizationId = this.tenantContext.getOrganizationId();
     const run = async (target: EntityManager): Promise<Assignment> => {
+      // Same workspace-wide boundary as setReportingLine: a direct end must not
+      // race a same-day correction whose stale entity could write validTo back
+      // to null. Re-entrant when called from setReportingLine's transaction.
+      await target.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `reporting-line:${organizationId}`,
+      ]);
       const entity = await target.findOne(Assignment, {
         where: { id, organizationId },
         // Lock the row: two concurrent ends must not both see validTo null and
