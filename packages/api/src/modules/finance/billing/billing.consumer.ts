@@ -27,7 +27,7 @@ export class PayrollFinalizedBillingConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('payroll.finalized', (event) => this.handle(event));
+    this.eventBus.register('payroll.finalized', CONSUMER_NAME, (event) => this.handle(event));
   }
 
   private async handle(event: DomainEvent): Promise<void> {
@@ -67,7 +67,11 @@ export class EmployeeTerminatedBillingConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('employee.terminated', (event) => this.handle(event));
+    this.eventBus.register(
+      'employee.terminated',
+      TERMINATION_CONSUMER_NAME,
+      (event) => this.handle(event),
+    );
   }
 
   private async handle(event: DomainEvent): Promise<void> {

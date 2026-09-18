@@ -18,9 +18,11 @@ const REQUEST = toId<HiringRequestId>('request-1');
 const buildConsumer = (status: string, currentStatus: string = status) => {
   let handler: ((event: DomainEvent) => Promise<void>) | null = null;
   const eventBus = {
-    register: jest.fn((_name: string, next: (event: DomainEvent) => Promise<void>) => {
-      handler = next;
-    }),
+    register: jest.fn(
+      (_name: string, _consumerName: string, next: (event: DomainEvent) => Promise<void>) => {
+        handler = next;
+      },
+    ),
   } as unknown as EventBus;
   const manager = { id: 'manager' } as unknown as EntityManager;
   const idempotency = {

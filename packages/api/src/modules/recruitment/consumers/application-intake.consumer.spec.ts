@@ -6,8 +6,9 @@ import type { EventBus } from '../../../core/events/event-bus.service';
 import type { IdempotencyService } from '../../../core/events/idempotency.service';
 import type { NotificationService } from '../../../core/notifications/notification.service';
 import type { TenantContextService } from '../../../core/tenancy/tenant-context.service';
-import { ApplicationIntakeConsumer } from './application-intake.consumer';
 import type { AtsService } from '../ats.service';
+
+import { ApplicationIntakeConsumer } from './application-intake.consumer';
 
 const CLIENT = toId<OrganizationId>('org-client');
 const SUBMISSION = toId<FormSubmissionId>('submission-1');
@@ -16,9 +17,11 @@ const FORM = toId<FormId>('form-1');
 const buildConsumer = () => {
   let handler: ((event: DomainEvent) => Promise<void>) | null = null;
   const eventBus = {
-    register: jest.fn((_name: string, next: (event: DomainEvent) => Promise<void>) => {
-      handler = next;
-    }),
+    register: jest.fn(
+      (_name: string, _consumerName: string, next: (event: DomainEvent) => Promise<void>) => {
+        handler = next;
+      },
+    ),
   } as unknown as EventBus;
   const manager = { id: 'manager' } as unknown as EntityManager;
   const idempotency = {

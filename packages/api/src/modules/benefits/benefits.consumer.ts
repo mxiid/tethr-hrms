@@ -23,7 +23,7 @@ export class EmployeeTerminatedBenefitsConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('employee.terminated', (event) => this.handle(event));
+    this.eventBus.register('employee.terminated', CONSUMER_NAME, (event) => this.handle(event));
   }
 
   private async handle(event: DomainEvent): Promise<void> {
