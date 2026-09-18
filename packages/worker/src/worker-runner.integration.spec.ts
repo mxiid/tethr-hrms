@@ -2,9 +2,10 @@ import { Queue, QueueEvents, Worker, type ConnectionOptions } from 'bullmq';
 
 import { route } from './worker-runner';
 
-// Real-Redis round trip, skipped unless REDIS_INTEGRATION=1 so the default
-// suite stays infrastructure-free:
-//   REDIS_INTEGRATION=1 npm test -w @hrms/worker
+// Real-Redis round trip. The default suite skips it so `npm test` stays
+// infrastructure-free; run it explicitly (the pretest guard fails when the env
+// var is missing):
+//   REDIS_INTEGRATION=1 npm run test:integration -w @hrms/worker
 const describeIntegration = process.env.REDIS_INTEGRATION === '1' ? describe : describe.skip;
 
 const connection: ConnectionOptions = {
