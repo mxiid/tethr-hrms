@@ -2,7 +2,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-import { Controller, Get, NotFoundException, Put, Query, Req, Res } from '@nestjs/common';
+import { Controller, Get, Logger, NotFoundException, Put, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 import { ConfigService } from '../config/config.service';
@@ -21,6 +21,8 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 @Controller('storage/local')
 export class LocalStorageController {
+  private readonly logger = new Logger(LocalStorageController.name);
+
   constructor(private readonly config: ConfigService) {}
 
   @Put('upload')
@@ -95,7 +97,19 @@ export class LocalStorageController {
     }
     response.setHeader('Content-Type', contentType || 'application/octet-stream');
     response.setHeader('Cache-Control', 'private, max-age=0, no-store');
-    createReadStream(filePath).pipe(response);
+    const stream = createReadStream(filePath);
+    // A read error after the headers are sent cannot become a JSON response;
+    // without this listener the stream's unhandled 'error' event would crash
+    // the process. Log it and tear the socket down instead.
+    stream.on('error', (error: Error) => {
+      this.logger.error(`Local download failed for ${storageKey}: ${error.message}`);
+      if (!response.headersSent) {
+        response.status(500).json({ error: 'Object could not be read' });
+      } else {
+        response.destroy();
+      }
+    });
+    stream.pipe(response);
   }
 
   private assertEnabled(): void {
