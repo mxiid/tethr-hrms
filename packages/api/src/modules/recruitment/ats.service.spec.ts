@@ -1,10 +1,12 @@
 import {
   toId,
+  type CandidateId,
   type FormId,
   type FormSubmissionId,
   type HiringRequestId,
   type OrganizationId,
 } from '@hrms/shared';
+import type { EntityManager } from 'typeorm';
 
 import type { AuditService } from '../../core/audit/audit.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
@@ -67,6 +69,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
   } as unknown as TenantScopedRepository<CandidateDocument>;
   const cvParses = {
     findOne: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue([]),
     create: jest.fn((value: unknown) => value),
     save: jest.fn((value: unknown) => Promise.resolve({ id: 'parse-1', ...(value as object) })),
   } as unknown as TenantScopedRepository<CvParse>;
@@ -123,6 +126,57 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
   } as unknown as PlatformScopeService;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
 
+  // The projection runs on the transaction manager now; route its entity-scoped
+  // calls back to the repository mocks so tests keep steering one surface.
+  type RepositoryLike = {
+    findOne: jest.Mock;
+    find: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+  };
+  const pickRepository = (entity: unknown): RepositoryLike => {
+    const name = (entity as { name?: string }).name;
+    if (name === 'Application') return applications as unknown as RepositoryLike;
+    if (name === 'Candidate') return candidates as unknown as RepositoryLike;
+    if (name === 'CandidateDocument') return documents as unknown as RepositoryLike;
+    if (name === 'CvParse') return cvParses as unknown as RepositoryLike;
+    throw new Error(`No repository mock registered for ${String(name)}`);
+  };
+  const withRepositoryMarker = <T extends object>(value: T, repository: RepositoryLike): T => {
+    Object.defineProperty(value, '__repository', { value: repository, enumerable: false });
+    return value;
+  };
+  type ManagerMock = {
+    getRepository: jest.Mock;
+    findOne: jest.Mock;
+    find: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    transaction: jest.Mock;
+  };
+  const manager: ManagerMock = {
+    getRepository: jest.fn((entity: unknown) => pickRepository(entity)),
+    findOne: jest.fn(async (entity: unknown, options?: unknown) => {
+      const repository = pickRepository(entity);
+      const value = await repository.findOne(options);
+      return value && typeof value === 'object'
+        ? withRepositoryMarker(value as object, repository)
+        : value;
+    }),
+    find: jest.fn((entity: unknown, options?: unknown) => pickRepository(entity).find(options)),
+    create: jest.fn((entity: unknown, data: unknown) =>
+      withRepositoryMarker(pickRepository(entity).create(data) as object, pickRepository(entity)),
+    ),
+    save: jest.fn((value: Record<string, unknown>) => {
+      const repository = (value as { __repository?: RepositoryLike }).__repository;
+      return repository ? repository.save(value) : Promise.resolve(value);
+    }),
+    transaction: jest.fn((callback: (inner: unknown) => Promise<unknown>) => callback(manager)),
+  };
+  const dataSource = {
+    transaction: jest.fn((callback: (inner: unknown) => Promise<unknown>) => callback(manager)),
+  };
+
   return {
     service: new AtsService(
       jobPostings,
@@ -133,6 +187,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
       hiringRequests,
       forms,
       queue,
+      dataSource as never,
       tenantContext,
       platformScope,
       audit,
@@ -146,6 +201,7 @@ const buildService = (options: { request?: HiringRequest | null } = {}) => {
     queue,
     platformScope,
     audit,
+    manager,
   };
 };
 describe('AtsService', () => {
@@ -170,12 +226,15 @@ describe('AtsService', () => {
     );
     expect(documents.save).toHaveBeenCalled();
     expect(cvParses.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
-    expect(queue.add).toHaveBeenCalledWith(
-      'hrms-default',
-      'parse-cv',
-      expect.objectContaining({ candidateDocumentId: 'document-1' }),
+    // No Redis call inside the transaction: the consumer enqueues after the
+    // ledger transaction commits (see reconcilePendingCvParses below).
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(forms.markSubmissionProjected).toHaveBeenCalledWith(
+      SUBMISSION,
+      'application',
+      'application-1',
+      expect.anything(),
     );
-    expect(forms.markSubmissionProjected).toHaveBeenCalledWith(SUBMISSION, 'application', 'application-1');
   });
 
   it('ignores a submission with no posting context', async () => {
@@ -206,6 +265,41 @@ describe('AtsService', () => {
     expect(candidates.save).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'candidate-1', fullName: 'Ada Lovelace' }),
     );
+  });
+
+  it('re-enqueues pending parses with the document id as the dedupe jobId', async () => {
+    const { service, cvParses, queue } = buildService();
+    (cvParses.find as jest.Mock).mockResolvedValue([
+      { id: 'parse-1', candidateDocumentId: 'document-1', status: 'pending' },
+    ]);
+
+    const enqueued = await service.reconcilePendingCvParses();
+
+    expect(enqueued).toBe(1);
+    expect(queue.add).toHaveBeenCalledWith(
+      'hrms-default',
+      'parse-cv',
+      expect.objectContaining({ candidateDocumentId: 'document-1' }),
+      { jobId: 'parse-cv:document-1' },
+    );
+  });
+
+  it('reads a candidate through the caller transaction when supplied', async () => {
+    const { service, candidates, manager } = buildService();
+    // The default connection cannot see a candidate the same transaction just
+    // created; the manager-bound read can.
+    (candidates.findById as jest.Mock).mockResolvedValue(null);
+    (candidates.findOne as jest.Mock).mockResolvedValue({
+      id: 'candidate-1',
+      email: 'ada@example.com',
+    });
+
+    const candidate = await service.getCandidate(
+      toId<CandidateId>('candidate-1'),
+      manager as unknown as EntityManager,
+    );
+
+    expect(candidate.id).toBe('candidate-1');
   });
 
   it('validates application updates', async () => {
@@ -334,6 +428,7 @@ describe('AtsService intake integrity', () => {
     expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
       SUBMISSION,
       'A valid candidate email is required',
+      expect.anything(),
     );
   });
 
@@ -357,6 +452,7 @@ describe('AtsService intake integrity', () => {
     expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
       SUBMISSION,
       'The submission is missing its posting context',
+      expect.anything(),
     );
   });
 
@@ -370,6 +466,7 @@ describe('AtsService intake integrity', () => {
     expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
       SUBMISSION,
       'You already have an active application for this role',
+      expect.anything(),
     );
     expect(applications.save).not.toHaveBeenCalled();
   });
@@ -384,6 +481,7 @@ describe('AtsService intake integrity', () => {
     expect(forms.markSubmissionRejected).toHaveBeenCalledWith(
       SUBMISSION,
       'You already have an active application for this role',
+      expect.anything(),
     );
   });
 

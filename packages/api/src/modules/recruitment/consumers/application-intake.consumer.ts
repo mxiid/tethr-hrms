@@ -35,16 +35,19 @@ export class ApplicationIntakeConsumer implements OnModuleInit {
       return;
     }
     const { submissionId } = event.payload;
-    await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
+    await this.idempotency.runOnce(CONSUMER_NAME, event, (manager) =>
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
-        const application = await this.ats.applyFormSubmission(submissionId);
+        const application = await this.ats.applyFormSubmission(submissionId, manager);
         if (!application) return;
         this.logger.log(`Application ${application.id} created from submission ${submissionId}`);
 
         const candidate = await this.ats.getCandidate(
           toId<CandidateId>(application.candidateId),
+          manager,
         );
         const postings = await this.ats.postingsByIds([application.jobPostingId]);
+        // Email is an external side effect: it cannot join the transaction and
+        // is therefore at-least-once, so it stays last.
         await this.notifications.send({
           channel: 'email',
           to: candidate.email,
@@ -55,6 +58,13 @@ export class ApplicationIntakeConsumer implements OnModuleInit {
           },
         });
       }),
+    );
+    // After the ledger transaction commits, enqueue parse jobs for the CvParse
+    // rows the projection left pending: Redis never runs inside the transaction,
+    // and the jobId makes this idempotent.
+    await this.tenantContext.run(
+      { organizationId: event.tenantId, userId: null },
+      () => this.ats.reconcilePendingCvParses(),
     );
   }
 }

@@ -1,8 +1,8 @@
+import type { EmployeeId } from '@hrms/shared';
 import { Column, Entity, Index } from 'typeorm';
 
 import { TenantScopedEntity } from '../../../core/database/entities/tenant-scoped.entity';
 
-import type { EmployeeId } from '@hrms/shared';
 
 type ClockType = 'in' | 'out';
 export type ClockSource = 'web' | 'mobile' | 'kiosk' | 'system';

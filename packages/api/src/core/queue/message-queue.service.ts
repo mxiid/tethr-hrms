@@ -18,8 +18,9 @@ export class MessageQueueService implements OnModuleDestroy {
     queueName: QueueName,
     jobName: TJob,
     payload: JobPayloads[TJob],
+    options?: { readonly jobId?: string },
   ): Promise<void> {
-    await this.queue(queueName).add(jobName, payload);
+    await this.queue(queueName).add(jobName, payload, options);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -34,7 +35,22 @@ export class MessageQueueService implements OnModuleDestroy {
       connection: {
         host: this.config.get('REDIS_HOST'),
         port: this.config.get('REDIS_PORT'),
-        maxRetriesPerRequest: null,
+        // The API is a producer only. Buffering commands in the offline queue
+        // would hang `add` forever when Redis is down, so fail fast. The client
+        // keeps reconnecting with a capped delay: giving up would leave the
+        // cached Queue dead forever, even after Redis returns.
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 5_000,
+        retryStrategy: (times) => Math.min(times * 500, 2_000),
+      },
+      // Same retry contract as the outbox (MAX_ATTEMPTS = 5): a job is retried
+      // with exponential backoff before it is left failed.
+      defaultJobOptions: {
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 1_000 },
+        removeOnComplete: { count: 1_000 },
+        removeOnFail: { count: 5_000 },
       },
     });
     this.queues.set(name, queue);

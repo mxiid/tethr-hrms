@@ -1,13 +1,14 @@
 import { toId, type EmployeeId, type OrganizationId, type UserId } from '@hrms/shared';
 import type { DataSource, EntityManager } from 'typeorm';
 
-import { TimesheetService } from './timesheet.service';
 
 import type { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
 import type { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+
 import type { TimeEntry } from './entities/time-entry.entity';
 import type { Timesheet } from './entities/timesheet.entity';
+import { TimesheetService } from './timesheet.service';
 
 const ORG = toId<OrganizationId>('org-1');
 const EMPLOYEE = toId<EmployeeId>('emp-1');
@@ -17,7 +18,9 @@ const buildService = (options: { timesheet: Partial<Timesheet>; entries?: Partia
   const manager = {
     findOne: jest.fn().mockResolvedValue(options.timesheet as Timesheet),
     find: jest.fn().mockResolvedValue((options.entries ?? []) as TimeEntry[]),
+    create: jest.fn((_entity: unknown, data: Record<string, unknown>) => data),
     save: jest.fn((value: Record<string, unknown>) => Promise.resolve(value)),
+    query: jest.fn().mockResolvedValue(undefined),
   } as unknown as EntityManager;
   const dataSource = {
     transaction: jest.fn((callback: (m: EntityManager) => Promise<unknown>) => callback(manager)),
@@ -34,7 +37,7 @@ const buildService = (options: { timesheet: Partial<Timesheet>; entries?: Partia
     publisher,
     tenantContext,
   );
-  return { service, publisher };
+  return { service, publisher, manager };
 };
 
 const baseTimesheet = (status: Timesheet['status']): Partial<Timesheet> => ({
@@ -64,6 +67,33 @@ describe('TimesheetService.submit', () => {
   });
 });
 
+describe('TimesheetService.open', () => {
+  it('rejects an overlapping period for the same employee', async () => {
+    const { service } = buildService({ timesheet: baseTimesheet('open') });
+
+    await expect(
+      service.open({ employeeId: EMPLOYEE, periodStart: '2026-06-15', periodEnd: '2026-07-15' }),
+    ).rejects.toThrow(/overlapping/);
+  });
+
+  it('opens a non-overlapping period under the attendance lock', async () => {
+    const { service, manager } = buildService({ timesheet: baseTimesheet('open') });
+    (manager.findOne as jest.Mock).mockResolvedValue(null);
+
+    const created = await service.open({
+      employeeId: EMPLOYEE,
+      periodStart: '2026-07-01',
+      periodEnd: '2026-07-31',
+    });
+
+    expect(created.status).toBe('open');
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [expect.stringContaining('attendance:')],
+    );
+  });
+});
+
 describe('TimesheetService.lock', () => {
   it('locks an approved timesheet and emits timesheet.locked (Payroll input)', async () => {
     const { service, publisher } = buildService({
@@ -82,5 +112,35 @@ describe('TimesheetService.lock', () => {
   it('refuses to lock a timesheet that is not approved', async () => {
     const { service } = buildService({ timesheet: baseTimesheet('open') });
     await expect(service.lock('ts-1')).rejects.toThrow(/approved before locking/);
+  });
+
+  it('stamps every in-period entry with the timesheet id when locking', async () => {
+    const entry = {
+      id: 'entry-1',
+      hours: '8.00',
+      timesheetId: null,
+    } as unknown as TimeEntry;
+    const { service } = buildService({
+      timesheet: baseTimesheet('approved'),
+      entries: [entry],
+    });
+
+    await service.lock('ts-1');
+
+    expect(entry.timesheetId).toBe('ts-1');
+  });
+
+  it('refuses to re-freeze an entry owned by another timesheet', async () => {
+    const entry = {
+      id: 'entry-1',
+      hours: '8.00',
+      timesheetId: 'ts-other',
+    } as unknown as TimeEntry;
+    const { service } = buildService({
+      timesheet: baseTimesheet('approved'),
+      entries: [entry],
+    });
+
+    await expect(service.lock('ts-1')).rejects.toThrow(/another timesheet/);
   });
 });

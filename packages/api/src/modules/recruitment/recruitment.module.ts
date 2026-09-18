@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../../core/auth/auth.module';
 import { AuthzModule } from '../../core/authz/authz.module';
 import { provideTenantScopedRepository } from '../../core/tenancy/tenant-repository.provider';
+import { AssignmentModule } from '../assignment/assignment.module';
 import { EmployeeModule } from '../employee/employee.module';
 import { FormsModule } from '../forms/forms.module';
 import { OrganizationModule } from '../organization/organization.module';
@@ -79,6 +80,7 @@ import { ShortlistService } from './shortlist.service';
     PositionModule,
     EmployeeModule,
     FormsModule,
+    AssignmentModule,
   ],
   providers: [
     RecruitmentService,

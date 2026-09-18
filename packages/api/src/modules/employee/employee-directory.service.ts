@@ -1,7 +1,9 @@
 import type { EmployeeId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { In, type FindOptionsWhere } from 'typeorm';
+import type { EntityManager, FindOptionsWhere } from 'typeorm';
+import { In } from 'typeorm';
 
+import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
 import { EMPLOYEE_REPOSITORY } from './employee.tokens';
@@ -15,6 +17,7 @@ import { Employee } from './entities/employee.entity';
 export class EmployeeDirectoryService {
   constructor(
     @Inject(EMPLOYEE_REPOSITORY) private readonly employees: TenantScopedRepository<Employee>,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   getById(employeeId: EmployeeId): Promise<Employee | null> {
@@ -32,7 +35,18 @@ export class EmployeeDirectoryService {
     });
   }
 
-  async exists(employeeId: EmployeeId): Promise<boolean> {
+  // A caller inside its own transaction passes the manager so a row written in
+  // that same transaction (offer acceptance's hire) is visible to the check.
+  async exists(employeeId: EmployeeId, manager?: EntityManager): Promise<boolean> {
+    if (manager) {
+      const found = await manager.getRepository(Employee).findOne({
+        where: {
+          id: employeeId,
+          organizationId: this.tenantContext.getOrganizationId(),
+        } as FindOptionsWhere<Employee>,
+      });
+      return found !== null;
+    }
     return (await this.employees.findById(employeeId)) !== null;
   }
 

@@ -6,7 +6,7 @@ import {
   type EmployeeId,
 } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { DataSource, In, IsNull, type FindOptionsWhere } from 'typeorm';
+import { DataSource, In, IsNull, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
@@ -303,60 +303,96 @@ export class BenefitService {
     planId: string,
     endDate?: string | null,
   ): Promise<void> {
-    const open = await this.enrollments.findOne({
-      where: { employeeId, planId, validTo: IsNull() } as FindOptionsWhere<BenefitEnrollment>,
-    });
-    if (!open) {
-      throw new NotFoundError('Open enrollment not found', { employeeId, planId });
-    }
-    const exclusiveEnd = endDate ?? todayIso();
-    open.validTo = compareIsoDate(exclusiveEnd, open.validFrom) < 0 ? open.validFrom : exclusiveEnd;
-    await this.enrollments.save(open);
-    await this.publisher.publish({
-      name: 'benefits.enrollmentChanged',
-      payload: { enrollmentId: open.id, employeeId, effectiveDate: open.validTo },
-    });
-    await this.audit.record({
-      action: 'endEnrollment',
-      resourceType: 'benefit_enrollment',
-      resourceId: open.id,
-      after: { employeeId, validTo: open.validTo },
+    const organizationId = this.tenantContext.getOrganizationId();
+    // One transaction for the close, the change event, and the audit: a crash
+    // between them must not leave an enrollment closed with no event (open
+    // payroll drafts would keep billing the person) or no audit trail.
+    await this.dataSource.transaction(async (manager) => {
+      const open = await manager.findOne(BenefitEnrollment, {
+        where: {
+          organizationId,
+          employeeId,
+          planId,
+          validTo: IsNull(),
+        } as FindOptionsWhere<BenefitEnrollment>,
+      });
+      if (!open) {
+        throw new NotFoundError('Open enrollment not found', { employeeId, planId });
+      }
+      const exclusiveEnd = endDate ?? todayIso();
+      open.validTo =
+        compareIsoDate(exclusiveEnd, open.validFrom) < 0 ? open.validFrom : exclusiveEnd;
+      await manager.save(open);
+      await this.publisher.publishWithin(manager, {
+        name: 'benefits.enrollmentChanged',
+        payload: { enrollmentId: open.id, employeeId, effectiveDate: open.validTo },
+      });
+      await this.audit.record(
+        {
+          action: 'endEnrollment',
+          resourceType: 'benefit_enrollment',
+          resourceId: open.id,
+          after: { employeeId, validTo: open.validTo },
+        },
+        manager,
+      );
     });
   }
 
   // Published write for the `employee.terminated` consumer: stop billing the
-  // leaver after their last covered day (validTo is exclusive).
-  async closeOpenEnrollmentsAt(employeeId: EmployeeId, lastCoveredDate: string): Promise<void> {
-    const open = await this.enrollments.find({
-      where: { employeeId, validTo: IsNull() } as FindOptionsWhere<BenefitEnrollment>,
-    });
-    if (open.length === 0) {
+  // leaver after their last covered day (validTo is exclusive). The consumer
+  // passes its transaction manager so the close, events, and audit commit with
+  // the idempotency ledger row.
+  async closeOpenEnrollmentsAt(
+    employeeId: EmployeeId,
+    lastCoveredDate: string,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const run = async (target: EntityManager): Promise<void> => {
+      const open = await target.find(BenefitEnrollment, {
+        where: {
+          organizationId,
+          employeeId,
+          validTo: IsNull(),
+        } as FindOptionsWhere<BenefitEnrollment>,
+      });
+      if (open.length === 0) {
+        return;
+      }
+      const exclusiveEnd = addIsoDays(lastCoveredDate, 1);
+      for (const enrollment of open) {
+        enrollment.validTo =
+          compareIsoDate(exclusiveEnd, enrollment.validFrom) < 0
+            ? enrollment.validFrom
+            : exclusiveEnd;
+        await target.save(enrollment);
+        // Same event as any other enrollment change so open payroll drafts stop
+        // billing a leaver's benefits.
+        await this.publisher.publishWithin(target, {
+          name: 'benefits.enrollmentChanged',
+          payload: {
+            enrollmentId: enrollment.id,
+            employeeId,
+            effectiveDate: enrollment.validTo,
+          },
+        });
+      }
+      await this.audit.record(
+        {
+          action: 'closeEnrollments',
+          resourceType: 'benefit_enrollment',
+          resourceId: employeeId,
+          after: { count: open.length, validTo: open[0]?.validTo ?? null },
+        },
+        target,
+      );
+    };
+    if (manager) {
+      await run(manager);
       return;
     }
-    const exclusiveEnd = addIsoDays(lastCoveredDate, 1);
-    for (const enrollment of open) {
-      enrollment.validTo =
-        compareIsoDate(exclusiveEnd, enrollment.validFrom) < 0
-          ? enrollment.validFrom
-          : exclusiveEnd;
-      await this.enrollments.save(enrollment);
-      // Same event as any other enrollment change so open payroll drafts stop
-      // billing a leaver's benefits.
-      await this.publisher.publish({
-        name: 'benefits.enrollmentChanged',
-        payload: {
-          enrollmentId: enrollment.id,
-          employeeId,
-          effectiveDate: enrollment.validTo,
-        },
-      });
-    }
-    await this.audit.record({
-      action: 'closeEnrollments',
-      resourceType: 'benefit_enrollment',
-      resourceId: employeeId,
-      after: { count: open.length, validTo: open[0]?.validTo ?? null },
-    });
+    await this.dataSource.transaction((target) => run(target));
   }
 
   // --- Published read for payroll ---

@@ -100,7 +100,10 @@ const buildService = (
         ),
       ),
   } as unknown as StorageService;
-  const publisher = { publish: jest.fn().mockResolvedValue(undefined) } as unknown as DomainEventPublisher;
+  const publisher = {
+    publish: jest.fn().mockResolvedValue(undefined),
+    publishWithin: jest.fn().mockResolvedValue(undefined),
+  } as unknown as DomainEventPublisher;
   const rateLimiter = new FormRateLimiter();
   const config = {
     get: jest.fn((key: string) => (key === 'FORM_SUBMIT_LIMIT_PER_10_MIN' ? 10 : 30)),
@@ -241,7 +244,8 @@ describe('FormsService', () => {
     expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ formId: FORM, answers: { fullName: 'Ada', email: 'ada@example.com' } }),
     );
-    expect(publisher.publish).toHaveBeenCalledWith(
+    expect(publisher.publishWithin).toHaveBeenCalledWith(
+      manager,
       expect.objectContaining({
         name: 'form.submitted',
         payload: expect.objectContaining({ formId: FORM, target: 'application' }),
@@ -276,7 +280,7 @@ describe('FormsService', () => {
       }),
     ).rejects.toThrow('Email must be a valid email address');
     expect(manager.save).not.toHaveBeenCalled();
-    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(publisher.publishWithin).not.toHaveBeenCalled();
   });
 
   it('keeps accepting the dotted-domain shapes the previous pattern accepted', async () => {

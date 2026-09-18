@@ -20,11 +20,11 @@ const makeService = (existing: unknown) => {
   const dataSource = {
     transaction: jest.fn((callback: (m: EntityManager) => Promise<void>) => callback(manager)),
   } as unknown as DataSource;
-  return { service: new IdempotencyService(dataSource), manager };
+  return { service: new IdempotencyService(dataSource), manager, dataSource };
 };
 
 describe('IdempotencyService', () => {
-  it('runs the handler and records the marker the first time', async () => {
+  it('runs the handler with the transaction manager the first time', async () => {
     const { service, manager } = makeService(null);
     const handler = jest.fn().mockResolvedValue(undefined);
 
@@ -32,6 +32,7 @@ describe('IdempotencyService', () => {
 
     expect(manager.insert).toHaveBeenCalled();
     expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(manager);
   });
 
   it('skips the handler when the event was already processed', async () => {
@@ -42,5 +43,16 @@ describe('IdempotencyService', () => {
 
     expect(manager.insert).not.toHaveBeenCalled();
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('propagates a handler failure so the transaction rolls back', async () => {
+    const { service, manager } = makeService(null);
+    const handler = jest.fn().mockRejectedValue(new Error('handler boom'));
+
+    await expect(service.runOnce('auth.disable-login', event, handler)).rejects.toThrow(
+      'handler boom',
+    );
+
+    expect(handler).toHaveBeenCalledWith(manager);
   });
 });

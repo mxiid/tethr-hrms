@@ -30,11 +30,12 @@ export class EmployeeTerminatedBenefitsConsumer implements OnModuleInit {
     if (event.name !== 'employee.terminated') {
       return;
     }
-    await this.idempotency.runOnce(CONSUMER_NAME, event, () =>
+    await this.idempotency.runOnce(CONSUMER_NAME, event, (manager) =>
       this.tenantContext.run({ organizationId: event.tenantId, userId: null }, async () => {
         await this.benefits.closeOpenEnrollmentsAt(
           event.payload.employeeId,
           event.payload.effectiveDate as IsoDate,
+          manager,
         );
         this.logger.log(`Closed open benefit enrollments for ${event.payload.employeeId}`);
       }),

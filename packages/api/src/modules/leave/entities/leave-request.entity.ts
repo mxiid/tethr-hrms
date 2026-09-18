@@ -24,6 +24,13 @@ export class LeaveRequest extends TenantScopedEntity {
   @Column({ type: 'numeric', precision: 7, scale: 2 })
   dayCount!: string;
 
+  // The per-calendar-year split of `dayCount` (D2): a request spanning a year
+  // boundary reserves/spends each year's balance. Snapshotted at submit so the
+  // decision releases exactly what was reserved, even if the holiday calendar
+  // changes in between.
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  yearAllocations!: readonly { readonly year: number; readonly days: number }[];
+
   @Column({ type: 'varchar', length: 500, nullable: true })
   reason!: string | null;
 

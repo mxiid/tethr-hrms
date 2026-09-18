@@ -1,8 +1,8 @@
+import type { EmployeeId, IsoDate, UserId } from '@hrms/shared';
 import { Column, Entity, Index } from 'typeorm';
 
 import { TenantScopedEntity } from '../../../core/database/entities/tenant-scoped.entity';
 
-import type { EmployeeId, IsoDate, UserId } from '@hrms/shared';
 
 type TimesheetStatus = 'open' | 'submitted' | 'approved' | 'locked';
 

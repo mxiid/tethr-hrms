@@ -207,7 +207,7 @@ describe('RecruitmentService', () => {
     expect(request.status).toBe('open');
     expect(request.tethrNote).toBe('Kicking off sourcing.');
     expect(request.positionId).toBe('position-1');
-    expect(positions.ensureByTitle).toHaveBeenCalledWith('Senior developer');
+    expect(positions.ensureByTitle).toHaveBeenCalledWith('Senior developer', undefined);
     // The link is a targeted conditional update — only positionId, and only
     // while the row is still open and unlinked — with its audit in the same
     // transaction.
@@ -319,7 +319,7 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed', undefined);
   });
 
   it('freezes the linked position when a request is put on hold', async () => {
@@ -335,8 +335,8 @@ describe('RecruitmentService', () => {
     });
 
     // By id, never by title: titles are not unique and may have been renamed.
-    expect(positions.getById).toHaveBeenCalledWith('position-1');
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'frozen');
+    expect(positions.getById).toHaveBeenCalledWith('position-1', undefined);
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'frozen', undefined);
   });
 
   it('repairs a missed position transition when the same status is replayed', async () => {
@@ -358,8 +358,8 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(positions.getById).toHaveBeenCalledWith('position-1');
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'open');
+    expect(positions.getById).toHaveBeenCalledWith('position-1', undefined);
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'open', undefined);
   });
 
   it('never relinks an open request that already has a linked position', async () => {
@@ -380,7 +380,7 @@ describe('RecruitmentService', () => {
     });
 
     expect(positions.ensureByTitle).not.toHaveBeenCalled();
-    expect(positions.getById).toHaveBeenCalledWith('position-1');
+    expect(positions.getById).toHaveBeenCalledWith('position-1', undefined);
     expect(repository.save).not.toHaveBeenCalledWith(
       expect.objectContaining({ positionId: 'position-other' }),
     );
@@ -436,8 +436,8 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(positions.getById).toHaveBeenCalledWith('position-1');
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+    expect(positions.getById).toHaveBeenCalledWith('position-1', undefined);
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed', undefined);
     expect(positions.setStatus).not.toHaveBeenCalledWith('position-1', 'open');
   });
 
@@ -459,7 +459,7 @@ describe('RecruitmentService', () => {
       actor: 'tethr',
     });
 
-    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed');
+    expect(positions.setStatus).toHaveBeenCalledWith('position-1', 'closed', undefined);
     expect((repository.findById as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -582,6 +582,25 @@ describe('RecruitmentService', () => {
     await expect(service.listHiringRequests()).resolves.toEqual([{ request, updates: [update] }]);
     expect(updates.find).toHaveBeenCalledWith(
       expect.objectContaining({ order: { createdAt: 'ASC' } }),
+    );
+  });
+
+  it('reloads a reconciliation through the caller transaction when a manager is supplied', async () => {
+    const { service, manager } = buildService(makeRequest({ status: 'open', positionId: null }));
+    // The transaction links the request; the manager-bound reload sees the
+    // in-transaction positionId instead of the stale committed row.
+    (manager.findOne as jest.Mock)
+      .mockResolvedValueOnce(makeRequest({ status: 'open', positionId: null }))
+      .mockResolvedValueOnce(makeRequest({ status: 'open', positionId: 'position-1' }));
+
+    const latest = await service.reconcilePositionForRequest(REQUEST, manager);
+
+    expect(latest?.positionId).toBe('position-1');
+    expect(manager.findOne).toHaveBeenCalledWith(
+      HiringRequest,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: REQUEST, organizationId: ORGANIZATION }),
+      }),
     );
   });
 });

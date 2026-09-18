@@ -92,14 +92,16 @@ const buildService = () => {
   const tenantContext = { getOrganizationId: jest.fn(() => ORG) };
   const audit = { record: jest.fn(async () => undefined) };
 
+  const manager = {
+    create: jest.fn((_entity: unknown, value: unknown) => value),
+    save: jest.fn(async (value: unknown) => value),
+    findOne: jest.fn(async () => null),
+  };
   const service = new FinalSettlementService(
     settlements,
     {
-      transaction: jest.fn(async (work: (manager: unknown) => Promise<unknown>) =>
-        work({
-          findOne: jest.fn(async () => null),
-          save: jest.fn(async (value: unknown) => value),
-        }),
+      transaction: jest.fn(async (work: (target: unknown) => Promise<unknown>) =>
+        work(manager),
       ),
     } as unknown as DataSource,
     compensation as unknown as CompensationService,
@@ -110,7 +112,7 @@ const buildService = () => {
     tenantContext as unknown as TenantContextService,
     audit as unknown as AuditService,
   );
-  return { service, mocks: { settlements } };
+  return { service, mocks: { settlements, manager } };
 };
 
 describe('FinalSettlementService.compute', () => {
@@ -118,7 +120,7 @@ describe('FinalSettlementService.compute', () => {
     const { service, mocks } = buildService();
     await service.compute(EMPLOYEE, '2026-08-20');
 
-    const attrs = (mocks.settlements.create as jest.Mock).mock.calls[0][0] as Record<string, string>;
+    const attrs = (mocks.manager.create as jest.Mock).mock.calls[0][1] as Record<string, string>;
     // Aug 2026: 21 working days; hired 12th, terminated 20th → 7 worked days.
     expect(attrs.standardWorkingDays).toBe(21);
     expect(attrs.workedDays).toBe('7.00');

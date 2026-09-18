@@ -1,3 +1,4 @@
+import { toId, type EmployeeId, type UserId } from '@hrms/shared';
 import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
@@ -6,6 +7,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
 import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
+
 import { AttendanceService } from './attendance.service';
 import { ClockEventView } from './dto/clock-event.output';
 import { OpenTimesheetInput } from './dto/open-timesheet.input';
@@ -17,7 +19,6 @@ import { TimeEntry } from './entities/time-entry.entity';
 import { Timesheet } from './entities/timesheet.entity';
 import { TimesheetService } from './timesheet.service';
 
-import { toId, type EmployeeId, type UserId } from '@hrms/shared';
 
 const toClockEventView = (event: ClockEvent): ClockEventView => ({
   id: event.id,

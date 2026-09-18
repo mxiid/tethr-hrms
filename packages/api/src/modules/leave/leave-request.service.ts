@@ -20,6 +20,7 @@ import { DomainEventPublisher } from '../../core/events/domain-event-publisher.s
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 import { WorkflowService } from '../../core/workflow/workflow.service';
+import { EmployeeDirectoryService } from '../employee/employee-directory.service';
 
 import { EmployeeLeaveEntitlementService } from './employee-leave-entitlement.service';
 import { LeaveBalance } from './entities/leave-balance.entity';
@@ -43,6 +44,37 @@ type SubmitLeaveRequestData = {
 const toNumber = (value: string): number => Number(value);
 const toAmount = (value: number): string => (Math.round(value * 100) / 100).toFixed(2);
 
+const isUniqueViolation = (cause: unknown): boolean => {
+  const driverError = (cause as { readonly driverError?: { readonly code?: string } }).driverError;
+  return (driverError?.code ?? (cause as { readonly code?: string }).code) === '23505';
+};
+
+// Split a request's working days by calendar year (D2): years partition the
+// range, so the parts always sum to the whole range's working-day count.
+const splitWorkingDaysByYear = (
+  startDate: IsoDate,
+  endDate: IsoDate,
+  holidays: ReadonlySet<IsoDate>,
+): readonly { readonly year: number; readonly days: number }[] => {
+  const allocations: { year: number; days: number }[] = [];
+  const startYear = Number(startDate.slice(0, 4));
+  const endYear = Number(endDate.slice(0, 4));
+  for (let year = startYear; year <= endYear; year += 1) {
+    const yearStart = `${year}-01-01` as IsoDate;
+    const yearEnd = `${year}-12-31` as IsoDate;
+    const clipStart = compareIsoDate(startDate, yearStart) > 0 ? startDate : yearStart;
+    const clipEnd = compareIsoDate(endDate, yearEnd) < 0 ? endDate : yearEnd;
+    if (compareIsoDate(clipStart, clipEnd) > 0) {
+      continue;
+    }
+    const days = countWorkingDays(clipStart, clipEnd, holidays);
+    if (days > 0) {
+      allocations.push({ year, days });
+    }
+  }
+  return allocations;
+};
+
 // Owns the leave-request lifecycle: cost the request in working days, reserve and
 // settle balance, route approval through the shared workflow engine, and announce
 // each transition on the transactional outbox (leave.approved feeds Payroll later).
@@ -58,12 +90,16 @@ export class LeaveRequestService {
     private readonly holidayService: HolidayService,
     private readonly workflowService: WorkflowService,
     private readonly entitlementService: EmployeeLeaveEntitlementService,
+    private readonly employeeDirectory: EmployeeDirectoryService,
     private readonly audit: AuditService,
   ) {}
 
   async submit(input: SubmitLeaveRequestData): Promise<LeaveRequest> {
     if (compareIsoDate(input.startDate, input.endDate) > 0) {
       throw new ValidationFailedError('startDate must be on or before endDate');
+    }
+    if (!(await this.employeeDirectory.exists(input.employeeId))) {
+      throw new NotFoundError('Employee not found', { id: input.employeeId });
     }
     const leaveType = await this.leaveTypes.findById(input.leaveTypeId);
     if (!leaveType) {
@@ -77,39 +113,49 @@ export class LeaveRequestService {
           input.endDate,
         )
       : new Set<IsoDate>();
-    const dayCount = countWorkingDays(input.startDate, input.endDate, holidays);
+    const allocations = splitWorkingDaysByYear(input.startDate, input.endDate, holidays);
+    const dayCount = allocations.reduce((sum, allocation) => sum + allocation.days, 0);
     if (dayCount <= 0) {
       throw new ValidationFailedError('Requested range contains no working days');
     }
 
     const organizationId = this.tenantContext.getOrganizationId();
-    const periodYear = Number(input.startDate.slice(0, 4));
-    const resolvedEntitlement = await this.entitlementService.resolveEntitlement(
-      input.employeeId,
-      input.leaveTypeId,
-      Number(leaveType.defaultAnnualEntitlement),
-      input.startDate,
-    );
+    const fallbackEntitlement = Number(leaveType.defaultAnnualEntitlement);
 
     const saved = await this.dataSource.transaction(async (manager) => {
-      const balance = await this.getOrCreateBalance(
-        manager,
-        organizationId,
-        input.employeeId,
-        input.leaveTypeId,
-        periodYear,
-        resolvedEntitlement.toFixed(2),
-      );
-      const available =
-        toNumber(balance.entitledDays) - toNumber(balance.usedDays) - toNumber(balance.pendingDays);
-      if (dayCount > available) {
-        throw new ValidationFailedError('Insufficient leave balance', {
-          available,
-          requested: dayCount,
-        });
+      // Per D2, reserve each calendar year's balance for its own slice. The
+      // balance row is locked before the read-modify-write, so concurrent
+      // submits cannot oversubscribe it.
+      for (const allocation of allocations) {
+        const yearStart = `${allocation.year}-01-01` as IsoDate;
+        const entitlement = await this.entitlementService.resolveEntitlement(
+          input.employeeId,
+          input.leaveTypeId,
+          fallbackEntitlement,
+          compareIsoDate(input.startDate, yearStart) > 0 ? input.startDate : yearStart,
+        );
+        const balance = await this.getOrCreateBalance(
+          manager,
+          organizationId,
+          input.employeeId,
+          input.leaveTypeId,
+          allocation.year,
+          entitlement.toFixed(2),
+        );
+        const available =
+          toNumber(balance.entitledDays) -
+          toNumber(balance.usedDays) -
+          toNumber(balance.pendingDays);
+        if (allocation.days > available) {
+          throw new ValidationFailedError('Insufficient leave balance', {
+            periodYear: allocation.year,
+            available,
+            requested: allocation.days,
+          });
+        }
+        balance.pendingDays = toAmount(toNumber(balance.pendingDays) + allocation.days);
+        await manager.save(balance);
       }
-      balance.pendingDays = toAmount(toNumber(balance.pendingDays) + dayCount);
-      await manager.save(balance);
 
       const request = manager.create(LeaveRequest, {
         organizationId,
@@ -118,6 +164,7 @@ export class LeaveRequestService {
         startDate: input.startDate,
         endDate: input.endDate,
         dayCount: toAmount(dayCount),
+        yearAllocations: allocations,
         reason: input.reason ?? null,
         status: 'pending',
         approvalRequestId: null,
@@ -125,6 +172,22 @@ export class LeaveRequestService {
         decisionNote: null,
       });
       const persisted = await manager.save(request);
+
+      // Approval request + link in the same transaction: a pending request
+      // always has its approval row, and a rolled-back request never leaves an
+      // orphan approval behind.
+      if (leaveType.requiresApproval && input.requestedByUserId) {
+        const approval = await this.workflowService.requestApproval(
+          {
+            subjectType: 'leave_request',
+            subjectId: persisted.id,
+            requestedByUserId: input.requestedByUserId,
+          },
+          manager,
+        );
+        persisted.approvalRequestId = approval.id;
+        await manager.save(persisted);
+      }
 
       await this.publisher.publishWithin(manager, {
         name: 'leave.requested',
@@ -139,18 +202,6 @@ export class LeaveRequestService {
       });
       return persisted;
     });
-
-    // Route to the shared workflow engine. Separate transaction by design — if it
-    // fails the request still stands as 'pending' and can be decided directly.
-    if (leaveType.requiresApproval && input.requestedByUserId) {
-      const approval = await this.workflowService.requestApproval({
-        subjectType: 'leave_request',
-        subjectId: saved.id,
-        requestedByUserId: input.requestedByUserId,
-      });
-      saved.approvalRequestId = approval.id;
-      await this.requests.save(saved);
-    }
 
     await this.audit.record({
       action: 'submit',
@@ -224,7 +275,12 @@ export class LeaveRequestService {
   ): Promise<LeaveRequest> {
     const organizationId = this.tenantContext.getOrganizationId();
     const updated = await this.dataSource.transaction(async (manager) => {
-      const request = await manager.findOne(LeaveRequest, { where: { id, organizationId } });
+      // Lock the request: two concurrent decisions must not both release the
+      // pending reservation.
+      const request = await manager.findOne(LeaveRequest, {
+        where: { id, organizationId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!request) {
         throw new NotFoundError('Leave request not found', { id });
       }
@@ -233,22 +289,45 @@ export class LeaveRequestService {
       }
 
       const days = toNumber(request.dayCount);
-      const periodYear = Number(request.startDate.slice(0, 4));
-      const balance = await manager.findOne(LeaveBalance, {
-        where: {
-          organizationId,
-          employeeId: request.employeeId,
-          leaveTypeId: request.leaveTypeId,
-          periodYear,
-        },
-      });
-      if (balance) {
-        // Always release the pending reservation; on approval, spend it.
-        balance.pendingDays = toAmount(Math.max(0, toNumber(balance.pendingDays) - days));
-        if (status === 'approved') {
-          balance.usedDays = toAmount(toNumber(balance.usedDays) + days);
+      // D2: release/spend exactly what each year reserved. Legacy rows predate
+      // the split and hold everything on the start year.
+      const allocations =
+        request.yearAllocations.length > 0
+          ? request.yearAllocations
+          : [{ year: Number(request.startDate.slice(0, 4)), days }];
+
+      for (const allocation of allocations) {
+        const balance = await manager.findOne(LeaveBalance, {
+          where: {
+            organizationId,
+            employeeId: request.employeeId,
+            leaveTypeId: request.leaveTypeId,
+            periodYear: allocation.year,
+          },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (balance) {
+          // Always release the pending reservation; on approval, spend it.
+          balance.pendingDays = toAmount(
+            Math.max(0, toNumber(balance.pendingDays) - allocation.days),
+          );
+          if (status === 'approved') {
+            balance.usedDays = toAmount(toNumber(balance.usedDays) + allocation.days);
+          }
+          await manager.save(balance);
         }
-        await manager.save(balance);
+      }
+
+      // Keep the shared workflow row in step: a decided request must not leave
+      // its approval_requests row pending forever.
+      if (request.approvalRequestId) {
+        await this.workflowService.decide(
+          request.approvalRequestId,
+          decidedByUserId,
+          status,
+          note,
+          manager,
+        );
       }
 
       request.status = status;
@@ -307,19 +386,43 @@ export class LeaveRequestService {
   ): Promise<LeaveBalance> {
     const existing = await manager.findOne(LeaveBalance, {
       where: { organizationId, employeeId, leaveTypeId, periodYear },
+      lock: { mode: 'pessimistic_write' },
     });
     if (existing) {
       return existing;
     }
-    const created = manager.create(LeaveBalance, {
-      organizationId,
-      employeeId,
-      leaveTypeId,
-      periodYear,
-      entitledDays,
-      usedDays: '0',
-      pendingDays: '0',
+    try {
+      // Savepoint: a concurrent creator's unique-index win must not poison the
+      // surrounding transaction — the locked read below then sees their row.
+      await manager.transaction((inner) =>
+        inner.save(
+          inner.create(LeaveBalance, {
+            organizationId,
+            employeeId,
+            leaveTypeId,
+            periodYear,
+            entitledDays,
+            usedDays: '0',
+            pendingDays: '0',
+          }),
+        ),
+      );
+    } catch (cause) {
+      if (!isUniqueViolation(cause)) {
+        throw cause;
+      }
+    }
+    const locked = await manager.findOne(LeaveBalance, {
+      where: { organizationId, employeeId, leaveTypeId, periodYear },
+      lock: { mode: 'pessimistic_write' },
     });
-    return manager.save(created);
+    if (!locked) {
+      throw new ConflictError('Could not create the leave balance', {
+        employeeId,
+        leaveTypeId,
+        periodYear,
+      });
+    }
+    return locked;
   }
 }

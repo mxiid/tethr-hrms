@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../../core/auth/auth.module';
 import { AuthzModule } from '../../core/authz/authz.module';
 import { provideTenantScopedRepository } from '../../core/tenancy/tenant-repository.provider';
+
 import { AttendanceResolver } from './attendance.resolver';
 import { AttendanceService } from './attendance.service';
 import {
@@ -12,14 +13,13 @@ import {
   TIMESHEET_REPOSITORY,
 } from './attendance.tokens';
 import { ClockEvent } from './entities/clock-event.entity';
-import { Regularization } from './entities/regularization.entity';
 import { TimeEntry } from './entities/time-entry.entity';
 import { Timesheet } from './entities/timesheet.entity';
 import { TimesheetService } from './timesheet.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ClockEvent, TimeEntry, Timesheet, Regularization]),
+    TypeOrmModule.forFeature([ClockEvent, TimeEntry, Timesheet]),
     AuthModule,
     AuthzModule,
   ],

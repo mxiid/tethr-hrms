@@ -19,6 +19,7 @@
     "sync:role-permissions": "node -r ts-node/register -r tsconfig-paths/register scripts/sync-system-role-permissions.ts",
     "seed:org-chart": "node -r ts-node/register -r tsconfig-paths/register scripts/seed-org-chart.ts",
     "backfill:hiring-statuses": "node -r ts-node/register -r tsconfig-paths/register scripts/backfill-hiring-statuses.ts",
+    "reconcile:cv-parses": "node -r ts-node/register -r tsconfig-paths/register scripts/reconcile-cv-parses.ts",
     "prune:empty-assignments": "node -r ts-node/register -r tsconfig-paths/register scripts/prune-empty-assignments.ts"
   },
   "dependencies": {
