@@ -7,6 +7,7 @@ import {
   type ApplicationOutcome,
   type ApplicationStage,
   type CandidateId,
+  type CandidateDocumentId,
   type FormId,
   type FormSubmissionId,
   type HiringRequestId,
@@ -736,7 +737,10 @@ export class AtsService {
       await this.queue.add(
         QUEUES.default,
         JOBS.parseCv,
-        { organizationId, candidateDocumentId },
+        {
+          organizationId,
+          candidateDocumentId: toId<CandidateDocumentId>(candidateDocumentId),
+        },
         { jobId: `parse-cv:${candidateDocumentId}` },
       );
       return true;

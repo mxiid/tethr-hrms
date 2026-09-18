@@ -44,14 +44,10 @@ export class InvoicePdfService {
 
   async renderInvoicePdf(
     invoice: Invoice,
-    lines: readonly InvoiceLine[],
     config: ClientBillingConfig,
     groupName: string,
   ): Promise<Buffer> {
     const data = this.toTemplateData(invoice, config, groupName);
-    // The consolidated invoice intentionally renders a single line; `lines`
-    // stay in the signature so both render methods share one call site.
-    void lines;
     const html = renderToStaticMarkup(InvoicePdfTemplate(data));
     return this.renderer.renderHtmlToPdf(html);
   }

@@ -31,6 +31,7 @@ import { uploadToSignedUrl } from '../../../app/upload';
 import { StatusChip } from '../../../components/chip/StatusChip';
 import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { useTheme } from '../../../providers/theme/useTheme';
+import { CREATE_WORKSPACE_USER_MUTATION } from '../../auth/graphql/auth.operations';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { DetailSection } from '../components/DetailSection';
 import { EmployeeJobPayHub } from '../components/EmployeeJobPayHub';
@@ -38,7 +39,6 @@ import {
   ADD_EMPLOYEE_DOCUMENT_VERSION_MUTATION,
   ATTACH_EMPLOYEE_DOCUMENT_MUTATION,
   AWARD_BONUS_MUTATION,
-  CREATE_WORKSPACE_USER_MUTATION,
   EMPLOYEE_DOCUMENT_DOWNLOAD_ACCESS_QUERY,
   EMPLOYEE_DETAIL_QUERY,
   EMPLOYEES_QUERY,

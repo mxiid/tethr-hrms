@@ -1,5 +1,17 @@
 import type {
+  AnnouncementAudience,
+  EmployeeDocumentVisibility,
+  EmployeeOffboardingTaskStatus,
+  FeedbackCategory,
+  FeedbackStatus,
+  FormTarget,
+  HiringRequestStatus,
+  InvoiceType,
+  SeparationType,
+} from '../domain/enums';
+import type {
   AnnouncementId,
+  ApplicationId,
   AssignmentId,
   BillingGroupId,
   BonusAwardId,
@@ -94,7 +106,7 @@ export type DomainEventPayloads = {
   'employee.separationRecorded': {
     readonly employeeSeparationId: EmployeeSeparationId;
     readonly employeeId: EmployeeId;
-    readonly type: string;
+    readonly type: SeparationType;
   };
   'employee.personalDetailsUpdated': {
     readonly employeePersonalDetailsId: EmployeePersonalDetailsId;
@@ -116,7 +128,7 @@ export type DomainEventPayloads = {
   'employee.offboardingTaskUpdated': {
     readonly employeeOffboardingTaskId: EmployeeOffboardingTaskId;
     readonly employeeId: EmployeeId;
-    readonly status: string;
+    readonly status: EmployeeOffboardingTaskStatus;
   };
   'assignment.created': {
     readonly assignmentId: AssignmentId;
@@ -204,7 +216,7 @@ export type DomainEventPayloads = {
   };
   'hiringRequest.updated': {
     readonly hiringRequestId: HiringRequestId;
-    readonly status: string;
+    readonly status: HiringRequestStatus;
     // Carried so the notification consumer can name the request without a
     // second lookup in another aggregate.
     readonly positionTitle: string;
@@ -213,7 +225,7 @@ export type DomainEventPayloads = {
     // The hire is complete; compensation records the employee's first revision
     // from these snapshotted terms instead of a synchronous cross-module call.
     readonly offerId: string;
-    readonly applicationId: string;
+    readonly applicationId: ApplicationId;
     readonly employeeId: EmployeeId;
     readonly annualAmount: number;
     readonly currency: string;
@@ -225,21 +237,21 @@ export type DomainEventPayloads = {
     readonly submissionId: FormSubmissionId;
     // What the form feeds (e.g. 'application'); the projection consumer keys
     // its mapping on this.
-    readonly target: string;
+    readonly target: FormTarget;
   };
   'announcement.published': {
     readonly announcementId: AnnouncementId;
     readonly title: string;
-    readonly audience: string;
+    readonly audience: AnnouncementAudience;
   };
   'employeeFeedback.submitted': {
     readonly employeeFeedbackId: EmployeeFeedbackId;
     readonly employeeId: EmployeeId;
-    readonly category: string;
+    readonly category: FeedbackCategory;
   };
   'employeeFeedback.updated': {
     readonly employeeFeedbackId: EmployeeFeedbackId;
-    readonly status: string;
+    readonly status: FeedbackStatus;
   };
   'employeeAssessment.recorded': {
     readonly employeeAssessmentId: EmployeeAssessmentId;
@@ -250,7 +262,7 @@ export type DomainEventPayloads = {
     readonly employeeDocumentLinkId: EmployeeDocumentLinkId;
     readonly employeeId: EmployeeId;
     readonly documentId: DocumentId;
-    readonly visibility: string;
+    readonly visibility: EmployeeDocumentVisibility;
   };
   'bonus.awarded': {
     readonly bonusAwardId: BonusAwardId;
@@ -275,7 +287,7 @@ export type DomainEventPayloads = {
     readonly invoiceId: InvoiceId;
     readonly invoiceNumber: string;
     readonly billingGroupId: BillingGroupId;
-    readonly invoiceType: string;
+    readonly invoiceType: InvoiceType;
     readonly currency: string;
     readonly totalAmount: number;
     readonly issueDate: string;

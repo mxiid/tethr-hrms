@@ -6,8 +6,6 @@ module.exports = {
   testMatch: ['**/*.spec.ts'],
   setupFiles: ['reflect-metadata'],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/modules/$1',
-    '^~/(.*)$': '<rootDir>/src/$1',
     '^@hrms/shared$': '<rootDir>/../shared/src/index.ts',
   },
 };

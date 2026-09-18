@@ -493,16 +493,6 @@ export const SEPARATE_EMPLOYEE_MUTATION = gql`
   }
 `;
 
-export const CREATE_WORKSPACE_USER_MUTATION = gql`
-  mutation CreateWorkspaceUser($input: CreateWorkspaceUserInput!) {
-    createWorkspaceUser(input: $input) {
-      id
-      email
-      employeeId
-    }
-  }
-`;
-
 export const UPSERT_EXIT_INTERVIEW_MUTATION = gql`
   mutation UpsertExitInterview($input: UpsertExitInterviewInput!) {
     upsertExitInterview(input: $input) {

@@ -16,10 +16,6 @@ export class ConfigService {
     return this.config[key];
   }
 
-  get isProduction(): boolean {
-    return this.config.NODE_ENV === 'production';
-  }
-
   get isTest(): boolean {
     return this.config.NODE_ENV === 'test';
   }

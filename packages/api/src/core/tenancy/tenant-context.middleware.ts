@@ -11,7 +11,6 @@ import { TenantContextService } from './tenant-context.service';
 // Minimal request shape — avoids depending on express types here.
 type RequestLike = {
   headers: Record<string, string | string[] | undefined>;
-  user?: unknown;
 };
 
 // Establishes tenant + principal for the request from the `Authorization: Bearer`
@@ -35,7 +34,6 @@ export class TenantContextMiddleware implements NestMiddleware {
     }
     const organizationId = toId<OrganizationId>(claims.org);
     const userId = toId<UserId>(claims.sub);
-    request.user = { userId, organizationId, email: claims.email, permissions: [] };
     this.tenantContext.run({ organizationId, userId }, () => next());
   }
 

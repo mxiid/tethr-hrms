@@ -23,10 +23,6 @@ export class TenantContextService {
     return this.storage.run(context, callback);
   }
 
-  getContextOrNull(): TenantContext | null {
-    return this.storage.getStore() ?? null;
-  }
-
   // The organization id, or a typed error if the operation was not scoped. The
   // guardrail: forgetting to establish context fails loudly, it does not silently
   // read across tenants.

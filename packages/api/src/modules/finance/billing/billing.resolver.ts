@@ -436,7 +436,6 @@ export class BillingResolver {
           )
         : await this.invoicePdfService.renderInvoicePdf(
             invoice,
-            lines,
             config,
             groups.find((g) => g.id === invoice.groupId)?.name ?? '',
           );

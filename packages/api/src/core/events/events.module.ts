@@ -15,6 +15,6 @@ import { ProcessedEvent } from './processed-event.entity';
 @Module({
   imports: [TypeOrmModule.forFeature([OutboxMessage, ProcessedEvent])],
   providers: [DomainEventPublisher, EventBus, IdempotencyService, OutboxRelay, OutboxRelayRunner],
-  exports: [DomainEventPublisher, EventBus, IdempotencyService, OutboxRelay],
+  exports: [DomainEventPublisher, EventBus, IdempotencyService],
 })
 export class EventsModule {}
