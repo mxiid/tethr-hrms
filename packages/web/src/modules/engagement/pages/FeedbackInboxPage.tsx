@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { FeedbackStatus } from '@hrms/shared';
+import { formatDateTime, type FeedbackStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import { IconAlertTriangle, IconCheck, IconFilterOff, IconMessageCircle } from '@tabler/icons-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
@@ -42,15 +42,6 @@ const statusColor: Record<FeedbackStatus, MainColorName> = {
   inReview: 'blue',
   resolved: 'green',
 };
-
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
 
 export const FeedbackInboxPage = () => {
   const { theme } = useTheme();
@@ -163,7 +154,7 @@ export const FeedbackInboxPage = () => {
   };
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="feedback-content" aria-labelledby="feedback-title">
         <header className="page-header">
           <div>
@@ -178,18 +169,18 @@ export const FeedbackInboxPage = () => {
           <div className="metric-card">
             <div className="metric-label">Open</div>
             <div className="metric-value">
-              {loading ? '...' : feedback.filter((item) => item.status !== 'resolved').length}
+              {loading ? '…' : feedback.filter((item) => item.status !== 'resolved').length}
             </div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Resolved</div>
             <div className="metric-value">
-              {loading ? '...' : feedback.filter((item) => item.status === 'resolved').length}
+              {loading ? '…' : feedback.filter((item) => item.status === 'resolved').length}
             </div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Total</div>
-            <div className="metric-value">{loading ? '...' : feedback.length}</div>
+            <div className="metric-value">{loading ? '…' : feedback.length}</div>
           </div>
         </div>
 
@@ -255,7 +246,7 @@ export const FeedbackInboxPage = () => {
                 <div className="panel-kicker">{selected.category}</div>
                 <h2 className="panel-title">{selected.subject}</h2>
               </div>
-              <IconMessageCircle size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              <IconMessageCircle aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
             <div className="request-note">
               <div className="employee-secondary">{formatDateTime(selected.createdAt)}</div>
@@ -271,6 +262,7 @@ export const FeedbackInboxPage = () => {
                 <label htmlFor="feedback-status">Status</label>
                 <select
                   id="feedback-status"
+                  name="feedback-status"
                   value={status}
                   onChange={(event) => setStatus(event.target.value as FeedbackStatus)}
                 >
@@ -285,18 +277,19 @@ export const FeedbackInboxPage = () => {
                 <label htmlFor="feedback-resolution">Resolution note</label>
                 <textarea
                   id="feedback-resolution"
+                  name="feedback-resolution"
                   value={resolutionNote}
                   onChange={(event) => setResolutionNote(event.target.value)}
                 />
               </div>
               <button className="button button-primary" disabled={resolving} type="submit">
-                <IconCheck size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                {resolving ? 'Saving...' : 'Save status'}
+                <IconCheck aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                {resolving ? 'Saving…' : 'Save status'}
               </button>
             </form>
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

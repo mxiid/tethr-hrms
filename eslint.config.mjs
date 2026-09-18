@@ -1,8 +1,10 @@
 // Flat ESLint config (ESLint 9). Encodes the architecture playbook's hard rules:
 //  - no `any`, no enums (string-literal unions instead), consistent type imports
 //  - the two-bucket boundary: core/ must never import from modules/
+//  - the web client's accessibility floor (jsx-a11y), curated pragmatically
 import js from '@eslint/js';
 import importPlugin from 'eslint-plugin-import';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -97,6 +99,29 @@ export default tseslint.config(
   {
     files: ['packages/web/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
+    plugins: { 'jsx-a11y': jsxA11y },
+    rules: {
+      // The curated accessibility floor for the client. `no-autofocus` is left
+      // off deliberately: every autoFocus here is a single primary input in a
+      // panel the user just opened (documented in the component).
+      'jsx-a11y/alt-text': 'error',
+      'jsx-a11y/anchor-is-valid': 'error',
+      'jsx-a11y/aria-props': 'error',
+      'jsx-a11y/aria-role': 'error',
+      'jsx-a11y/aria-unsupported-elements': 'error',
+      'jsx-a11y/click-events-have-key-events': 'error',
+      // Deliberately off: this rule cannot resolve `htmlFor`/`id` association —
+      // the app's dominant, correct pattern — and flags every such control.
+      // `label-has-associated-control` covers the label side of that pair.
+      'jsx-a11y/control-has-associated-label': 'off',
+      'jsx-a11y/label-has-associated-control': 'error',
+      'jsx-a11y/no-noninteractive-element-interactions': 'error',
+      'jsx-a11y/no-redundant-roles': 'error',
+      'jsx-a11y/no-static-element-interactions': 'error',
+      'jsx-a11y/role-has-required-aria-props': 'error',
+      'jsx-a11y/role-supports-aria-props': 'error',
+      'jsx-a11y/tabindex-no-positive': 'error',
+    },
   },
   // The worker is a standalone Node process; logging to stdout is expected.
   {

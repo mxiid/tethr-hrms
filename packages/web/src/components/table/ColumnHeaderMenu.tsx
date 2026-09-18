@@ -8,6 +8,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { handleMenuArrowKeys } from '../menu/menuKeyboard';
+
 export type SortDirection = 'asc' | 'desc';
 
 type ColumnHeaderMenuProps = {
@@ -46,15 +48,26 @@ export const ColumnHeaderMenu = ({
     setOpen(true);
   };
 
+  // Deliberate dismissals (Escape, choosing an item) return focus to the header
+  // trigger; an outside click closes without stealing focus.
+  const closeMenu = (): void => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
   useEffect(() => {
     if (!open) return undefined;
+    // Move focus into the menu so arrow keys work without a Tab first.
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    });
     const onPointerDown = (event: MouseEvent): void => {
       const target = event.target as Node;
       if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
       setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') closeMenu();
     };
     // The anchor goes stale the moment the table scrolls; closing is cleaner
     // than chasing the cell with fixed positioning.
@@ -63,6 +76,7 @@ export const ColumnHeaderMenu = ({
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('scroll', onScroll, true);
     return () => {
+      window.cancelAnimationFrame(frame);
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('scroll', onScroll, true);
@@ -81,19 +95,19 @@ export const ColumnHeaderMenu = ({
       >
         <span className="column-header-label">{label}</span>
         {sortDirection === 'asc' ? (
-          <IconSortAscending
+          <IconSortAscending aria-hidden="true"
             className="column-header-caret"
             size={14}
             stroke={2}
           />
         ) : sortDirection === 'desc' ? (
-          <IconSortDescending
+          <IconSortDescending aria-hidden="true"
             className="column-header-caret"
             size={14}
             stroke={2}
           />
         ) : (
-          <IconArrowsSort className="column-header-caret" size={14} stroke={2} />
+          <IconArrowsSort aria-hidden="true" className="column-header-caret" size={14} stroke={2} />
         )}
       </button>
 
@@ -101,6 +115,7 @@ export const ColumnHeaderMenu = ({
         ? createPortal(
             <div
               className="action-menu-panel column-header-panel"
+              onKeyDown={(event) => void handleMenuArrowKeys(event)}
               ref={panelRef}
               role="menu"
               style={{ top: anchor.top, left: anchor.left }}
@@ -113,10 +128,10 @@ export const ColumnHeaderMenu = ({
                     type="button"
                     onClick={() => {
                       onSort('asc');
-                      setOpen(false);
+                      closeMenu();
                     }}
                   >
-                    <IconSortAscending size={16} stroke={2} />
+                    <IconSortAscending aria-hidden="true" size={16} stroke={2} />
                     <span className="action-menu-item-copy">
                       <span className="action-menu-item-label">Sort ascending</span>
                     </span>
@@ -127,10 +142,10 @@ export const ColumnHeaderMenu = ({
                     type="button"
                     onClick={() => {
                       onSort('desc');
-                      setOpen(false);
+                      closeMenu();
                     }}
                   >
-                    <IconSortDescending size={16} stroke={2} />
+                    <IconSortDescending aria-hidden="true" size={16} stroke={2} />
                     <span className="action-menu-item-copy">
                       <span className="action-menu-item-label">Sort descending</span>
                     </span>
@@ -142,10 +157,10 @@ export const ColumnHeaderMenu = ({
                       type="button"
                       onClick={() => {
                         onSort(null);
-                        setOpen(false);
+                        closeMenu();
                       }}
                     >
-                      <IconX size={16} stroke={2} />
+                      <IconX aria-hidden="true" size={16} stroke={2} />
                       <span className="action-menu-item-copy">
                         <span className="action-menu-item-label">Remove sort</span>
                       </span>
@@ -160,10 +175,10 @@ export const ColumnHeaderMenu = ({
                   type="button"
                   onClick={() => {
                     onHide();
-                    setOpen(false);
+                    closeMenu();
                   }}
                 >
-                  <IconEyeOff size={16} stroke={2} />
+                  <IconEyeOff aria-hidden="true" size={16} stroke={2} />
                   <span className="action-menu-item-copy">
                     <span className="action-menu-item-label">Hide column</span>
                   </span>

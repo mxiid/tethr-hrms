@@ -11,6 +11,9 @@ type SidePanelProps = {
   /** Replaces the static title in the header — used for the inline name fields
    * when creating or editing a record in place. */
   readonly headerContent?: ReactNode;
+  /** Accessible name for the landmark and close button when the header shows a
+   * record rather than the generic title (e.g. the selected employee's name). */
+  readonly ariaLabel?: string;
 };
 
 /**
@@ -27,6 +30,7 @@ export const SidePanel = ({
   title,
   children,
   headerContent,
+  ariaLabel,
 }: SidePanelProps) => {
   const { theme } = useTheme();
   const panelRef = useRef<HTMLElement | null>(null);
@@ -38,19 +42,29 @@ export const SidePanel = ({
     onCloseRef.current = onClose;
   }, [onClose]);
   // Kept through the close transition: the parent clears its selection the
-  // moment it closes, so latch the last content rather than letting it vanish
-  // before the width reaches zero. The latest children are tracked in a ref on
+  // moment it closes, so latch the last content — title and header included —
+  // rather than letting the panel swap to its generic title (or empty header)
+  // while the width still animates. The latest values are tracked in refs on
   // every open render (no re-render), and only copied into state on the
   // open→closed edge — that way typing in a panel form costs no extra pass.
   const [lastChildren, setLastChildren] = useState<ReactNode>(children);
+  const [lastTitle, setLastTitle] = useState(title);
+  const [lastHeaderContent, setLastHeaderContent] = useState<ReactNode>(headerContent);
+  const [lastAriaLabel, setLastAriaLabel] = useState<string | undefined>(ariaLabel);
   const [isRendered, setIsRendered] = useState(isOpen);
   const latestChildren = useRef(children);
+  const latestTitle = useRef(title);
+  const latestHeaderContent = useRef(headerContent);
+  const latestAriaLabel = useRef<string | undefined>(ariaLabel);
 
   useEffect(() => {
     if (isOpen) {
       latestChildren.current = children;
+      latestTitle.current = title;
+      latestHeaderContent.current = headerContent;
+      latestAriaLabel.current = ariaLabel;
     }
-  }, [isOpen, children]);
+  }, [isOpen, children, title, headerContent, ariaLabel]);
 
   useEffect(() => {
     if (isOpen) {
@@ -59,8 +73,15 @@ export const SidePanel = ({
     }
     if (isRendered) {
       setLastChildren(latestChildren.current);
+      setLastTitle(latestTitle.current);
+      setLastHeaderContent(latestHeaderContent.current);
+      setLastAriaLabel(latestAriaLabel.current);
     }
   }, [isOpen, isRendered]);
+
+  const shownTitle = isOpen ? title : lastTitle;
+  const shownHeaderContent = isOpen ? headerContent : lastHeaderContent;
+  const shownAriaLabel = (isOpen ? ariaLabel : lastAriaLabel) ?? shownTitle;
 
   useEffect(() => {
     if (!isOpen) {
@@ -93,8 +114,9 @@ export const SidePanel = ({
   return (
     <aside
       aria-hidden={!isOpen}
-      aria-label={title}
+      aria-label={shownAriaLabel}
       className={`side-panel${isOpen ? ' is-open' : ''}`}
+      {...(!isOpen ? { inert: '' } : {})}
       onTransitionEnd={(event) => {
         if (event.propertyName === 'width' && !isOpen) {
           setIsRendered(false);
@@ -105,14 +127,14 @@ export const SidePanel = ({
     >
       <div className="side-panel-body">
         <div className="side-panel-header">
-          {headerContent ?? <h2 className="side-panel-title">{title}</h2>}
+          {shownHeaderContent ?? <h2 className="side-panel-title">{shownTitle}</h2>}
           <button
-            aria-label={`Close ${title}`}
+            aria-label={`Close ${shownAriaLabel}`}
             className="icon-button"
             onClick={onClose}
             type="button"
           >
-            <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           </button>
         </div>
         <div className="side-panel-content">

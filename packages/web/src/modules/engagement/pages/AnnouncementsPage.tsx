@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { AnnouncementAudience } from '@hrms/shared';
+import { formatDate, formatDateTime, type AnnouncementAudience } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import { IconDeviceFloppy, IconFilterOff, IconPin, IconPlus, IconSpeakerphone } from '@tabler/icons-react';
 import { useMemo, useState, type FormEvent } from 'react';
@@ -58,22 +58,6 @@ const audienceColor: Record<AnnouncementAudience, MainColorName> = {
   employee: 'amber',
 };
 
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
-
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
-
 export const AnnouncementsPage = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -122,7 +106,7 @@ export const AnnouncementsPage = () => {
   };
 
   return (
-    <main className="page-frame page-frame-single">
+    <section className="page-frame page-frame-single">
       <section className="announcements-content" aria-labelledby="announcements-title">
         <header className="page-header">
           <div>
@@ -143,30 +127,34 @@ export const AnnouncementsPage = () => {
                 }}
                 type="button"
               >
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Add announcement
               </button>
             </div>
           ) : null}
         </header>
 
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
 
         <div className="metric-strip metric-strip-2 employee-metrics">
           <div className="metric-card">
             <div className="metric-label">Visible posts</div>
-            <div className="metric-value">{loading ? '...' : announcements.length}</div>
+            <div className="metric-value">{loading ? '…' : announcements.length}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Pinned</div>
-            <div className="metric-value">{loading ? '...' : pinnedCount}</div>
+            <div className="metric-value">{loading ? '…' : pinnedCount}</div>
           </div>
         </div>
 
         <section className="table-shell">
           <div className="table-title-row">
             <div className="table-title">
-              <IconSpeakerphone size={theme.icon.size.md} /> Announcements
+              <IconSpeakerphone aria-hidden="true" size={theme.icon.size.md} /> Announcements
             </div>
             <div className="panel-actions">
               <FilterBar
@@ -239,7 +227,7 @@ export const AnnouncementsPage = () => {
                   {announcement.isPinned ? (
                     <StatusChip
                       color="amber"
-                      icon={<IconPin size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />}
+                      icon={<IconPin aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />}
                       label="Pinned"
                     />
                   ) : null}
@@ -275,6 +263,7 @@ export const AnnouncementsPage = () => {
               <label htmlFor="announcement-title">Title</label>
               <input
                 id="announcement-title"
+                name="announcement-title"
                 required
                 value={form.title}
                 onChange={(event) =>
@@ -286,6 +275,7 @@ export const AnnouncementsPage = () => {
               <label htmlFor="announcement-audience">Audience</label>
               <select
                 id="announcement-audience"
+                name="announcement-audience"
                 value={form.audience}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -305,6 +295,7 @@ export const AnnouncementsPage = () => {
               <label htmlFor="announcement-body">Message</label>
               <textarea
                 id="announcement-body"
+                name="announcement-body"
                 required
                 value={form.body}
                 onChange={(event) =>
@@ -316,6 +307,7 @@ export const AnnouncementsPage = () => {
               <label htmlFor="announcement-expires">Expires</label>
               <input
                 id="announcement-expires"
+                name="announcement-expires"
                 type="date"
                 value={form.expiresAt}
                 onChange={(event) =>
@@ -326,6 +318,7 @@ export const AnnouncementsPage = () => {
             <label className="checkbox-field">
               <input
                 checked={form.isPinned}
+                name="announcement-pinned"
                 type="checkbox"
                 onChange={(event) =>
                   setForm((current) => ({ ...current, isPinned: event.target.checked }))
@@ -334,12 +327,12 @@ export const AnnouncementsPage = () => {
               Pin this update
             </label>
             <button className="button button-primary" disabled={publishing} type="submit">
-              <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              {publishing ? 'Publishing...' : 'Publish'}
+              <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              {publishing ? 'Publishing…' : 'Publish'}
             </button>
           </form>
         </Modal>
       ) : null}
-    </main>
+    </section>
   );
 };

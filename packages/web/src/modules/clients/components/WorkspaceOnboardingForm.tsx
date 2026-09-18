@@ -121,6 +121,7 @@ export const WorkspaceOnboardingForm = ({
               <label htmlFor="client-select">Client</label>
               <select
                 id="client-select"
+                name="client-select"
                 value={form.clientId}
                 onChange={(event) => setField('clientId', event.target.value)}
               >
@@ -149,6 +150,8 @@ export const WorkspaceOnboardingForm = ({
               </label>
               <input
                 id="client-legal-name"
+                name="client-legal-name"
+                autoComplete="organization"
                 required
                 value={form.legalName}
                 onChange={(event) => setField('legalName', event.target.value)}
@@ -161,6 +164,8 @@ export const WorkspaceOnboardingForm = ({
               <label htmlFor="client-display-name">Workspace display name</label>
               <input
                 id="client-display-name"
+                name="client-display-name"
+                autoComplete="organization"
                 value={form.displayName}
                 onChange={(event) => setField('displayName', event.target.value)}
               />
@@ -181,6 +186,9 @@ export const WorkspaceOnboardingForm = ({
                 </label>
                 <input
                   id="client-locale"
+                  name="client-locale"
+                  autoComplete="off"
+                  spellCheck={false}
                   required
                   value={form.defaultLocale}
                   onChange={(event) => setField('defaultLocale', event.target.value)}
@@ -192,6 +200,10 @@ export const WorkspaceOnboardingForm = ({
                 </label>
                 <input
                   id="client-currency"
+                  name="client-currency"
+                  autoComplete="off"
+                  spellCheck={false}
+                  minLength={3}
                   maxLength={3}
                   required
                   value={form.defaultCurrency}
@@ -220,12 +232,15 @@ export const WorkspaceOnboardingForm = ({
               </label>
               <input
                 id="client-admin-email"
+                name="client-admin-email"
+                autoComplete="email"
+                spellCheck={false}
                 required
                 type="email"
                 value={form.adminEmail}
                 onChange={(event) => setField('adminEmail', event.target.value)}
               />
-              <p className="field-hint">Someone on the client&apos;s side, not on your team.</p>
+              <p className="field-hint">Someone on the client&rsquo;s side, not on your team.</p>
             </div>
             <div className="field">
               <label htmlFor="client-admin-password">
@@ -233,6 +248,8 @@ export const WorkspaceOnboardingForm = ({
               </label>
               <input
                 id="client-admin-password"
+                name="client-admin-password"
+                autoComplete="new-password"
                 minLength={MINIMUM_PASSWORD_LENGTH}
                 required
                 type="password"
@@ -255,6 +272,9 @@ export const WorkspaceOnboardingForm = ({
               </label>
               <input
                 id="client-hr-admin-email"
+                name="client-hr-admin-email"
+                autoComplete="email"
+                spellCheck={false}
                 required
                 type="email"
                 value={form.hrAdminEmail}
@@ -268,6 +288,8 @@ export const WorkspaceOnboardingForm = ({
               </label>
               <input
                 id="client-hr-admin-password"
+                name="client-hr-admin-password"
+                autoComplete="new-password"
                 minLength={MINIMUM_PASSWORD_LENGTH}
                 required
                 type="password"

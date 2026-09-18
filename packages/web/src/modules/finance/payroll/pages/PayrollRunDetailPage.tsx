@@ -1,13 +1,16 @@
-﻿import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import { IconAlertTriangle, IconLock, IconRefresh, IconTable, IconX } from '@tabler/icons-react';
 import { Fragment, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../../app/download';
 import { StatusChip } from '../../../../components/chip/StatusChip';
+import { useConfirm } from '../../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
+import { focusFirstByName } from '../../../../components/form/validation';
 import { Modal } from '../../../../components/modal/Modal';
 import { SkeletonRows } from '../../../../components/skeleton/Skeleton';
+import { Tooltip } from '../../../../components/tooltip/Tooltip';
 import { useTheme } from '../../../../providers/theme/useTheme';
 import {
   PayrollReadinessBanner,
@@ -124,6 +127,7 @@ const downloadCsv = (filename: string, contents: string): void => {
 
 export const PayrollRunDetailPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const runId = useParams<{ runId: string }>().runId ?? '';
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +185,7 @@ export const PayrollRunDetailPage = () => {
       setMessage(successMessage);
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Operation failed.');
+      setError(cause instanceof Error ? cause.message : 'Could not update the run. Refresh and try again.');
       return false;
     }
   };
@@ -209,18 +213,53 @@ export const PayrollRunDetailPage = () => {
     }
   };
 
-  const requestFinalize = (): void => {
+  const requestFinalize = async (): Promise<void> => {
     const readiness = readinessData?.payrollReadiness;
     // While readiness is still loading we can't know whether blockers exist; a
     // reasonless finalize would be rejected by the server, so wait (the button
     // is disabled in that state) rather than guessing.
     if (!readiness) return;
+    const confirmed = await confirm({
+      title: 'Finalize this payroll run?',
+      body: 'The run locks, payslips are created for every employee, and bank advice becomes available.',
+      confirmLabel: 'Finalize',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     if (readiness.hardBlockerCount > 0) {
       setFinalizeReason('');
       setFinalizeOpen(true);
       return;
     }
-    void submitFinalize();
+    await submitFinalize();
+  };
+
+  const onRegenerate = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Regenerate this run?',
+      body: 'Manual line edits and tax overrides will be overwritten with freshly computed values.',
+      confirmLabel: 'Regenerate',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await runAction(
+      () => regenerateRun({ variables: { runId } }),
+      'Draft updated with the latest salaries and leave.',
+    );
+  };
+
+  const onRemoveLine = async (lineId: string): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Remove this line?',
+      body: 'The line will be removed from this draft run.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await runAction(
+      () => removeLine({ variables: { lineId, runId } }),
+      'Line removed.',
+    );
   };
 
   const onUpdateLineTax = async (lineId: string, raw: string): Promise<void> => {
@@ -249,13 +288,13 @@ export const PayrollRunDetailPage = () => {
         result.data.bankAdviceCsv,
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not build bank advice.');
+      setError(cause instanceof Error ? cause.message : 'Could not build the bank advice. Refresh the run and try again.');
     }
   };
 
   if (loadError) {
     return (
-      <main className="page-frame">
+      <section className="page-frame">
         <div className="employees-content">
           <EmptyState
             icon={IconAlertTriangle}
@@ -268,7 +307,7 @@ export const PayrollRunDetailPage = () => {
             }
           />
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -277,7 +316,7 @@ export const PayrollRunDetailPage = () => {
   const totalNet = lines.reduce((sum, line) => sum + line.netPayAmount, 0);
 
   return (
-    <main className="page-frame">
+    <section className="page-frame">
       <div className="employees-content">
         <header className="page-header">
           <div>
@@ -297,24 +336,25 @@ export const PayrollRunDetailPage = () => {
                   className="button button-secondary"
                   disabled={regenerating}
                   type="button"
-                  onClick={() => {
-                    void runAction(
-                      () => regenerateRun({ variables: { runId } }),
-                      'Draft updated with the latest salaries and leave.',
-                    );
-                  }}
+                  onClick={() => void onRegenerate()}
                 >
-                  <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   {regenerating ? 'Recomputing…' : 'Regenerate'}
                 </button>
                 <button
                   className="button button-primary"
-                  disabled={finalizing || lines.length === 0 || readinessData === undefined}
-                  onClick={requestFinalize}
+                  disabled={finalizing || readinessData === undefined}
+                  onClick={() => {
+                    if (lines.length === 0) {
+                      setError('Regenerate the run to add lines before finalizing.');
+                      return;
+                    }
+                    void requestFinalize();
+                  }}
                   title={readinessData === undefined ? 'Checking readiness…' : undefined}
                   type="button"
                 >
-                  <IconLock size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   {finalizing ? 'Finalizing…' : 'Finalize run'}
                 </button>
               </>
@@ -351,7 +391,11 @@ export const PayrollRunDetailPage = () => {
         </header>
 
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
-        {message ? <p className="form-success">{message}</p> : null}
+        {message ? (
+          <p className="form-success" role="status">
+            {message}
+          </p>
+        ) : null}
 
         {run?.isStale && !isFinalized ? (
           <p className="field-hint-warning" role="status">
@@ -448,19 +492,16 @@ export const PayrollRunDetailPage = () => {
                         </td>
                         {!isFinalized ? (
                           <td data-label="Actions">
-                            <button
-                              className="icon-button row-hover-action"
-                              title="Remove line"
-                              type="button"
-                              onClick={() => {
-                                void runAction(
-                                  () => removeLine({ variables: { lineId: line.id, runId } }),
-                                  'Line removed.',
-                                );
-                              }}
-                            >
-                              <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                            </button>
+                            <Tooltip label="Remove line" side="top">
+                              <button
+                                aria-label="Remove line"
+                                className="icon-button row-hover-action"
+                                type="button"
+                                onClick={() => void onRemoveLine(line.id)}
+                              >
+                                <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                              </button>
+                            </Tooltip>
                           </td>
                         ) : null}
                       </tr>
@@ -498,7 +539,9 @@ export const PayrollRunDetailPage = () => {
                                 <div className="record-inline-actions">
                                   <input
                                     aria-label={`Tax override for ${line.displayName ?? line.employeeId}`}
+                                    inputMode="decimal"
                                     min={0}
+                                    name={`tax-override-${line.id}`}
                                     placeholder="Engine tax"
                                     step="0.01"
                                     type="number"
@@ -614,7 +657,7 @@ export const PayrollRunDetailPage = () => {
                                 );
                               } catch (cause) {
                                 setError(
-                                  cause instanceof Error ? cause.message : 'Could not render PDF.',
+                                  cause instanceof Error ? cause.message : 'Could not render the PDF. Refresh and try again.',
                                 );
                               }
                             })();
@@ -638,7 +681,7 @@ export const PayrollRunDetailPage = () => {
             <div className="panel-kicker">Finance operations</div>
             <h2 className="panel-title">{isFinalized ? 'Run locked' : 'Review draft'}</h2>
           </div>
-          <IconLock size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+          <IconLock aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
         </div>
 
         {!isFinalized && run ? (
@@ -697,9 +740,12 @@ export const PayrollRunDetailPage = () => {
             <label htmlFor="pay-reference">Payment reference</label>
             <input
               id="pay-reference"
+              autoComplete="off"
               autoFocus
               maxLength={120}
+              name="pay-reference"
               placeholder="e.g. Bank transfer 20260930"
+              spellCheck={false}
               value={payReference}
               onChange={(event) => setPayReference(event.target.value)}
             />
@@ -730,16 +776,25 @@ export const PayrollRunDetailPage = () => {
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
         <form
           className="config-form"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            if (!finalizeReason.trim()) return;
-            void submitFinalize(finalizeReason.trim());
+            const reason = finalizeReason.trim();
+            if (!reason) {
+              setError('Enter a reason before finalizing with blockers.');
+              focusFirstByName(document.querySelector<HTMLElement>('.modal-dialog'), [
+                'finalize-reason',
+              ]);
+              return;
+            }
+            void submitFinalize(reason);
           }}
         >
           <div className="field">
             <label htmlFor="finalize-reason">Reason</label>
             <textarea
               id="finalize-reason"
+              name="finalize-reason"
               autoFocus
               placeholder="e.g. Bank details pending for two joiners; paying this cycle and correcting next month."
               required
@@ -748,16 +803,12 @@ export const PayrollRunDetailPage = () => {
               onChange={(event) => setFinalizeReason(event.target.value)}
             />
           </div>
-          <button
-            className="button button-primary button-full"
-            disabled={finalizing || !finalizeReason.trim()}
-            type="submit"
-          >
-            <IconLock size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          <button className="button button-primary button-full" disabled={finalizing} type="submit">
+            <IconLock aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {finalizing ? 'Finalizing…' : 'Finalize anyway'}
           </button>
         </form>
       </Modal>
-    </main>
+    </section>
   );
 };

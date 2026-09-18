@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from '@apollo/client';
 import { IconHeartHandshake, IconPlus } from '@tabler/icons-react';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 
 import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { focusFirstByName } from '../../../components/form/validation';
 import { Modal } from '../../../components/modal/Modal';
 import { SkeletonRows } from '../../../components/skeleton/Skeleton';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -47,6 +48,7 @@ export const BenefitPlansPanel = () => {
   const [reducesTaxable, setReducesTaxable] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   const plans = data?.benefitPlans ?? [];
 
@@ -77,6 +79,18 @@ export const BenefitPlansPanel = () => {
   const onSave = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     setErrorMessage(null);
+    const missing: string[] = [];
+    if (!editing && code.trim().length < 2) missing.push('benefit-code');
+    if (name.trim().length === 0) missing.push('benefit-name');
+    if (missing.length > 0) {
+      setErrorMessage(
+        missing.length === 1 && missing[0] === 'benefit-name'
+          ? 'Enter a plan name before saving the plan.'
+          : 'Enter a plan code of at least two characters and a name before creating the plan.',
+      );
+      focusFirstByName(formRef.current, missing);
+      return;
+    }
     const employeeContributionAmount = Number(employeeAmount.trim() || 0);
     const employerContributionAmount = Number(employerAmount.trim() || 0);
     if (
@@ -84,10 +98,18 @@ export const BenefitPlansPanel = () => {
       !Number.isFinite(employerContributionAmount)
     ) {
       setErrorMessage('Enter the monthly amounts as numbers.');
+      focusFirstByName(formRef.current, [
+        ...(Number.isFinite(employeeContributionAmount) ? [] : ['benefit-employee']),
+        ...(Number.isFinite(employerContributionAmount) ? [] : ['benefit-employer']),
+      ]);
       return;
     }
     if (employeeContributionAmount < 0 || employerContributionAmount < 0) {
       setErrorMessage('Amounts must be zero or greater.');
+      focusFirstByName(formRef.current, [
+        ...(employeeContributionAmount < 0 ? ['benefit-employee'] : []),
+        ...(employerContributionAmount < 0 ? ['benefit-employer'] : []),
+      ]);
       return;
     }
     try {
@@ -136,7 +158,7 @@ export const BenefitPlansPanel = () => {
               {loading ? '…' : `${plans.length} plan${plans.length === 1 ? '' : 's'}`}
             </div>
             <button className="button button-secondary" type="button" onClick={openCreate}>
-              <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               New plan
             </button>
           </div>
@@ -170,7 +192,7 @@ export const BenefitPlansPanel = () => {
                       description="Add the plans employees can enroll in; payroll bills their shares each run."
                       action={
                         <button className="button button-secondary" type="button" onClick={openCreate}>
-                          <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                          <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                           New plan
                         </button>
                       }
@@ -190,8 +212,8 @@ export const BenefitPlansPanel = () => {
                     </button>
                     <span className="employee-secondary"> · {plan.code}</span>
                   </td>
-                  <td data-label="Employee / month">{formatMoney(plan.employeeContributionAmount)}</td>
-                  <td data-label="Employer / month">{formatMoney(plan.employerContributionAmount)}</td>
+                  <td className="tabular-nums" data-label="Employee / month">{formatMoney(plan.employeeContributionAmount)}</td>
+                  <td className="tabular-nums" data-label="Employer / month">{formatMoney(plan.employerContributionAmount)}</td>
                   <td data-label="Pre-tax">{plan.reducesTaxable ? 'Yes' : 'No'}</td>
                   <td data-label="Status">{plan.isActive ? 'Active' : 'Inactive'}</td>
                 </tr>
@@ -208,12 +230,15 @@ export const BenefitPlansPanel = () => {
         width="sm"
       >
         {errorMessage ? <p className="auth-error" role="alert">{errorMessage}</p> : null}
-        <form className="config-form" onSubmit={(event) => void onSave(event)}>
+        <form className="config-form" ref={formRef} onSubmit={(event) => void onSave(event)}>
           {!editing ? (
             <div className="field">
               <label htmlFor="benefit-code">Code</label>
               <input
                 id="benefit-code"
+                name="benefit-code"
+                autoComplete="off"
+                spellCheck={false}
                 maxLength={32}
                 placeholder="HEALTH"
                 value={code}
@@ -225,6 +250,7 @@ export const BenefitPlansPanel = () => {
             <label htmlFor="benefit-name">Name</label>
             <input
               id="benefit-name"
+              name="benefit-name"
               maxLength={120}
               placeholder="Health insurance"
               value={name}
@@ -236,6 +262,7 @@ export const BenefitPlansPanel = () => {
               <label htmlFor="benefit-employee">Employee / month (PKR)</label>
               <input
                 id="benefit-employee"
+                name="benefit-employee"
                 inputMode="decimal"
                 placeholder="0"
                 value={employeeAmount}
@@ -246,6 +273,7 @@ export const BenefitPlansPanel = () => {
               <label htmlFor="benefit-employer">Employer / month (PKR)</label>
               <input
                 id="benefit-employer"
+                name="benefit-employer"
                 inputMode="decimal"
                 placeholder="0"
                 value={employerAmount}
@@ -256,6 +284,7 @@ export const BenefitPlansPanel = () => {
           <label className="field field-checkbox">
             <input
               checked={reducesTaxable}
+              name="reduces-taxable"
               type="checkbox"
               onChange={(event) => setReducesTaxable(event.target.checked)}
             />
@@ -265,6 +294,7 @@ export const BenefitPlansPanel = () => {
             <label className="field field-checkbox">
               <input
                 checked={isActive}
+                name="is-active"
                 type="checkbox"
                 onChange={(event) => setIsActive(event.target.checked)}
               />
@@ -273,7 +303,7 @@ export const BenefitPlansPanel = () => {
           ) : null}
           <button
             className="button button-primary button-full"
-            disabled={creating || updating || name.trim().length === 0 || (!editing && code.trim().length < 2)}
+            disabled={creating || updating}
             type="submit"
           >
             {creating || updating ? 'Saving…' : editing ? 'Save plan' : 'Create plan'}

@@ -1,10 +1,13 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
-import type {
-  CompensationChangeReason,
-  DocumentSignatureStatus,
-  EmployeeOnboardingTaskStatus,
-  EmploymentStatus,
-  WorkerType,
+import {
+  formatDate,
+  formatDateTime,
+  todayDateKey,
+  type CompensationChangeReason,
+  type DocumentSignatureStatus,
+  type EmployeeOnboardingTaskStatus,
+  type EmploymentStatus,
+  type WorkerType,
 } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
@@ -26,6 +29,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { uploadToSignedUrl } from '../../../app/upload';
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { DetailSection } from '../components/DetailSection';
@@ -414,18 +418,6 @@ const colorFor = (id: string): MainColorName => {
 const chipStyle = (color: MainColorName): ChipStyle => ({
   '--chip-color': `var(--hrms-color-tag-${color})`,
 });
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
 const formatMoney = (value: number, currency: string): string =>
   new Intl.NumberFormat('en', { style: 'currency', currency, maximumFractionDigits: 0 }).format(
     value,
@@ -434,7 +426,6 @@ const daysSince = (value: string): number =>
   Math.max(0, Math.floor((Date.now() - new Date(`${value}T00:00:00`).getTime()) / 86_400_000));
 const daysUntil = (value: string): number =>
   Math.max(0, Math.ceil((new Date(`${value}T00:00:00`).getTime() - Date.now()) / 86_400_000));
-const today = (): string => new Date().toISOString().slice(0, 10);
 const emptyHrRecordForm = {
   roleTitle: '',
   salaryBreakdown: '',
@@ -483,7 +474,7 @@ const emptyBonusForm = {
 };
 const emptySalaryRevisionForm = {
   salaryStructureId: '',
-  effectiveDate: today(),
+  effectiveDate: todayDateKey(),
   annualAmount: '',
   reason: 'merit' as CompensationChangeReason,
   note: '',
@@ -502,6 +493,7 @@ const PROFILE_TABS: ReadonlyArray<{ readonly key: ProfileTabKey; readonly label:
 
 export const EmployeeProfilePage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const { employeeId = '' } = useParams<{ employeeId: string }>();
   const [tab, setTab] = useState<ProfileTabKey>('profile');
@@ -564,7 +556,7 @@ export const EmployeeProfilePage = () => {
   );
   const [managerForm, setManagerForm] = useState({
     reportsToEmployeeId: '',
-    effectiveDate: today(),
+    effectiveDate: todayDateKey(),
   });
 
   const [assessmentForm, setAssessmentForm] = useState(emptyAssessmentForm);
@@ -586,7 +578,7 @@ export const EmployeeProfilePage = () => {
   const [offboardingDrafts, setOffboardingDrafts] = useState<Record<string, { status: string; dueDate: string; notes: string }>>({});
   const [separationForm, setSeparationForm] = useState({
     type: 'resignation' as string,
-    effectiveDate: today(),
+    effectiveDate: todayDateKey(),
     reason: '',
     resignationLetterDate: '',
     relievingDate: '',
@@ -635,7 +627,7 @@ export const EmployeeProfilePage = () => {
       roleKeys.includes('clientAdmin') ||
       roleKeys.includes('clientMember'),
   );
-  const detailVariables = useMemo(() => ({ employeeId, asOf: today() }), [employeeId]);
+  const detailVariables = useMemo(() => ({ employeeId, asOf: todayDateKey() }), [employeeId]);
   const {
     data: detailData,
     loading: detailLoading,
@@ -779,7 +771,7 @@ export const EmployeeProfilePage = () => {
   useEffect(() => {
     setSalaryRevisionForm({
       salaryStructureId: defaultSalaryStructureId,
-      effectiveDate: today(),
+      effectiveDate: todayDateKey(),
       annualAmount: salary ? String(salary.annualAmount) : '',
       reason: 'merit',
       note: '',
@@ -1069,7 +1061,7 @@ export const EmployeeProfilePage = () => {
       setSalaryRevisionForm((current) => ({
         ...current,
         salaryStructureId: revision?.salaryStructureId ?? current.salaryStructureId,
-        effectiveDate: today(),
+        effectiveDate: todayDateKey(),
         annualAmount: revision ? String(revision.annualAmount) : current.annualAmount,
         reason: 'merit',
         note: '',
@@ -1141,6 +1133,13 @@ export const EmployeeProfilePage = () => {
   const onSeparate = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!detailEmployee) return;
+    const confirmed = await confirm({
+      title: 'Separate this employee?',
+      body: 'The employee will be marked as terminated and offboarding tasks will be created.',
+      confirmLabel: 'Separate',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setDetailError(null);
     try {
       await separateEmployee({
@@ -1261,7 +1260,7 @@ export const EmployeeProfilePage = () => {
   const onChangePhoto = (file: File): void => {
     if (!detailEmployee) return;
     if (file.size > 300_000) {
-      setDetailError('Image must be under 300 KB.');
+      setDetailError('Image must be under 300\u00A0KB.');
       return;
     }
     setDetailError(null);
@@ -1333,22 +1332,22 @@ export const EmployeeProfilePage = () => {
 
   if (!detailEmployee) {
     return (
-      <main className="profile-page">
+      <section className="profile-page">
         <div className="detail-panel-empty">
-          <IconUserCheck size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
+          <IconUserCheck aria-hidden="true" size={theme.icon.size.xl} stroke={theme.icon.stroke.md} />
           <p>{detailLoading ? 'Loading employee…' : 'This employee could not be found.'}</p>
           <Link className="button button-secondary" to="/employees">
             Back to employees
           </Link>
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="profile-page">
+    <section className="profile-page">
       <Link className="profile-back" to="/employees">
-        <IconArrowLeft size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+        <IconArrowLeft aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         Employees
       </Link>
 
@@ -1358,7 +1357,14 @@ export const EmployeeProfilePage = () => {
         <aside className="profile-identity" aria-label="Employee identity">
               <div className="employee-photo-slot">
                 {profile?.photoUrl ? (
-                  <img alt="" className="employee-identity-photo" src={profile.photoUrl} />
+                  <img
+                    alt=""
+                    className="employee-identity-photo"
+                    fetchPriority="high"
+                    height={40}
+                    src={profile.photoUrl}
+                    width={40}
+                  />
                 ) : (
                   <span className="employee-avatar" style={chipStyle(colorFor(detailEmployee.id))}>
                     {initials(detailEmployee)}
@@ -1368,21 +1374,22 @@ export const EmployeeProfilePage = () => {
                   <label
                     className={`employee-photo-edit${savingPhoto ? ' is-saving' : ''}`}
                     htmlFor="employee-photo-input"
-                    title={savingPhoto ? 'Saving photo...' : 'Change photo'}
+                    title={savingPhoto ? 'Saving photo…' : 'Change photo'}
                   >
                     {savingPhoto ? (
-                      <IconLoader2
+                      <IconLoader2 aria-hidden="true"
                         className="icon-spin"
                         size={theme.icon.size.sm}
                         stroke={theme.icon.stroke.sm}
                       />
                     ) : (
-                      <IconCamera size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                      <IconCamera aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                     )}
                     <input
                       accept="image/*"
                       disabled={savingPhoto}
                       id="employee-photo-input"
+                      name="employee-photo-input"
                       type="file"
                       onChange={(event) => {
                         const file = event.target.files?.[0];
@@ -1401,7 +1408,11 @@ export const EmployeeProfilePage = () => {
             label={statusLabels[detailEmployee.employmentStatus]}
           />
 
-          {photoNotice ? <p className="form-success">{photoNotice}</p> : null}
+          {photoNotice ? (
+            <p className="form-success" role="status">
+              {photoNotice}
+            </p>
+          ) : null}
 
           <div className="field-list profile-identity-facts">
             <div className="field-row">
@@ -1450,7 +1461,7 @@ export const EmployeeProfilePage = () => {
             ))}
           </nav>
 
-          {detailLoading ? <p className="page-subtitle">Loading employee details...</p> : null}
+          {detailLoading ? <p className="page-subtitle">Loading employee details…</p> : null}
           {detailError ? (
             <p className="auth-error" role="alert">
               {detailError}
@@ -1557,20 +1568,20 @@ export const EmployeeProfilePage = () => {
               {showEdit && canEditHrRecord ? (
                 <form className="config-form compact-form" onSubmit={onUpdateEmployee} style={{ marginTop: theme.spacing(3) }}>
                   <div className="field-group">
-                    <div className="field"><label htmlFor="edit-middle">Middle name</label><input id="edit-middle" value={editForm.middleName} onChange={(e) => setEditForm((c) => ({ ...c, middleName: e.target.value }))} /></div>
-                    <div className="field"><label htmlFor="edit-salutation">Salutation</label><select id="edit-salutation" value={editForm.salutation} onChange={(e) => setEditForm((c) => ({ ...c, salutation: e.target.value }))}><option value="">—</option><option value="Mr">Mr</option><option value="Ms">Ms</option><option value="Mrs">Mrs</option><option value="Mx">Mx</option><option value="Dr">Dr</option><option value="Prof">Prof</option></select></div>
+                    <div className="field"><label htmlFor="edit-middle">Middle name</label><input id="edit-middle" name="edit-middle" value={editForm.middleName} onChange={(e) => setEditForm((c) => ({ ...c, middleName: e.target.value }))} /></div>
+                    <div className="field"><label htmlFor="edit-salutation">Salutation</label><select id="edit-salutation" name="edit-salutation" value={editForm.salutation} onChange={(e) => setEditForm((c) => ({ ...c, salutation: e.target.value }))}><option value="">—</option><option value="Mr">Mr</option><option value="Ms">Ms</option><option value="Mrs">Mrs</option><option value="Mx">Mx</option><option value="Dr">Dr</option><option value="Prof">Prof</option></select></div>
                   </div>
                   <div className="field-group">
-                    <div className="field"><label htmlFor="edit-scheduled">Scheduled confirmation</label><input id="edit-scheduled" type="date" value={editForm.scheduledConfirmationDate} onChange={(e) => setEditForm((c) => ({ ...c, scheduledConfirmationDate: e.target.value }))} /></div>
-                    <div className="field"><label htmlFor="edit-final">Final confirmation</label><input id="edit-final" type="date" value={editForm.finalConfirmationDate} onChange={(e) => setEditForm((c) => ({ ...c, finalConfirmationDate: e.target.value }))} /></div>
+                    <div className="field"><label htmlFor="edit-scheduled">Scheduled confirmation</label><input id="edit-scheduled" name="edit-scheduled" type="date" value={editForm.scheduledConfirmationDate} onChange={(e) => setEditForm((c) => ({ ...c, scheduledConfirmationDate: e.target.value }))} /></div>
+                    <div className="field"><label htmlFor="edit-final">Final confirmation</label><input id="edit-final" name="edit-final" type="date" value={editForm.finalConfirmationDate} onChange={(e) => setEditForm((c) => ({ ...c, finalConfirmationDate: e.target.value }))} /></div>
                   </div>
                   <div className="field-group">
-                    <div className="field"><label htmlFor="edit-contract">Contract end</label><input id="edit-contract" type="date" value={editForm.contractEndDate} onChange={(e) => setEditForm((c) => ({ ...c, contractEndDate: e.target.value }))} /></div>
-                    <div className="field"><label htmlFor="edit-notice">Notice days</label><input id="edit-notice" type="number" min={0} value={editForm.noticePeriodDays} onChange={(e) => setEditForm((c) => ({ ...c, noticePeriodDays: e.target.value }))} /></div>
+                    <div className="field"><label htmlFor="edit-contract">Contract end</label><input id="edit-contract" name="edit-contract" type="date" value={editForm.contractEndDate} onChange={(e) => setEditForm((c) => ({ ...c, contractEndDate: e.target.value }))} /></div>
+                    <div className="field"><label htmlFor="edit-notice">Notice days</label><input id="edit-notice" name="edit-notice" type="number" min={0} value={editForm.noticePeriodDays} onChange={(e) => setEditForm((c) => ({ ...c, noticePeriodDays: e.target.value }))} /></div>
                   </div>
-                  <div className="field"><label htmlFor="edit-retirement">Retirement date</label><input id="edit-retirement" type="date" value={editForm.retirementDate} onChange={(e) => setEditForm((c) => ({ ...c, retirementDate: e.target.value }))} /></div>
-                  <div className="field"><label htmlFor="edit-workemail">Work email</label><input id="edit-workemail" type="email" value={editForm.workEmail} onChange={(e) => setEditForm((c) => ({ ...c, workEmail: e.target.value }))} /></div>
-                  <div className="field"><label htmlFor="edit-role">Role</label><input id="edit-role" value={editForm.roleTitle} onChange={(e) => setEditForm((c) => ({ ...c, roleTitle: e.target.value }))} /></div>
+                  <div className="field"><label htmlFor="edit-retirement">Retirement date</label><input id="edit-retirement" name="edit-retirement" type="date" value={editForm.retirementDate} onChange={(e) => setEditForm((c) => ({ ...c, retirementDate: e.target.value }))} /></div>
+                  <div className="field"><label htmlFor="edit-workemail">Work email</label><input id="edit-workemail" name="edit-workemail" type="email" value={editForm.workEmail} onChange={(e) => setEditForm((c) => ({ ...c, workEmail: e.target.value }))} /></div>
+                  <div className="field"><label htmlFor="edit-role">Role</label><input id="edit-role" name="edit-role" value={editForm.roleTitle} onChange={(e) => setEditForm((c) => ({ ...c, roleTitle: e.target.value }))} /></div>
                   <button className="button button-primary" type="submit" disabled={updatingEmployee}>{updatingEmployee ? 'Saving…' : 'Save changes'}</button>
                 </form>
               ) : null}
@@ -1611,6 +1622,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="manager-select">Reports to</label>
                       <select
                         id="manager-select"
+                        name="manager-select"
                         value={managerForm.reportsToEmployeeId}
                         onChange={(event) =>
                           setManagerForm((current) => ({
@@ -1632,6 +1644,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="manager-effective">Effective from</label>
                       <input
                         id="manager-effective"
+                        name="manager-effective"
                         required
                         type="date"
                         value={managerForm.effectiveDate}
@@ -1649,8 +1662,8 @@ export const EmployeeProfilePage = () => {
                     past history is kept.
                   </p>
                   <button className="button button-secondary" disabled={savingManager} type="submit">
-                    <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {savingManager ? 'Saving...' : 'Update manager'}
+                    <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    {savingManager ? 'Saving…' : 'Update manager'}
                   </button>
                 </form>
               ) : null}
@@ -1745,13 +1758,14 @@ export const EmployeeProfilePage = () => {
             {canEditHrRecord ? (
               <DetailSection title="Tethr HR record">
                 {hrRecordLoading ? (
-                  <p className="page-subtitle">Loading private HR record...</p>
+                  <p className="page-subtitle">Loading private HR record…</p>
                 ) : null}
                 <form className="config-form compact-form" onSubmit={onSaveHrRecord}>
                   <div className="field">
                     <label htmlFor="hr-role">Role</label>
                     <input
                       id="hr-role"
+                      name="hr-role"
                       maxLength={160}
                       value={hrRecordForm.roleTitle}
                       onChange={(event) =>
@@ -1766,6 +1780,7 @@ export const EmployeeProfilePage = () => {
                     <label htmlFor="hr-salary-breakdown">Salary breakdown</label>
                     <textarea
                       id="hr-salary-breakdown"
+                      name="hr-salary-breakdown"
                       maxLength={8000}
                       value={hrRecordForm.salaryBreakdown}
                       onChange={(event) =>
@@ -1778,9 +1793,10 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <div className="field">
                     <label htmlFor="hr-payment-mode">Payment mode</label>
-                    <select
-                      id="hr-payment-mode"
-                      value={hrRecordForm.paymentMode}
+                      <select
+                        id="hr-payment-mode"
+                        name="hr-payment-mode"
+                        value={hrRecordForm.paymentMode}
                       onChange={(event) =>
                         setHrRecordForm((current) => ({
                           ...current,
@@ -1799,6 +1815,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="hr-bank-name">Bank</label>
                       <input
                         id="hr-bank-name"
+                        name="hr-bank-name"
                         maxLength={160}
                         value={hrRecordForm.bankName}
                         onChange={(event) =>
@@ -1813,6 +1830,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="hr-bank-title">Account title</label>
                       <input
                         id="hr-bank-title"
+                        name="hr-bank-title"
                         maxLength={160}
                         value={hrRecordForm.bankAccountTitle}
                         onChange={(event) =>
@@ -1829,6 +1847,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="hr-bank-account">Account number</label>
                       <input
                         id="hr-bank-account"
+                        name="hr-bank-account"
                         maxLength={80}
                         value={hrRecordForm.bankAccountNumber}
                         onChange={(event) =>
@@ -1843,6 +1862,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="hr-bank-iban">IBAN</label>
                       <input
                         id="hr-bank-iban"
+                        name="hr-bank-iban"
                         maxLength={80}
                         value={hrRecordForm.bankIban}
                         onChange={(event) =>
@@ -1858,6 +1878,7 @@ export const EmployeeProfilePage = () => {
                     <label htmlFor="hr-hardware">Hardware</label>
                     <textarea
                       id="hr-hardware"
+                      name="hr-hardware"
                       maxLength={8000}
                       value={hrRecordForm.hardwareInfo}
                       onChange={(event) =>
@@ -1872,6 +1893,7 @@ export const EmployeeProfilePage = () => {
                     <label htmlFor="hr-employee-form">Employee record form</label>
                     <textarea
                       id="hr-employee-form"
+                      name="hr-employee-form"
                       maxLength={20000}
                       value={hrRecordForm.employeeRecordForm}
                       onChange={(event) =>
@@ -1887,8 +1909,8 @@ export const EmployeeProfilePage = () => {
                     disabled={savingHrRecord}
                     type="submit"
                   >
-                    <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {savingHrRecord ? 'Saving...' : 'Save HR record'}
+                    <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    {savingHrRecord ? 'Saving…' : 'Save HR record'}
                   </button>
                 </form>
               </DetailSection>
@@ -1923,6 +1945,7 @@ export const EmployeeProfilePage = () => {
                       <select
                         disabled={loadingSalaryStructures || availableSalaryStructures.length === 0}
                         id="salary-structure"
+                        name="salary-structure"
                         required
                         value={salaryRevisionForm.salaryStructureId}
                         onChange={(event) =>
@@ -1933,7 +1956,7 @@ export const EmployeeProfilePage = () => {
                         }
                       >
                         <option value="">
-                          {loadingSalaryStructures ? 'Loading...' : 'Select structure'}
+                          {loadingSalaryStructures ? 'Loading…' : 'Select structure'}
                         </option>
                         {availableSalaryStructures.map((structure) => (
                           <option key={structure.id} value={structure.id}>
@@ -1954,6 +1977,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="salary-annual">New annual salary</label>
                       <input
                         id="salary-annual"
+                        name="salary-annual"
                         min="0.01"
                         required
                         step="0.01"
@@ -1973,6 +1997,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="salary-effective">Effective date</label>
                       <input
                         id="salary-effective"
+                        name="salary-effective"
                         required
                         type="date"
                         value={salaryRevisionForm.effectiveDate}
@@ -1988,6 +2013,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="salary-reason">Reason</label>
                       <select
                         id="salary-reason"
+                        name="salary-reason"
                         value={salaryRevisionForm.reason}
                         onChange={(event) =>
                           setSalaryRevisionForm((current) => ({
@@ -2006,9 +2032,10 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <div className="field">
                     <label htmlFor="salary-note">Note</label>
-                    <textarea
-                      id="salary-note"
-                      value={salaryRevisionForm.note}
+                      <textarea
+                        id="salary-note"
+                        name="salary-note"
+                        value={salaryRevisionForm.note}
                       onChange={(event) =>
                         setSalaryRevisionForm((current) => ({
                           ...current,
@@ -2022,15 +2049,15 @@ export const EmployeeProfilePage = () => {
                     disabled={revisingSalary || availableSalaryStructures.length === 0}
                     type="submit"
                   >
-                    <IconCurrencyDollar size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {revisingSalary ? 'Saving...' : 'Save salary adjustment'}
+                    <IconCurrencyDollar aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    {revisingSalary ? 'Saving…' : 'Save salary adjustment'}
                   </button>
                 </form>
               ) : null}
               <div className="record-list">
                 {bonuses.slice(0, 3).map((bonus) => (
                   <div className="record-item" key={bonus.id}>
-                    <IconGift size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <IconGift aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     <div>
                       <div className="employee-primary">
                         {formatMoney(bonus.amount, bonus.currency)}
@@ -2050,6 +2077,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="bonus-date">Date</label>
                       <input
                         id="bonus-date"
+                        name="bonus-date"
                         required
                         type="date"
                         value={bonusForm.awardDate}
@@ -2065,6 +2093,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="bonus-amount">Amount</label>
                       <input
                         id="bonus-amount"
+                        name="bonus-amount"
                         required
                         min="0.01"
                         step="0.01"
@@ -2081,6 +2110,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="bonus-currency">Currency</label>
                       <input
                         id="bonus-currency"
+                        name="bonus-currency"
                         maxLength={3}
                         required
                         value={bonusForm.currency}
@@ -2096,6 +2126,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="bonus-reason">Reason</label>
                       <select
                         id="bonus-reason"
+                        name="bonus-reason"
                         value={bonusForm.reason}
                         onChange={(event) =>
                           setBonusForm((current) => ({ ...current, reason: event.target.value }))
@@ -2112,9 +2143,10 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <div className="field">
                     <label htmlFor="bonus-note">Note</label>
-                    <textarea
-                      id="bonus-note"
-                      value={bonusForm.note}
+                      <textarea
+                        id="bonus-note"
+                        name="bonus-note"
+                        value={bonusForm.note}
                       onChange={(event) =>
                         setBonusForm((current) => ({ ...current, note: event.target.value }))
                       }
@@ -2125,8 +2157,8 @@ export const EmployeeProfilePage = () => {
                     disabled={awardingBonus}
                     type="submit"
                   >
-                    <IconGift size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {awardingBonus ? 'Saving...' : 'Award bonus'}
+                    <IconGift aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    {awardingBonus ? 'Saving…' : 'Award bonus'}
                   </button>
                 </form>
               ) : null}
@@ -2150,7 +2182,7 @@ export const EmployeeProfilePage = () => {
                   const signatureRequest = signatureRequests[document.id];
                   return (
                     <div className="record-item" key={document.id}>
-                      <IconFileText size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <IconFileText aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                       <div>
                         <div className="employee-primary">{document.name}</div>
                         <div className="employee-secondary">
@@ -2174,7 +2206,7 @@ export const EmployeeProfilePage = () => {
                             type="button"
                             onClick={() => void onLoadDocumentAccess(document)}
                           >
-                            <IconDownload size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                            <IconDownload aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                             Download URL
                           </button>
                           {canAttachDocument ? (
@@ -2184,7 +2216,7 @@ export const EmployeeProfilePage = () => {
                               type="button"
                               onClick={() => void onRequestDocumentSignature(document)}
                             >
-                              <IconSignature
+                              <IconSignature aria-hidden="true"
                                 size={theme.icon.size.sm}
                                 stroke={theme.icon.stroke.sm}
                               />
@@ -2226,9 +2258,10 @@ export const EmployeeProfilePage = () => {
                 <form className="config-form compact-form" onSubmit={onAddDocumentVersion}>
                   <div className="field">
                     <label htmlFor="document-version-link">Document</label>
-                    <select
-                      id="document-version-link"
-                      required
+                      <select
+                        id="document-version-link"
+                        name="document-version-link"
+                        required
                       value={documentVersionForm.employeeDocumentLinkId}
                       onChange={(event) => {
                         const selectedDocument = documents.find(
@@ -2258,9 +2291,10 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <div className="field">
                     <label htmlFor="document-version-file">File</label>
-                    <input
-                      id="document-version-file"
-                      required
+                      <input
+                        id="document-version-file"
+                        name="document-version-file"
+                        required
                       type="file"
                       onChange={(event) =>
                         onDocumentVersionFileSelected(event.target.files?.[0] ?? null)
@@ -2272,6 +2306,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-version-content-type">Content type</label>
                       <input
                         id="document-version-content-type"
+                        name="document-version-content-type"
                         required
                         value={documentVersionForm.contentType}
                         onChange={(event) =>
@@ -2286,6 +2321,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-version-size">Size bytes</label>
                       <input
                         id="document-version-size"
+                        name="document-version-size"
                         readOnly
                         type="number"
                         value={documentVersionForm.sizeBytes}
@@ -2297,6 +2333,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-version-signature">Signature</label>
                       <select
                         id="document-version-signature"
+                        name="document-version-signature"
                         value={documentVersionForm.signatureStatus}
                         onChange={(event) =>
                           setDocumentVersionForm((current) => ({
@@ -2316,6 +2353,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-version-signed-at">Signed date</label>
                       <input
                         id="document-version-signed-at"
+                        name="document-version-signed-at"
                         type="date"
                         value={documentVersionForm.signedAt}
                         onChange={(event) =>
@@ -2332,6 +2370,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-version-provider">Signature provider</label>
                       <input
                         id="document-version-provider"
+                        name="document-version-provider"
                         maxLength={80}
                         value={documentVersionForm.signatureProvider}
                         onChange={(event) =>
@@ -2346,6 +2385,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-version-envelope">Envelope ID</label>
                       <input
                         id="document-version-envelope"
+                        name="document-version-envelope"
                         maxLength={160}
                         value={documentVersionForm.externalEnvelopeId}
                         onChange={(event) =>
@@ -2362,11 +2402,11 @@ export const EmployeeProfilePage = () => {
                     disabled={addingDocumentVersion || uploadingDocument}
                     type="submit"
                   >
-                    <IconFileText size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <IconFileText aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     {uploadingDocument
-                      ? 'Uploading...'
+                      ? 'Uploading…'
                       : addingDocumentVersion
-                        ? 'Adding...'
+                        ? 'Adding…'
                         : 'Add version'}
                   </button>
                 </form>
@@ -2375,9 +2415,10 @@ export const EmployeeProfilePage = () => {
                 <form className="config-form compact-form" onSubmit={onAttachDocument}>
                   <div className="field">
                     <label htmlFor="document-name">Name</label>
-                    <input
-                      id="document-name"
-                      required
+                      <input
+                        id="document-name"
+                        name="document-name"
+                        required
                       value={documentForm.name}
                       onChange={(event) =>
                         setDocumentForm((current) => ({ ...current, name: event.target.value }))
@@ -2386,9 +2427,10 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <div className="field">
                     <label htmlFor="document-file">File</label>
-                    <input
-                      id="document-file"
-                      required
+                      <input
+                        id="document-file"
+                        name="document-file"
+                        required
                       type="file"
                       onChange={(event) => onDocumentFileSelected(event.target.files?.[0] ?? null)}
                     />
@@ -2398,6 +2440,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-content-type">Content type</label>
                       <input
                         id="document-content-type"
+                        name="document-content-type"
                         required
                         value={documentForm.contentType}
                         onChange={(event) =>
@@ -2412,6 +2455,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-size">Size bytes</label>
                       <input
                         id="document-size"
+                        name="document-size"
                         readOnly
                         type="number"
                         value={documentForm.sizeBytes}
@@ -2423,6 +2467,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-category">Category</label>
                       <select
                         id="document-category"
+                        name="document-category"
                         value={documentForm.category}
                         onChange={(event) =>
                           setDocumentForm((current) => ({
@@ -2443,6 +2488,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-visibility">Visibility</label>
                       <select
                         id="document-visibility"
+                        name="document-visibility"
                         value={documentForm.visibility}
                         onChange={(event) =>
                           setDocumentForm((current) => ({
@@ -2463,6 +2509,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-classification">Classification</label>
                       <select
                         id="document-classification"
+                        name="document-classification"
                         value={documentForm.classification}
                         onChange={(event) =>
                           setDocumentForm((current) => ({
@@ -2481,6 +2528,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-signature">Signature</label>
                       <select
                         id="document-signature"
+                        name="document-signature"
                         value={documentForm.signatureStatus}
                         onChange={(event) =>
                           setDocumentForm((current) => ({
@@ -2502,6 +2550,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-signed-at">Signed date</label>
                       <input
                         id="document-signed-at"
+                        name="document-signed-at"
                         type="date"
                         value={documentForm.signedAt}
                         onChange={(event) =>
@@ -2516,6 +2565,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="document-provider">Signature provider</label>
                       <input
                         id="document-provider"
+                        name="document-provider"
                         maxLength={80}
                         value={documentForm.signatureProvider}
                         onChange={(event) =>
@@ -2530,8 +2580,9 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="document-envelope">Envelope ID</label>
                     <input
-                      id="document-envelope"
-                      maxLength={160}
+                        id="document-envelope"
+                        name="document-envelope"
+                        maxLength={160}
                       value={documentForm.externalEnvelopeId}
                       onChange={(event) =>
                         setDocumentForm((current) => ({
@@ -2546,11 +2597,11 @@ export const EmployeeProfilePage = () => {
                     disabled={attachingDocument || uploadingDocument}
                     type="submit"
                   >
-                    <IconFileText size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <IconFileText aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     {uploadingDocument
-                      ? 'Uploading...'
+                      ? 'Uploading…'
                       : attachingDocument
-                        ? 'Attaching...'
+                        ? 'Attaching…'
                         : 'Attach document'}
                   </button>
                 </form>
@@ -2572,7 +2623,7 @@ export const EmployeeProfilePage = () => {
                 title="Onboarding"
               >
                 {onboardingLoading ? (
-                  <p className="page-subtitle">Loading onboarding checklist...</p>
+                  <p className="page-subtitle">Loading onboarding checklist…</p>
                 ) : null}
                 <div className="record-list">
                   {onboardingTasks.map((task) => {
@@ -2587,7 +2638,7 @@ export const EmployeeProfilePage = () => {
                       draft.notes !== (task.notes ?? '');
                     return (
                       <div className="record-item" key={task.taskKey}>
-                        <IconProgressCheck
+                        <IconProgressCheck aria-hidden="true"
                           size={theme.icon.size.md}
                           stroke={theme.icon.stroke.md}
                         />
@@ -2609,6 +2660,7 @@ export const EmployeeProfilePage = () => {
                               <label htmlFor={`onboarding-status-${task.taskKey}`}>Status</label>
                               <select
                                 id={`onboarding-status-${task.taskKey}`}
+                                name={`onboarding-status-${task.taskKey}`}
                                 value={draft.status}
                                 onChange={(event) =>
                                   setOnboardingDrafts((current) => ({
@@ -2631,6 +2683,7 @@ export const EmployeeProfilePage = () => {
                               <label htmlFor={`onboarding-due-${task.taskKey}`}>Due date</label>
                               <input
                                 id={`onboarding-due-${task.taskKey}`}
+                                name={`onboarding-due-${task.taskKey}`}
                                 type="date"
                                 value={draft.dueDate}
                                 onChange={(event) =>
@@ -2648,8 +2701,9 @@ export const EmployeeProfilePage = () => {
                           <div className="field onboarding-task-notes">
                             <label htmlFor={`onboarding-notes-${task.taskKey}`}>Notes</label>
                             <textarea
-                              id={`onboarding-notes-${task.taskKey}`}
-                              value={draft.notes}
+                                id={`onboarding-notes-${task.taskKey}`}
+                                name={`onboarding-notes-${task.taskKey}`}
+                                value={draft.notes}
                               onChange={(event) =>
                                 setOnboardingDrafts((current) => ({
                                   ...current,
@@ -2667,7 +2721,7 @@ export const EmployeeProfilePage = () => {
                             type="button"
                             onClick={() => void onSaveOnboardingTask(task)}
                           >
-                            <IconDeviceFloppy
+                            <IconDeviceFloppy aria-hidden="true"
                               size={theme.icon.size.sm}
                               stroke={theme.icon.stroke.sm}
                             />
@@ -2694,7 +2748,7 @@ export const EmployeeProfilePage = () => {
               <div className="record-list">
                 {assessments.map((assessment) => (
                   <div className="record-item" key={assessment.id}>
-                    <IconClipboardCheck size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <IconClipboardCheck aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     <div>
                       <div className="employee-primary">{assessment.title}</div>
                       <div className="employee-secondary">
@@ -2713,8 +2767,9 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="assessment-title">Title</label>
                     <input
-                      id="assessment-title"
-                      required
+                        id="assessment-title"
+                        name="assessment-title"
+                        required
                       value={assessmentForm.title}
                       onChange={(event) =>
                         setAssessmentForm((current) => ({
@@ -2729,6 +2784,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="assessment-date">Date</label>
                       <input
                         id="assessment-date"
+                        name="assessment-date"
                         required
                         type="date"
                         value={assessmentForm.assessmentDate}
@@ -2744,6 +2800,7 @@ export const EmployeeProfilePage = () => {
                       <label htmlFor="assessment-score">Score</label>
                       <input
                         id="assessment-score"
+                        name="assessment-score"
                         max="100"
                         min="0"
                         type="number"
@@ -2759,9 +2816,10 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <div className="field">
                     <label htmlFor="assessment-notes">Notes</label>
-                    <textarea
-                      id="assessment-notes"
-                      value={assessmentForm.notes}
+                      <textarea
+                        id="assessment-notes"
+                        name="assessment-notes"
+                        value={assessmentForm.notes}
                       onChange={(event) =>
                         setAssessmentForm((current) => ({
                           ...current,
@@ -2775,8 +2833,8 @@ export const EmployeeProfilePage = () => {
                     disabled={recordingAssessment}
                     type="submit"
                   >
-                    <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {recordingAssessment ? 'Saving...' : 'Record assessment'}
+                    <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    {recordingAssessment ? 'Saving…' : 'Record assessment'}
                   </button>
                 </form>
               ) : null}
@@ -2822,7 +2880,7 @@ export const EmployeeProfilePage = () => {
                 <form className="config-form compact-form" onSubmit={onSeparate} style={{ marginTop: theme.spacing(3) }}>
                   <div className="field">
                     <label htmlFor="sep-type">Type</label>
-                    <select id="sep-type" value={separationForm.type} onChange={(e) => setSeparationForm((c) => ({ ...c, type: e.target.value }))}>
+                    <select id="sep-type" name="sep-type" value={separationForm.type} onChange={(e) => setSeparationForm((c) => ({ ...c, type: e.target.value }))}>
                       <option value="resignation">Resignation</option>
                       <option value="termination">Termination</option>
                       <option value="retirement">Retirement</option>
@@ -2830,12 +2888,12 @@ export const EmployeeProfilePage = () => {
                     </select>
                   </div>
                   <div className="field-group">
-                    <div className="field"><label htmlFor="sep-effective">Effective date</label><input id="sep-effective" type="date" required value={separationForm.effectiveDate} onChange={(e) => setSeparationForm((c) => ({ ...c, effectiveDate: e.target.value }))} /></div>
-                    <div className="field"><label htmlFor="sep-relieving">Relieving date</label><input id="sep-relieving" type="date" value={separationForm.relievingDate} onChange={(e) => setSeparationForm((c) => ({ ...c, relievingDate: e.target.value }))} /></div>
+                    <div className="field"><label htmlFor="sep-effective">Effective date</label><input id="sep-effective" name="sep-effective" type="date" required value={separationForm.effectiveDate} onChange={(e) => setSeparationForm((c) => ({ ...c, effectiveDate: e.target.value }))} /></div>
+                    <div className="field"><label htmlFor="sep-relieving">Relieving date</label><input id="sep-relieving" name="sep-relieving" type="date" value={separationForm.relievingDate} onChange={(e) => setSeparationForm((c) => ({ ...c, relievingDate: e.target.value }))} /></div>
                   </div>
-                  <div className="field"><label htmlFor="sep-reason">Reason</label><textarea id="sep-reason" value={separationForm.reason} onChange={(e) => setSeparationForm((c) => ({ ...c, reason: e.target.value }))} /></div>
-                  <div className="field"><label htmlFor="sep-new">New workplace</label><input id="sep-new" value={separationForm.newWorkplace} onChange={(e) => setSeparationForm((c) => ({ ...c, newWorkplace: e.target.value }))} /></div>
-                  <div className="field"><label htmlFor="sep-feedback">Feedback</label><textarea id="sep-feedback" value={separationForm.feedback} onChange={(e) => setSeparationForm((c) => ({ ...c, feedback: e.target.value }))} /></div>
+                  <div className="field"><label htmlFor="sep-reason">Reason</label><textarea id="sep-reason" name="sep-reason" value={separationForm.reason} onChange={(e) => setSeparationForm((c) => ({ ...c, reason: e.target.value }))} /></div>
+                  <div className="field"><label htmlFor="sep-new">New workplace</label><input id="sep-new" name="sep-new" value={separationForm.newWorkplace} onChange={(e) => setSeparationForm((c) => ({ ...c, newWorkplace: e.target.value }))} /></div>
+                  <div className="field"><label htmlFor="sep-feedback">Feedback</label><textarea id="sep-feedback" name="sep-feedback" value={separationForm.feedback} onChange={(e) => setSeparationForm((c) => ({ ...c, feedback: e.target.value }))} /></div>
                   <button className="button button-primary" type="submit" disabled={separatingEmployee}>{separatingEmployee ? 'Saving…' : 'Confirm separation'}</button>
                 </form>
               ) : null}
@@ -2857,10 +2915,10 @@ export const EmployeeProfilePage = () => {
                               />
                             </div>
                             <div className="onboarding-task-controls">
-                              <div className="field"><label>Status</label><select value={draft.status} onChange={(e) => setOffboardingDrafts((c) => ({ ...c, [task.taskKey]: { ...draft, status: e.target.value } }))}><option value="notStarted">Not started</option><option value="inProgress">In progress</option><option value="completed">Completed</option><option value="blocked">Blocked</option></select></div>
-                              <div className="field"><label>Due date</label><input type="date" value={draft.dueDate} onChange={(e) => setOffboardingDrafts((c) => ({ ...c, [task.taskKey]: { ...draft, dueDate: e.target.value } }))} /></div>
+                              <div className="field"><label htmlFor={`offboarding-status-${task.taskKey}`}>Status</label><select id={`offboarding-status-${task.taskKey}`} name={`offboarding-status-${task.taskKey}`} value={draft.status} onChange={(e) => setOffboardingDrafts((c) => ({ ...c, [task.taskKey]: { ...draft, status: e.target.value } }))}><option value="notStarted">Not started</option><option value="inProgress">In progress</option><option value="completed">Completed</option><option value="blocked">Blocked</option></select></div>
+                              <div className="field"><label htmlFor={`offboarding-due-date-${task.taskKey}`}>Due date</label><input id={`offboarding-due-date-${task.taskKey}`} name={`offboarding-due-date-${task.taskKey}`} type="date" value={draft.dueDate} onChange={(e) => setOffboardingDrafts((c) => ({ ...c, [task.taskKey]: { ...draft, dueDate: e.target.value } }))} /></div>
                             </div>
-                            <div className="field"><label>Notes</label><textarea value={draft.notes} onChange={(e) => setOffboardingDrafts((c) => ({ ...c, [task.taskKey]: { ...draft, notes: e.target.value } }))} /></div>
+                            <div className="field"><label htmlFor={`offboarding-notes-${task.taskKey}`}>Notes</label><textarea id={`offboarding-notes-${task.taskKey}`} name={`offboarding-notes-${task.taskKey}`} value={draft.notes} onChange={(e) => setOffboardingDrafts((c) => ({ ...c, [task.taskKey]: { ...draft, notes: e.target.value } }))} /></div>
                             <button className="button button-secondary" disabled={!hasChange || savingOffboardingTask} type="button" onClick={() => void onSaveOffboardingTask(task)}>Save task</button>
                           </div>
                         </div>
@@ -2888,11 +2946,11 @@ export const EmployeeProfilePage = () => {
                   )}
                   <form className="config-form compact-form" onSubmit={onUpsertExitInterview} style={{ marginTop: theme.spacing(3) }}>
                     <div className="field-group">
-                      <div className="field"><label>Status</label><select value={exitInterviewForm.status} onChange={(e) => setExitInterviewForm((c) => ({ ...c, status: e.target.value }))}><option value="pending">Pending</option><option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></div>
-                      <div className="field"><label>Scheduled date</label><input type="date" value={exitInterviewForm.scheduledDate} onChange={(e) => setExitInterviewForm((c) => ({ ...c, scheduledDate: e.target.value }))} /></div>
+                      <div className="field"><label htmlFor="exit-status">Status</label><select id="exit-status" name="exit-status" value={exitInterviewForm.status} onChange={(e) => setExitInterviewForm((c) => ({ ...c, status: e.target.value }))}><option value="pending">Pending</option><option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></div>
+                      <div className="field"><label htmlFor="exit-date">Scheduled date</label><input id="exit-date" name="exit-date" type="date" value={exitInterviewForm.scheduledDate} onChange={(e) => setExitInterviewForm((c) => ({ ...c, scheduledDate: e.target.value }))} /></div>
                     </div>
-                    <div className="field"><label>Summary</label><textarea value={exitInterviewForm.summary} onChange={(e) => setExitInterviewForm((c) => ({ ...c, summary: e.target.value }))} /></div>
-                    <div className="field"><label>Final decision</label><select value={exitInterviewForm.finalDecision} onChange={(e) => setExitInterviewForm((c) => ({ ...c, finalDecision: e.target.value }))}><option value="">—</option><option value="retained">Retained</option><option value="exitConfirmed">Exit confirmed</option></select></div>
+                    <div className="field"><label htmlFor="exit-summary">Summary</label><textarea id="exit-summary" name="exit-summary" value={exitInterviewForm.summary} onChange={(e) => setExitInterviewForm((c) => ({ ...c, summary: e.target.value }))} /></div>
+                    <div className="field"><label htmlFor="exit-decision">Final decision</label><select id="exit-decision" name="exit-decision" value={exitInterviewForm.finalDecision} onChange={(e) => setExitInterviewForm((c) => ({ ...c, finalDecision: e.target.value }))}><option value="">—</option><option value="retained">Retained</option><option value="exitConfirmed">Exit confirmed</option></select></div>
                     <button className="button button-secondary" type="submit" disabled={savingExitInterview}>{savingExitInterview ? 'Saving…' : 'Save interview'}</button>
                   </form>
                 </div>
@@ -2902,6 +2960,6 @@ export const EmployeeProfilePage = () => {
           ) : null}
         </section>
       </div>
-    </main>
+    </section>
   );
 };

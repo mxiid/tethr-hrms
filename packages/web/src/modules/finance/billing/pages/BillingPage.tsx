@@ -1,5 +1,5 @@
-﻿import { useMutation, useQuery } from '@apollo/client';
-import type { InvoiceStatus } from '@hrms/shared';
+import { useMutation, useQuery } from '@apollo/client';
+import { formatMoney, type InvoiceStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconFileInvoice,
@@ -14,9 +14,12 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { StatusChip } from '../../../../components/chip/StatusChip';
+import { useConfirm } from '../../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../../components/empty-state/EmptyState';
+import { focusFirstByName } from '../../../../components/form/validation';
 import { Modal } from '../../../../components/modal/Modal';
 import { DataTable, toViewColumns, type ColumnDefinition } from '../../../../components/table/DataTable';
+import { Tooltip } from '../../../../components/tooltip/Tooltip';
 import { useListView } from '../../../../components/view-bar/useListView';
 import { ViewBar } from '../../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../../providers/theme/useTheme';
@@ -137,9 +140,6 @@ const invoiceStatusLabels: Record<InvoiceStatus, string> = {
   paid: 'Paid',
   voided: 'Voided',
 };
-
-const formatMoney = (amount: number, currency: string): string =>
-  new Intl.NumberFormat('en', { currency, style: 'currency' }).format(amount);
 
 const GROUP_COLUMNS: readonly ColumnDefinition<BillingGroupRecord>[] = [
   {
@@ -313,9 +313,11 @@ const RECONCILIATION_COLUMNS: readonly ColumnDefinition<ReconciliationPeriodReco
 
 export const BillingPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, error, refetch } = useQuery<BillingPageData>(BILLING_PAGE_DATA_QUERY);
   const [formError, setFormError] = useState<string | null>(null);
   const [openModal, setOpenModal] = useState<'group' | 'rate' | 'expenses' | null>(null);
+  const [invalidRateFields, setInvalidRateFields] = useState<readonly string[]>([]);
 
   const groupView = useListView({ routeKey: '/billing/groups', paramKeyPrefix: 'groups' });
   const memberView = useListView({ routeKey: '/billing/rates', paramKeyPrefix: 'rates' });
@@ -402,18 +404,26 @@ export const BillingPage = () => {
       await refetch();
       return true;
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : 'Operation failed.');
+      setFormError(cause instanceof Error ? cause.message : 'Could not save the change. Refresh and try again.');
       return false;
     }
   };
 
   const openModalWith = (modal: 'group' | 'rate' | 'expenses'): void => {
     setFormError(null);
+    setInvalidRateFields([]);
     setOpenModal(modal);
   };
 
-  const onRemoveMember = (member: BillingMemberRecord): void => {
-    void run(() =>
+  const onRemoveMember = async (member: BillingMemberRecord): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Remove this membership?',
+      body: 'The employee will no longer be billed under this group.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await run(() =>
       removeMember({
         variables: { employeeId: member.employeeId },
         refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
@@ -447,7 +457,7 @@ export const BillingPage = () => {
       width: '26%',
       align: 'right',
       sortValue: (member) => member.monthlyRate,
-      render: (member) => `$${member.monthlyRate.toLocaleString()} / mo`,
+      render: (member) => `${formatMoney(member.monthlyRate, member.rateCurrency)} / mo`,
     },
     {
       key: 'remove',
@@ -456,14 +466,16 @@ export const BillingPage = () => {
       width: '12%',
       hideable: false,
       render: (member) => (
-        <button
-          className="icon-button row-hover-action"
-          onClick={() => onRemoveMember(member)}
-          title="Remove membership"
-          type="button"
-        >
-          <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-        </button>
+        <Tooltip label="Remove membership" side="top">
+          <button
+            aria-label="Remove membership"
+            className="icon-button row-hover-action"
+            onClick={() => void onRemoveMember(member)}
+            type="button"
+          >
+            <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          </button>
+        </Tooltip>
       ),
     },
   ];
@@ -496,10 +508,10 @@ export const BillingPage = () => {
     <EmptyState
       icon={IconUsersGroup}
       title="No billing groups yet"
-      description="Groups decide which client entity an employee's work is billed to."
+      description="Groups decide which client entity an employee’s work is billed to."
       action={
         <button className="button button-secondary" onClick={() => openModalWith('group')} type="button">
-          <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
           New group
         </button>
       }
@@ -511,10 +523,10 @@ export const BillingPage = () => {
       <EmptyState
         icon={IconUsersGroup}
         title="Nobody assigned yet"
-        description="Assign a rate so this client pays for the employee's time."
+        description="Assign a rate so this client pays for the employee’s time."
         action={
           <button className="button button-secondary" onClick={() => openModalWith('rate')} type="button">
-            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             Assign rate
           </button>
         }
@@ -554,7 +566,12 @@ export const BillingPage = () => {
 
   const onCreateGroup = (event: FormEvent): void => {
     event.preventDefault();
-    if (!groupName.trim()) return;
+    if (!groupName.trim()) {
+      setFormError('Enter a group name before creating the group.');
+      focusFirstByName(document.querySelector<HTMLElement>('.modal-dialog'), ['group-name']);
+      return;
+    }
+    setFormError(null);
     void run(() =>
       createGroup({
         variables: { input: { name: groupName.trim(), servicesPrefix, expensesPrefix } },
@@ -570,14 +587,38 @@ export const BillingPage = () => {
 
   const onAssignMember = (event: FormEvent): void => {
     event.preventDefault();
-    if (!memberEmployeeId || !memberGroupId || memberRate === '') return;
+    const missing: string[] = [];
+    if (!memberEmployeeId) missing.push('member-employee');
+    if (!memberGroupId) missing.push('member-group');
+    // The form sets noValidate, so the native min/required checks are off —
+    // validate the parsed value here and never send a negative or NaN rate.
+    const parsedRate = Number(memberRate);
+    if (memberRate.trim() === '' || !Number.isFinite(parsedRate) || parsedRate < 0) {
+      missing.push('member-rate');
+    }
+    if (missing.length > 0) {
+      setFormError(
+        missing.length === 1 && missing[0] === 'member-employee'
+          ? 'Select the employee this rate is for.'
+          : missing.length === 1 && missing[0] === 'member-group'
+            ? 'Select the group this rate belongs to.'
+            : missing.length === 1
+              ? 'Enter a monthly rate of zero or more before saving.'
+              : 'Choose an employee and a group, and enter a monthly rate of zero or more before saving.',
+      );
+      setInvalidRateFields(missing);
+      focusFirstByName(document.querySelector<HTMLElement>('.modal-dialog'), missing);
+      return;
+    }
+    setFormError(null);
+    setInvalidRateFields([]);
     void run(() =>
       setMember({
         variables: {
           input: {
             employeeId: memberEmployeeId,
             groupId: memberGroupId,
-            monthlyRate: Number(memberRate),
+            monthlyRate: parsedRate,
           },
         },
         refetchQueries: [{ query: BILLING_PAGE_DATA_QUERY }],
@@ -593,7 +634,7 @@ export const BillingPage = () => {
   };
 
   return (
-    <main className="page-frame page-frame-single">
+    <section className="page-frame page-frame-single">
       <div className="employees-content">
         <header className="page-header">
           <div>
@@ -602,12 +643,19 @@ export const BillingPage = () => {
           </div>
           <div className="page-actions">
             <Link className="button button-secondary" to="/settings/billing">
-              <IconSettings size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconSettings aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Billing settings
             </Link>
-            <button className="icon-button" onClick={() => void refetch()} title="Refresh" type="button">
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
+            <Tooltip label="Refresh">
+              <button
+                aria-label="Refresh"
+                className="icon-button"
+                onClick={() => void refetch()}
+                type="button"
+              >
+                <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            </Tooltip>
           </div>
         </header>
 
@@ -617,7 +665,7 @@ export const BillingPage = () => {
           <ViewBar
             actions={
               <button className="button button-secondary" type="button" onClick={() => openModalWith('group')}>
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 New group
               </button>
             }
@@ -645,7 +693,7 @@ export const BillingPage = () => {
           <ViewBar
             actions={
               <button className="button button-secondary" type="button" onClick={() => openModalWith('rate')}>
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Assign rate
               </button>
             }
@@ -673,7 +721,7 @@ export const BillingPage = () => {
           <ViewBar
             actions={
               <button className="button button-secondary" type="button" onClick={() => openModalWith('expenses')}>
-                <IconFileInvoice size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconFileInvoice aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Open expenses draft
               </button>
             }
@@ -735,13 +783,13 @@ export const BillingPage = () => {
         {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
         <form className="config-form" onSubmit={onCreateGroup}>
           <div className="field"><label htmlFor="group-name">Name</label>
-            <input id="group-name" placeholder="PowerTech" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+            <input id="group-name" name="group-name" placeholder="PowerTech" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
           </div>
           <div className="field"><label htmlFor="sp-prefix">Services prefix</label>
-            <input id="sp-prefix" maxLength={8} value={servicesPrefix} onChange={(e) => setServicesPrefix(e.target.value.toUpperCase())} />
+            <input id="sp-prefix" autoComplete="off" maxLength={8} name="sp-prefix" spellCheck={false} value={servicesPrefix} onChange={(e) => setServicesPrefix(e.target.value.toUpperCase())} />
           </div>
           <div className="field"><label htmlFor="ep-prefix">Expenses prefix</label>
-            <input id="ep-prefix" maxLength={8} value={expensesPrefix} onChange={(e) => setExpensesPrefix(e.target.value.toUpperCase())} />
+            <input id="ep-prefix" autoComplete="off" maxLength={8} name="ep-prefix" spellCheck={false} value={expensesPrefix} onChange={(e) => setExpensesPrefix(e.target.value.toUpperCase())} />
           </div>
           <button className="button button-secondary button-full" type="submit">Create group</button>
         </form>
@@ -753,10 +801,21 @@ export const BillingPage = () => {
         title="Assign rate"
         width="md"
       >
-        {formError ? <p className="auth-error" role="alert">{formError}</p> : null}
-        <form className="config-form" onSubmit={onAssignMember}>
+        {formError ? (
+          <p className="auth-error" id="assign-rate-error" role="alert">
+            {formError}
+          </p>
+        ) : null}
+        <form className="config-form" noValidate onSubmit={onAssignMember}>
           <div className="field"><label htmlFor="member-employee">Employee</label>
-            <select id="member-employee" value={memberEmployeeId} onChange={(e) => setMemberEmployeeId(e.target.value)}>
+            <select
+              aria-describedby={invalidRateFields.length > 0 ? 'assign-rate-error' : undefined}
+              aria-invalid={invalidRateFields.includes('member-employee') || undefined}
+              id="member-employee"
+              name="member-employee"
+              value={memberEmployeeId}
+              onChange={(e) => setMemberEmployeeId(e.target.value)}
+            >
               <option value="">Select…</option>
               {employees.map((employee) => (
                 <option key={employee.id} value={employee.id}>{`${employee.firstName} ${employee.lastName} (${employee.employeeNumber})`}</option>
@@ -764,13 +823,32 @@ export const BillingPage = () => {
             </select>
           </div>
           <div className="field"><label htmlFor="member-group">Group</label>
-            <select id="member-group" value={memberGroupId} onChange={(e) => setMemberGroupId(e.target.value)}>
+            <select
+              aria-describedby={invalidRateFields.length > 0 ? 'assign-rate-error' : undefined}
+              aria-invalid={invalidRateFields.includes('member-group') || undefined}
+              id="member-group"
+              name="member-group"
+              value={memberGroupId}
+              onChange={(e) => setMemberGroupId(e.target.value)}
+            >
               <option value="">Select…</option>
               {groups.map((group) => (<option key={group.id} value={group.id}>{group.name}</option>))}
             </select>
           </div>
           <div className="field"><label htmlFor="member-rate">Monthly rate (USD)</label>
-            <input id="member-rate" min={0} required step="0.01" type="number" value={memberRate} onChange={(e) => setMemberRate(e.target.value)} />
+            <input
+              aria-describedby={invalidRateFields.length > 0 ? 'assign-rate-error' : undefined}
+              aria-invalid={invalidRateFields.includes('member-rate') || undefined}
+              id="member-rate"
+              inputMode="decimal"
+              min={0}
+              name="member-rate"
+              required
+              step="0.01"
+              type="number"
+              value={memberRate}
+              onChange={(e) => setMemberRate(e.target.value)}
+            />
           </div>
           <button className="button button-primary button-full" type="submit">Save rate</button>
         </form>
@@ -787,7 +865,14 @@ export const BillingPage = () => {
           className="config-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!expenseGroupId) return;
+            if (!expenseGroupId) {
+              setFormError('Select the group this draft is for.');
+              focusFirstByName(document.querySelector<HTMLElement>('.modal-dialog'), [
+                'expense-group',
+              ]);
+              return;
+            }
+            setFormError(null);
             void run(() =>
               openExpenses({
                 variables: { groupId: expenseGroupId, serviceYear: expenseYear, serviceMonth: expenseMonth },
@@ -801,27 +886,27 @@ export const BillingPage = () => {
           }}
         >
           <div className="field"><label htmlFor="expense-group">Group</label>
-            <select id="expense-group" value={expenseGroupId} onChange={(e) => setExpenseGroupId(e.target.value)}>
+            <select id="expense-group" name="expense-group" value={expenseGroupId} onChange={(e) => setExpenseGroupId(e.target.value)}>
               <option value="">Select…</option>
               {groups.map((group) => (<option key={group.id} value={group.id}>{group.name}</option>))}
             </select>
           </div>
           <div className="field-row">
             <div className="field"><label htmlFor="expense-month">Month</label>
-              <select id="expense-month" value={expenseMonth} onChange={(e) => setExpenseMonth(Number(e.target.value))}>
+              <select id="expense-month" name="expense-month" value={expenseMonth} onChange={(e) => setExpenseMonth(Number(e.target.value))}>
                 {MONTH_NAMES.map((name, index) => (<option key={name} value={index + 1}>{name}</option>))}
               </select>
             </div>
             <div className="field"><label htmlFor="expense-year">Year</label>
-              <input id="expense-year" max={2100} min={2000} type="number" value={expenseYear} onChange={(e) => setExpenseYear(Number(e.target.value))} />
+              <input id="expense-year" inputMode="numeric" max={2100} min={2000} name="expense-year" type="number" value={expenseYear} onChange={(e) => setExpenseYear(Number(e.target.value))} />
             </div>
           </div>
-          <button className="button button-secondary button-full" disabled={!expenseGroupId} type="submit">
-            <IconFileInvoice size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          <button className="button button-secondary button-full" type="submit">
+            <IconFileInvoice aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             Open draft
           </button>
         </form>
       </Modal>
-    </main>
+    </section>
   );
 };

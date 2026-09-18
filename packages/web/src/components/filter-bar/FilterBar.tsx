@@ -122,6 +122,7 @@ export const FilterBar = ({ filters, values, onChange }: FilterBarProps) => {
           <label className="filter-menu-option" key={option.value}>
             <input
               checked={selected.includes(option.value)}
+              name={`filter-${filter.key}-${option.value}`}
               type="checkbox"
               onChange={() => toggleValue(filter.key, option.value)}
             />
@@ -176,7 +177,7 @@ export const FilterBar = ({ filters, values, onChange }: FilterBarProps) => {
               {selected.length > 1 ? (
                 <span className="filter-chip-count">{selected.length}</span>
               ) : null}
-              <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+              <IconChevronDown aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             </button>
             <button
               aria-label={`Clear ${filter.label}`}
@@ -184,7 +185,7 @@ export const FilterBar = ({ filters, values, onChange }: FilterBarProps) => {
               type="button"
               onClick={() => onChange(filter.key, [])}
             >
-              <IconX size={12} stroke={2} />
+              <IconX aria-hidden="true" size={12} stroke={2} />
             </button>
           </div>
         );
@@ -206,9 +207,9 @@ export const FilterBar = ({ filters, values, onChange }: FilterBarProps) => {
           }}
         >
           {applied.length === 0 ? (
-            <IconFilter size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconFilter aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           ) : (
-            <IconPlus size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconPlus aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           )}
           Filter
         </button>

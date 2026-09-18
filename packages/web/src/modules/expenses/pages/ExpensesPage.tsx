@@ -1,10 +1,12 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatMoney } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import { IconExternalLink, IconReceipt } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import { DataTable, toViewColumns, type ColumnDefinition } from '../../../components/table/DataTable';
@@ -73,9 +75,6 @@ const STATUS_LABELS: Record<string, string> = {
   paid: 'Paid',
 };
 
-const formatMoney = (amount: number, currency: string): string =>
-  new Intl.NumberFormat('en', { currency, style: 'currency' }).format(amount);
-
 const formatDate = (value: string | null): string => (value ? value.slice(0, 10) : '—');
 
 const CLAIM_COLUMNS: readonly ColumnDefinition<ExpenseClaimRecord>[] = [
@@ -139,6 +138,7 @@ const CLAIM_COLUMNS: readonly ColumnDefinition<ExpenseClaimRecord>[] = [
 
 export const ExpensesPage = () => {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const isTethr = user?.portal === 'tethr';
   const roleKeys = user?.roleKeys ?? [];
   const canApprove =
@@ -207,14 +207,23 @@ export const ExpensesPage = () => {
       await refetch();
       setSuccessMessage(success);
     } catch (cause) {
-      setErrorMessage(cause instanceof Error ? cause.message : 'Operation failed.');
+      setErrorMessage(cause instanceof Error ? cause.message : 'Could not update the claim. Refresh and try again.');
     }
   };
 
   const sourceOrganizationId = selected?.organizationId ?? undefined;
 
-  const onDecide = (decision: 'approved' | 'rejected'): void => {
+  const onDecide = async (decision: 'approved' | 'rejected'): Promise<void> => {
     if (!selected) return;
+    if (decision === 'rejected') {
+      const confirmed = await confirm({
+        title: 'Reject this claim?',
+        body: 'The employee will see it as rejected and can file a new claim.',
+        confirmLabel: 'Reject',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     void run(
       () =>
         decideClaim({
@@ -284,56 +293,54 @@ export const ExpensesPage = () => {
   const isOpenDraft = selected?.status === 'draft';
 
   return (
-    <main className="list-with-panel">
-      <div className="page-frame">
-        <div className="employees-content">
-          <header className="page-header">
-            <div>
-              <h1 className="page-title">Expenses</h1>
-              <p className="page-subtitle">
-                Employee expense claims: approve, reimburse, and pass client-billable lines through.
-              </p>
-            </div>
-          </header>
+    <section className="list-with-panel">
+      <div className="employees-content">
+        <header className="page-header">
+          <div>
+            <h1 className="page-title">Expenses</h1>
+            <p className="page-subtitle">
+              Employee expense claims: approve, reimburse, and pass client-billable lines through.
+            </p>
+          </div>
+        </header>
 
-          {error ? <p className="auth-error" role="alert">Could not load expense claims.</p> : null}
+        {error ? <p className="auth-error" role="alert">Could not load expense claims.</p> : null}
 
-          <section className="table-shell" aria-label="Expense claims">
-            <ViewBar
-              columns={toViewColumns(CLAIM_COLUMNS)}
-              count={visibleClaims.length}
-              filters={filters}
-              view={claimView}
-              viewLabel="All claims"
-            />
-            <DataTable
-              columns={CLAIM_COLUMNS}
-              emptyState={
-                <EmptyState
-                  icon={IconReceipt}
-                  title="No expense claims yet"
-                  description="Claims filed by employees show up here for approval and reimbursement."
-                />
-              }
-              loading={loading}
-              rows={visibleClaims}
-              getRowKey={(claim) => claim.id}
-              hiddenColumns={claimView.hiddenColumns}
-              onHideColumn={claimView.hideColumn}
-              onRowClick={(claim) => {
-                setSelectedId(claim.id);
-                setErrorMessage(null);
-                setSuccessMessage(null);
-                setDecisionNote('');
-                setPayReference('');
-                setPayMethod('direct');
-              }}
-              onSort={claimView.setSort}
-              skeletonRows={4}
-              sorts={claimView.sorts}
-            />
-          </section>
-        </div>
+        <section className="table-shell" aria-label="Expense claims">
+          <ViewBar
+            columns={toViewColumns(CLAIM_COLUMNS)}
+            count={visibleClaims.length}
+            filters={filters}
+            view={claimView}
+            viewLabel="All claims"
+          />
+          <DataTable
+            columns={CLAIM_COLUMNS}
+            emptyState={
+              <EmptyState
+                icon={IconReceipt}
+                title="No expense claims yet"
+                description="Claims filed by employees show up here for approval and reimbursement."
+              />
+            }
+            loading={loading}
+            rows={visibleClaims}
+            getRowKey={(claim) => claim.id}
+            hiddenColumns={claimView.hiddenColumns}
+            onHideColumn={claimView.hideColumn}
+            onRowClick={(claim) => {
+              setSelectedId(claim.id);
+              setErrorMessage(null);
+              setSuccessMessage(null);
+              setDecisionNote('');
+              setPayReference('');
+              setPayMethod('direct');
+            }}
+            onSort={claimView.setSort}
+            skeletonRows={4}
+            sorts={claimView.sorts}
+          />
+        </section>
       </div>
 
       <SidePanel
@@ -359,7 +366,11 @@ export const ExpensesPage = () => {
             </div>
 
             {errorMessage ? <p className="auth-error" role="alert">{errorMessage}</p> : null}
-            {successMessage ? <p className="form-success">{successMessage}</p> : null}
+            {successMessage ? (
+              <p className="form-success" role="status">
+                {successMessage}
+              </p>
+            ) : null}
 
             <div className="field-list">
               <div className="field-row">
@@ -432,6 +443,13 @@ export const ExpensesPage = () => {
                     },
                   ] satisfies readonly ColumnDefinition<ExpenseLineRecord>[]
                 }
+                emptyState={
+                  <EmptyState
+                    icon={IconReceipt}
+                    title="No lines on this claim"
+                    description="Lines capture the individual expenses that make up the claim total."
+                  />
+                }
                 loading={false}
                 rows={selected.lines}
                 getRowKey={(line) => line.id}
@@ -442,7 +460,7 @@ export const ExpensesPage = () => {
             {selected.billedInvoiceId && isTethr ? (
               <p className="employee-secondary">
                 <Link className="table-link" to={`/billing/${selected.billedInvoiceId}`}>
-                  On the client expenses invoice <IconExternalLink size={14} />
+                  On the client expenses invoice <IconExternalLink aria-hidden="true" size={14} />
                 </Link>
               </p>
             ) : null}
@@ -456,6 +474,7 @@ export const ExpensesPage = () => {
                   <label htmlFor="claim-decision-note">Decision note</label>
                   <textarea
                     id="claim-decision-note"
+                    name="claim-decision-note"
                     value={decisionNote}
                     onChange={(event) => setDecisionNote(event.target.value)}
                   />
@@ -465,7 +484,7 @@ export const ExpensesPage = () => {
                     className="button button-primary"
                     disabled={deciding}
                     type="button"
-                    onClick={() => onDecide('approved')}
+                    onClick={() => void onDecide('approved')}
                   >
                     {deciding ? 'Saving…' : 'Approve'}
                   </button>
@@ -473,7 +492,7 @@ export const ExpensesPage = () => {
                     className="button button-secondary"
                     disabled={deciding}
                     type="button"
-                    onClick={() => onDecide('rejected')}
+                    onClick={() => void onDecide('rejected')}
                   >
                     Reject
                   </button>
@@ -487,6 +506,7 @@ export const ExpensesPage = () => {
                   <label htmlFor="claim-pay-method">Reimbursement</label>
                   <select
                     id="claim-pay-method"
+                    name="claim-pay-method"
                     value={payMethod}
                     onChange={(event) => setPayMethod(event.target.value as 'direct' | 'payroll')}
                   >
@@ -499,7 +519,10 @@ export const ExpensesPage = () => {
                     <label htmlFor="claim-pay-reference">Payment reference</label>
                     <input
                       id="claim-pay-reference"
+                      autoComplete="off"
+                      name="claim-pay-reference"
                       placeholder="Cash / bank transfer reference"
+                      spellCheck={false}
                       value={payReference}
                       onChange={(event) => setPayReference(event.target.value)}
                     />
@@ -510,6 +533,7 @@ export const ExpensesPage = () => {
                       <label htmlFor="claim-pay-component">Pay component</label>
                       <select
                         id="claim-pay-component"
+                        name="claim-pay-component"
                         value={payComponentId}
                         onChange={(event) => setPayComponentId(event.target.value)}
                       >
@@ -526,9 +550,11 @@ export const ExpensesPage = () => {
                         <label htmlFor="claim-pay-year">Year</label>
                         <input
                           id="claim-pay-year"
-                          type="number"
-                          min={2000}
+                          inputMode="numeric"
                           max={2100}
+                          min={2000}
+                          name="claim-pay-year"
+                          type="number"
                           value={payYear}
                           onChange={(event) => setPayYear(Number(event.target.value))}
                         />
@@ -537,9 +563,11 @@ export const ExpensesPage = () => {
                         <label htmlFor="claim-pay-month">Month</label>
                         <input
                           id="claim-pay-month"
-                          type="number"
-                          min={1}
+                          inputMode="numeric"
                           max={12}
+                          min={1}
+                          name="claim-pay-month"
+                          type="number"
                           value={payMonth}
                           onChange={(event) => setPayMonth(Number(event.target.value))}
                         />
@@ -568,9 +596,11 @@ export const ExpensesPage = () => {
                     <label htmlFor="claim-bill-year">Bill year</label>
                     <input
                       id="claim-bill-year"
-                      type="number"
-                      min={2000}
+                      inputMode="numeric"
                       max={2100}
+                      min={2000}
+                      name="claim-bill-year"
+                      type="number"
                       value={billYear}
                       onChange={(event) => setBillYear(Number(event.target.value))}
                     />
@@ -579,9 +609,11 @@ export const ExpensesPage = () => {
                     <label htmlFor="claim-bill-month">Bill month</label>
                     <input
                       id="claim-bill-month"
-                      type="number"
-                      min={1}
+                      inputMode="numeric"
                       max={12}
+                      min={1}
+                      name="claim-bill-month"
+                      type="number"
                       value={billMonth}
                       onChange={(event) => setBillMonth(Number(event.target.value))}
                     />
@@ -606,6 +638,6 @@ export const ExpensesPage = () => {
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

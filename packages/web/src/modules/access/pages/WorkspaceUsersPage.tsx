@@ -5,6 +5,7 @@ import { IconAlertTriangle, IconFilterOff, IconKey, IconPlus, IconRefresh, IconU
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { Modal } from '../../../components/modal/Modal';
 import {
@@ -12,6 +13,7 @@ import {
   toViewColumns,
   type ColumnDefinition,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -71,6 +73,7 @@ const userStatusLabels: Record<string, string> = {
 
 export const WorkspaceUsersPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, error, refetch } = useQuery<WorkspaceUsersData>(WORKSPACE_USERS_QUERY);
   const { data: assignableRoleData, loading: loadingAssignableRoles } =
     useQuery<AssignableWorkspaceRolesData>(ASSIGNABLE_WORKSPACE_ROLES_QUERY);
@@ -142,6 +145,7 @@ export const WorkspaceUsersPage = () => {
       <div className="access-role-control">
         <select
           aria-label={`Access role for ${workspaceUser.email}`}
+          name={`workspace-user-role-${workspaceUser.id}`}
           value={selectedRole}
           onChange={(event) =>
             setRoleDrafts((current) => ({
@@ -159,6 +163,7 @@ export const WorkspaceUsersPage = () => {
         {selectedRole === 'employee' ? (
           <select
             aria-label={`Employee record for ${workspaceUser.email}`}
+            name={`workspace-user-employee-${workspaceUser.id}`}
             value={selectedEmployeeId}
             onChange={(event) =>
               setEmployeeLinkDrafts((current) => ({
@@ -185,7 +190,7 @@ export const WorkspaceUsersPage = () => {
           onClick={() => void onUpdateRole(workspaceUser)}
           type="button"
         >
-          <IconKey size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+          <IconKey aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
           Save
         </button>
       </div>
@@ -203,7 +208,7 @@ export const WorkspaceUsersPage = () => {
       width: '30%',
       hideable: false,
       sortValue: (workspaceUser) => workspaceUser.email,
-      render: (workspaceUser) => workspaceUser.email,
+      render: (workspaceUser) => <span className="truncate">{workspaceUser.email}</span>,
     },
     {
       key: 'role',
@@ -301,6 +306,13 @@ export const WorkspaceUsersPage = () => {
       setRoleError('Select an employee record before assigning employee access');
       return;
     }
+    const confirmed = await confirm({
+      title: 'Change this access role?',
+      body: `The user will move from ${currentRole === null ? 'no role' : roleLabels[currentRole]} to ${roleLabels[nextRole]}.`,
+      confirmLabel: 'Save',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setRoleError(null);
     try {
       await updateUserRole({
@@ -329,7 +341,7 @@ export const WorkspaceUsersPage = () => {
   };
 
   return (
-    <main className="workspace-users-page">
+    <section className="workspace-users-page">
       <section className="workspace-users-content" aria-labelledby="workspace-users-title">
         <header className="page-header">
           <div>
@@ -346,7 +358,7 @@ export const WorkspaceUsersPage = () => {
             }}
             type="button"
           >
-            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             Add user
           </button>
         </header>
@@ -368,6 +380,9 @@ export const WorkspaceUsersPage = () => {
                 <label htmlFor="workspace-user-email">Email</label>
                 <input
                   id="workspace-user-email"
+                  name="workspace-user-email"
+                  autoComplete="email"
+                  spellCheck={false}
                   required
                   type="email"
                   value={form.email}
@@ -380,6 +395,8 @@ export const WorkspaceUsersPage = () => {
                 <label htmlFor="workspace-user-password">Initial password</label>
                 <input
                   id="workspace-user-password"
+                  name="workspace-user-password"
+                  autoComplete="new-password"
                   required
                   minLength={8}
                   type="password"
@@ -393,6 +410,7 @@ export const WorkspaceUsersPage = () => {
                 <label htmlFor="workspace-user-role">Access role</label>
                 <select
                   id="workspace-user-role"
+                  name="workspace-user-role"
                   disabled={assignableRoles.length === 0}
                   value={form.roleKey}
                   onChange={(event) =>
@@ -405,7 +423,7 @@ export const WorkspaceUsersPage = () => {
                 >
                   {assignableRoles.length === 0 ? (
                     <option value={form.roleKey}>
-                      {loadingAssignableRoles ? 'Loading roles...' : 'No assignable roles'}
+                      {loadingAssignableRoles ? 'Loading roles…' : 'No assignable roles'}
                     </option>
                   ) : null}
                   {assignableRoles.map((role) => (
@@ -419,6 +437,7 @@ export const WorkspaceUsersPage = () => {
                 <label htmlFor="workspace-user-employee">Employee record</label>
                 <select
                   id="workspace-user-employee"
+                  name="workspace-user-employee"
                   required={form.roleKey === 'employee'}
                   disabled={form.roleKey !== 'employee'}
                   value={form.employeeId}
@@ -443,8 +462,8 @@ export const WorkspaceUsersPage = () => {
                 disabled={creating || assignableRoles.length === 0}
                 type="submit"
               >
-                <IconKey size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                {creating ? 'Adding...' : 'Add user'}
+                <IconKey aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                {creating ? 'Adding…' : 'Add user'}
               </button>
             </div>
           </form>
@@ -459,14 +478,16 @@ export const WorkspaceUsersPage = () => {
         <section className="table-shell" aria-label="Workspace users">
           <ViewBar
             actions={
-              <button
-                className="icon-button"
-                onClick={() => void refetch()}
-                title="Refresh users"
-                type="button"
-              >
-                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              </button>
+              <Tooltip label="Refresh users">
+                <button
+                  aria-label="Refresh users"
+                  className="icon-button"
+                  onClick={() => void refetch()}
+                  type="button"
+                >
+                  <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                </button>
+              </Tooltip>
             }
             columns={toViewColumns(columns)}
             count={visibleUsers.length}
@@ -513,6 +534,6 @@ export const WorkspaceUsersPage = () => {
           />
         </section>
       </section>
-    </main>
+    </section>
   );
 };

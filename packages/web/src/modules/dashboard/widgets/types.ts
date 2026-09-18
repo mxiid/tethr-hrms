@@ -2,6 +2,8 @@ import type { PortalKind, WorkspaceBrandColor } from '@hrms/shared';
 
 import type { AuthUser } from '../../auth/states/authState';
 
+import type { WidgetSize } from './widgetSizes';
+
 export type WidgetId =
   | 'employeeCounts'
   | 'leaveOverview'
@@ -24,8 +26,7 @@ export type WidgetPortal = Exclude<PortalKind, 'none'>;
 
 export type WidgetLayout = {
   readonly id: WidgetId;
-  readonly colSpan: number;
-  readonly rowSpan: number;
+  readonly size: WidgetSize;
   readonly fieldIds: readonly string[];
   readonly displayMode: WidgetDisplayMode;
 };
@@ -69,8 +70,9 @@ export type WidgetDefinition = {
   // Which portals may add this widget. The catalog is filtered by this before
   // isVisible runs, so a portal is never offered a widget its role can't load.
   readonly portals: readonly WidgetPortal[];
-  readonly defaultColSpan: number;
-  readonly defaultRowSpan: number;
+  /** The tile sizes this widget's content is authored to fit. */
+  readonly sizeOptions: readonly WidgetSize[];
+  readonly defaultSize: WidgetSize;
   readonly accentColor: WorkspaceBrandColor;
   readonly defaultEnabled: boolean;
   readonly isVisible: (user: AuthUser | null) => boolean;

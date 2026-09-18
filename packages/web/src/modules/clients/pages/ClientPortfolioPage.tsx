@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatDate } from '@hrms/shared';
 import { IconAlertTriangle, IconBuildingCommunity, IconFilterOff, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 
@@ -9,6 +10,7 @@ import {
   toViewColumns,
   type ColumnDefinition,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -49,11 +51,6 @@ const emptyForm: WorkspaceOnboardingFormValues = {
   hrAdminEmail: '',
   hrAdminPassword: '',
 };
-
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(value),
-  );
 
 export const ClientPortfolioPage = () => {
   const { theme } = useTheme();
@@ -177,7 +174,7 @@ export const ClientPortfolioPage = () => {
   // flow is not competing with the portfolio it is about to add to.
   if (showForm) {
     return (
-      <main className="onboarding-page">
+      <section className="onboarding-page">
         <WorkspaceOnboardingForm
           clients={clients}
           formError={formError}
@@ -188,12 +185,12 @@ export const ClientPortfolioPage = () => {
           onCancel={() => setShowForm(false)}
           onSubmit={(values) => void onSubmit(values)}
         />
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="client-portfolio-page">
+    <section className="client-portfolio-page">
       <section className="client-portfolio-content" aria-labelledby="client-portfolio-title">
         <header className="page-header">
           <div>
@@ -208,7 +205,7 @@ export const ClientPortfolioPage = () => {
               type="button"
               onClick={() => startOnboarding()}
             >
-              <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               New workspace
             </button>
           </div>
@@ -217,37 +214,43 @@ export const ClientPortfolioPage = () => {
         <div className="metric-strip employee-metrics">
           <div className="metric-card">
             <div className="metric-label">Clients</div>
-            <div className="metric-value">{loading ? '...' : clients.length}</div>
+            <div className="metric-value">{loading ? '…' : clients.length}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Workspaces</div>
-            <div className="metric-value">{loading ? '...' : totalWorkspaces}</div>
+            <div className="metric-value">{loading ? '…' : totalWorkspaces}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Currencies</div>
-            <div className="metric-value">{loading ? '...' : currencyList.length}</div>
+            <div className="metric-value">{loading ? '…' : currencyList.length}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Newest</div>
             <div className="metric-value">
-              {loading ? '...' : newestClient ? formatDate(newestClient.createdAt) : '-'}
+              {loading ? '…' : newestClient ? formatDate(newestClient.createdAt) : '-'}
             </div>
           </div>
         </div>
 
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
 
         <section className="table-shell" aria-label="Clients">
           <ViewBar
             actions={
-              <button
-                className="icon-button"
-                onClick={() => void refetch()}
-                title="Refresh clients"
-                type="button"
-              >
-                <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-              </button>
+              <Tooltip label="Refresh clients">
+                <button
+                  aria-label="Refresh clients"
+                  className="icon-button"
+                  onClick={() => void refetch()}
+                  type="button"
+                >
+                  <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                </button>
+              </Tooltip>
             }
             columns={toViewColumns(columns)}
             count={visibleClients.length}
@@ -271,7 +274,7 @@ export const ClientPortfolioPage = () => {
                   description="Onboard the first workspace to start the portfolio."
                   action={
                     <button className="button button-secondary" onClick={() => startOnboarding()} type="button">
-                      <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                       New workspace
                     </button>
                   }
@@ -309,32 +312,32 @@ export const ClientPortfolioPage = () => {
               <div className="panel-kicker">Portfolio</div>
               <h2 className="panel-title">At a glance</h2>
             </div>
-            <IconBuildingCommunity size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+            <IconBuildingCommunity aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
           </div>
           <div className="field-list">
             <div className="field-row">
               <span className="field-label">Workspace coverage</span>
               <span className="field-value">
-                {loading ? '...' : `${clientsWithWorkspace} of ${clients.length} clients`}
+                {loading ? '…' : `${clientsWithWorkspace} of ${clients.length} clients`}
               </span>
             </div>
             <div className="field-row">
               <span className="field-label">Live / demo</span>
               <span className="field-value">
-                {loading ? '...' : `${liveClientCount} live · ${demoClientCount} demo`}
+                {loading ? '…' : `${liveClientCount} live · ${demoClientCount} demo`}
               </span>
             </div>
             <div className="field-row">
               <span className="field-label">Currencies</span>
               <span className="field-value">
-                {loading ? '...' : currencyList.join(', ') || '—'}
+                {loading ? '…' : currencyList.join(', ') || '—'}
               </span>
             </div>
             <div className="field-row">
               <span className="field-label">Newest</span>
               <span className="field-value">
                 {loading
-                  ? '...'
+                  ? '…'
                   : newestClient
                     ? `${newestClient.name} · ${formatDate(newestClient.createdAt)}`
                     : '—'}
@@ -353,7 +356,7 @@ export const ClientPortfolioPage = () => {
           {incompleteClients.length === 0 ? (
             <p className="field-hint">
               {loading
-                ? 'Checking clients...'
+                ? 'Checking clients…'
                 : 'Every client has at least one workspace.'}
             </p>
           ) : (
@@ -375,6 +378,6 @@ export const ClientPortfolioPage = () => {
           )}
         </section>
       </aside>
-    </main>
+    </section>
   );
 };

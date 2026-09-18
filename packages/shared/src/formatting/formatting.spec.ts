@@ -1,0 +1,80 @@
+import { dateKeyDaysAgo, formatDate, formatDateTime, formatMoney, todayDateKey } from './formatting';
+
+describe('formatDate', () => {
+  it('formats date-only strings as calendar dates without a UTC shift', () => {
+    expect(formatDate('2026-09-15')).toBe('Sep 15, 2026');
+  });
+
+  it('formats instants in local time', () => {
+    expect(formatDate(new Date(2026, 8, 15, 23, 30))).toBe('Sep 15, 2026');
+  });
+
+  it('degrades to an em dash for missing or invalid values', () => {
+    expect(formatDate(null)).toBe('—');
+    expect(formatDate(undefined)).toBe('—');
+    expect(formatDate('')).toBe('—');
+    expect(formatDate('not-a-date')).toBe('—');
+  });
+
+  it('rejects impossible calendar dates instead of normalizing them', () => {
+    expect(formatDate('2026-02-31')).toBe('—');
+    expect(formatDate('2026-02-30')).toBe('—');
+    expect(formatDate('2026-13-01')).toBe('—');
+  });
+
+  it('honours an explicit locale', () => {
+    expect(formatDate('2026-09-15', { locale: 'en-GB' })).toBe('15 Sept 2026');
+  });
+});
+
+describe('formatDateTime', () => {
+  it('includes the day and the time', () => {
+    const formatted = formatDateTime(new Date(2026, 8, 15, 14, 30));
+    expect(formatted).toContain('Sep 15, 2026');
+    expect(formatted).toMatch(/(14:30|02:30)/);
+  });
+
+  it('degrades to an em dash for invalid values', () => {
+    expect(formatDateTime(null)).toBe('—');
+  });
+});
+
+describe('todayDateKey', () => {
+  it('renders the local calendar day as YYYY-MM-DD', () => {
+    expect(todayDateKey(new Date(2026, 8, 5, 10, 30))).toBe('2026-09-05');
+  });
+
+  it('keeps a late local time on the same calendar day', () => {
+    expect(todayDateKey(new Date(2026, 8, 15, 23, 59))).toBe('2026-09-15');
+  });
+});
+
+describe('dateKeyDaysAgo', () => {
+  it('walks back whole calendar days', () => {
+    expect(dateKeyDaysAgo(7, new Date(2026, 8, 15))).toBe('2026-09-08');
+  });
+
+  it('stays on the calendar day when starting just after local midnight', () => {
+    // The DST case the fixed-millisecond version got wrong: 00:30 must walk
+    // back to the expected calendar day, never to the one before it.
+    expect(dateKeyDaysAgo(7, new Date(2026, 2, 15, 0, 30))).toBe('2026-03-08');
+  });
+
+  it('crosses month boundaries correctly', () => {
+    expect(dateKeyDaysAgo(30, new Date(2026, 8, 5))).toBe('2026-08-06');
+  });
+
+  it('returns today for zero days', () => {
+    expect(dateKeyDaysAgo(0, new Date(2026, 8, 15, 23, 59))).toBe('2026-09-15');
+  });
+});
+
+describe('formatMoney', () => {
+  it('formats currency with the locale grouping', () => {
+    expect(formatMoney(1234.5, 'USD')).toBe('$1,234.50');
+  });
+
+  it('falls back to code plus amount for an unknown currency', () => {
+    expect(formatMoney(10, 'NOT-A-CODE')).toBe('NOT-A-CODE 10.00');
+  });
+});
