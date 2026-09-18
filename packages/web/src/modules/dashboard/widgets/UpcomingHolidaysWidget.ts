@@ -1,4 +1,5 @@
 import { gql, useQuery } from '@apollo/client';
+import { todayDateKey } from '@hrms/shared';
 
 import type { WidgetData, WidgetFieldDefinition } from './types';
 
@@ -17,8 +18,6 @@ const UPCOMING_HOLIDAYS_QUERY = gql`
 type Holiday = { readonly id: string; readonly date: string; readonly name: string };
 type UpcomingHolidaysData = { readonly upcomingHolidays: readonly Holiday[] };
 
-const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
-
 export const UPCOMING_HOLIDAYS_FIELDS: readonly WidgetFieldDefinition[] = [
   { id: 'nextHoliday', label: 'Next holiday' },
   { id: 'nextDate', label: 'On' },
@@ -32,7 +31,7 @@ export const useUpcomingHolidaysData = (): WidgetData => {
   to.setDate(to.getDate() + HORIZON_DAYS);
 
   const { data, loading, error } = useQuery<UpcomingHolidaysData>(UPCOMING_HOLIDAYS_QUERY, {
-    variables: { from: isoDate(now), to: isoDate(to) },
+    variables: { from: todayDateKey(now), to: todayDateKey(to) },
   });
 
   const holidays = [...(data?.upcomingHolidays ?? [])].sort((a, b) => a.date.localeCompare(b.date));

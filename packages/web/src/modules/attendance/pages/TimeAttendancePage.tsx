@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { dateKeyDaysAgo, todayDateKey } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
@@ -12,6 +13,7 @@ import {
 import { useMemo, useState, type FormEvent } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { Modal } from '../../../components/modal/Modal';
 import { SkeletonRows } from '../../../components/skeleton/Skeleton';
@@ -65,10 +67,9 @@ const STATUS_COLORS: Record<string, MainColorName> = {
   locked: 'gray',
 };
 
-const isoDaysAgo = (days: number): string =>
-  new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-
-const today = (): string => new Date().toISOString().slice(0, 10);
+/** The local calendar key `days` before today — calendar math, so a DST
+ *  transition can never land on the neighbouring date. */
+const isoDaysAgo = (days: number): string => dateKeyDaysAgo(days);
 
 export const TimeAttendancePage = () => {
   const { theme } = useTheme();
@@ -80,7 +81,7 @@ export const TimeAttendancePage = () => {
 
   const [employeeId, setEmployeeId] = useState('');
   const [from, setFrom] = useState(isoDaysAgo(30));
-  const [to, setTo] = useState(today());
+  const [to, setTo] = useState(todayDateKey());
   const [tab, setTab] = useState<TabKey>('entries');
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -115,6 +116,7 @@ export const TimeAttendancePage = () => {
     variables: { employeeId: activeEmployeeId },
   });
 
+  const confirm = useConfirm();
   const [recordTimeEntry, { loading: recording }] = useMutation(RECORD_TIME_ENTRY_MUTATION);
   const [openTimesheet, { loading: opening }] = useMutation(OPEN_TIMESHEET_MUTATION);
   const [submitTimesheet] = useMutation(SUBMIT_TIMESHEET_MUTATION);
@@ -125,10 +127,10 @@ export const TimeAttendancePage = () => {
   const timesheets = timesheetsData?.timesheets ?? [];
   const totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
 
-  const [entryForm, setEntryForm] = useState({ date: today(), hours: '8', note: '' });
+  const [entryForm, setEntryForm] = useState({ date: todayDateKey(), hours: '8', note: '' });
   const [periodForm, setPeriodForm] = useState({
     periodStart: isoDaysAgo(14),
-    periodEnd: today(),
+    periodEnd: todayDateKey(),
   });
   const [openForm, setOpenForm] = useState<'entry' | 'period' | null>(null);
 
@@ -158,7 +160,7 @@ export const TimeAttendancePage = () => {
           },
         },
       });
-      setEntryForm({ date: today(), hours: '8', note: '' });
+      setEntryForm({ date: todayDateKey(), hours: '8', note: '' });
       await refetchEntries();
     }, 'Time entry recorded');
     if (ok) setOpenForm(null);
@@ -185,6 +187,15 @@ export const TimeAttendancePage = () => {
     timesheetId: string,
     kind: 'submit' | 'approve' | 'lock',
   ): Promise<void> => {
+    if (kind === 'lock') {
+      const confirmed = await confirm({
+        title: 'Lock this timesheet?',
+        body: 'The timesheet will be closed and its hours can no longer be edited.',
+        confirmLabel: 'Lock',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     const mutations = {
       submit: submitTimesheet,
       approve: approveTimesheet,
@@ -202,7 +213,7 @@ export const TimeAttendancePage = () => {
   };
 
   return (
-    <main className="page-frame-wide">
+    <section className="page-frame-wide">
       <section className="employees-content" aria-labelledby="attendance-title">
         <header className="page-header">
           <div>
@@ -218,6 +229,7 @@ export const TimeAttendancePage = () => {
             <label htmlFor="attendance-employee">Employee</label>
             <select
               id="attendance-employee"
+              name="attendance-employee"
               value={activeEmployeeId}
               onChange={(event) => setEmployeeId(event.target.value)}
             >
@@ -232,6 +244,7 @@ export const TimeAttendancePage = () => {
             <label htmlFor="attendance-from">From</label>
             <input
               id="attendance-from"
+              name="attendance-from"
               type="date"
               value={from}
               onChange={(event) => setFrom(event.target.value)}
@@ -241,6 +254,7 @@ export const TimeAttendancePage = () => {
             <label htmlFor="attendance-to">To</label>
             <input
               id="attendance-to"
+              name="attendance-to"
               type="date"
               value={to}
               onChange={(event) => setTo(event.target.value)}
@@ -251,7 +265,11 @@ export const TimeAttendancePage = () => {
           </span>
         </div>
 
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
         {actionError ? (
           <p className="auth-error" role="alert">
             {actionError}
@@ -340,7 +358,7 @@ export const TimeAttendancePage = () => {
                     setOpenForm('entry');
                   }}
                 >
-                  <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   Record hours
                 </button>
               </div>
@@ -408,7 +426,7 @@ export const TimeAttendancePage = () => {
                                       type="button"
                                       onClick={() => void timesheetAction(timesheet.id, 'submit')}
                                     >
-                                      <IconSend
+                                      <IconSend aria-hidden="true"
                                         size={theme.icon.size.sm}
                                         stroke={theme.icon.stroke.sm}
                                       />
@@ -421,7 +439,7 @@ export const TimeAttendancePage = () => {
                                       type="button"
                                       onClick={() => void timesheetAction(timesheet.id, 'approve')}
                                     >
-                                      <IconCheck
+                                      <IconCheck aria-hidden="true"
                                         size={theme.icon.size.sm}
                                         stroke={theme.icon.stroke.sm}
                                       />
@@ -434,7 +452,7 @@ export const TimeAttendancePage = () => {
                                       type="button"
                                       onClick={() => void timesheetAction(timesheet.id, 'lock')}
                                     >
-                                      <IconLock
+                                      <IconLock aria-hidden="true"
                                         size={theme.icon.size.sm}
                                         stroke={theme.icon.stroke.sm}
                                       />
@@ -468,7 +486,7 @@ export const TimeAttendancePage = () => {
                     setOpenForm('period');
                   }}
                 >
-                  <IconCalendarPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <IconCalendarPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   Open timesheet
                 </button>
               </div>
@@ -497,6 +515,7 @@ export const TimeAttendancePage = () => {
               <label htmlFor="entry-date">Date</label>
               <input
                 id="entry-date"
+                name="entry-date"
                 required
                 type="date"
                 value={entryForm.date}
@@ -509,8 +528,10 @@ export const TimeAttendancePage = () => {
               <label htmlFor="entry-hours">Hours</label>
               <input
                 id="entry-hours"
+                inputMode="decimal"
                 max={24}
                 min={0}
+                name="entry-hours"
                 required
                 step="0.25"
                 type="number"
@@ -525,6 +546,7 @@ export const TimeAttendancePage = () => {
             <label htmlFor="entry-note">Note</label>
             <input
               id="entry-note"
+              name="entry-note"
               value={entryForm.note}
               onChange={(event) =>
                 setEntryForm((current) => ({ ...current, note: event.target.value }))
@@ -532,8 +554,8 @@ export const TimeAttendancePage = () => {
             />
           </div>
           <button className="button button-primary button-full" disabled={recording} type="submit">
-            <IconDeviceFloppy size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {recording ? 'Recording...' : 'Record hours'}
+            <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            {recording ? 'Recording…' : 'Record hours'}
           </button>
         </form>
       </Modal>
@@ -555,6 +577,7 @@ export const TimeAttendancePage = () => {
               <label htmlFor="period-start">Period start</label>
               <input
                 id="period-start"
+                name="period-start"
                 required
                 type="date"
                 value={periodForm.periodStart}
@@ -570,6 +593,7 @@ export const TimeAttendancePage = () => {
               <label htmlFor="period-end">Period end</label>
               <input
                 id="period-end"
+                name="period-end"
                 required
                 type="date"
                 value={periodForm.periodEnd}
@@ -580,11 +604,11 @@ export const TimeAttendancePage = () => {
             </div>
           </div>
           <button className="button button-primary button-full" disabled={opening} type="submit">
-            <IconCalendarPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {opening ? 'Opening...' : 'Open timesheet'}
+            <IconCalendarPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            {opening ? 'Opening…' : 'Open timesheet'}
           </button>
         </form>
       </Modal>
-    </main>
+    </section>
   );
 };

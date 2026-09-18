@@ -1,6 +1,8 @@
 import { IconPencil, IconX } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
+import { prefersCoarsePointer } from '../../../components/form/pointer';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useDashboardViews } from '../hooks/useDashboardViews';
 import type { DashboardView } from '../states/dashboardViewsState';
@@ -9,6 +11,7 @@ import { CreateViewPanel } from './CreateViewPanel';
 
 export const DashboardViewTabs = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { views, activeViewId, switchView, renameView, deleteView } = useDashboardViews();
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
@@ -24,22 +27,63 @@ export const DashboardViewTabs = () => {
     setRenamingId(null);
   };
 
+  const onDeleteView = async (view: DashboardView): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Delete this dashboard view?',
+      body: 'The view and its widget layout will be removed from this dashboard.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    deleteView(view.id);
+  };
+
+  const onTabListKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (
+      event.key !== 'ArrowLeft' &&
+      event.key !== 'ArrowRight' &&
+      event.key !== 'Home' &&
+      event.key !== 'End'
+    ) {
+      return;
+    }
+    const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    if (tabs.length === 0) {
+      return;
+    }
+    const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
+    // The rename input lives in the same container; let its caret keys through.
+    if (current === -1) {
+      return;
+    }
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? tabs.length - 1
+          : event.key === 'ArrowRight'
+            ? (current + 1 + tabs.length) % tabs.length
+            : (current - 1 + tabs.length) % tabs.length;
+    event.preventDefault();
+    tabs[next].focus();
+    tabs[next].click();
+  };
+
   return (
-    <div className="dashboard-view-tabs" role="tablist">
+    <div className="dashboard-view-tabs" onKeyDown={onTabListKeyDown} role="tablist">
       {views.map((view) => {
         const isActive = view.id === activeViewId;
         const isRenaming = renamingId === view.id;
         return (
           <div
-            aria-selected={isActive}
             className={`dashboard-view-tab${isActive ? ' is-active' : ''}`}
             key={view.id}
-            role="tab"
           >
             {isRenaming ? (
               <input
-                autoFocus
+                autoFocus={!prefersCoarsePointer()}
                 className="dashboard-view-tab-input"
+                name="dashboard-view-name"
                 onBlur={() => commitRename(view.id)}
                 onChange={(event) => setDraftName(event.target.value)}
                 onKeyDown={(event) => {
@@ -50,8 +94,11 @@ export const DashboardViewTabs = () => {
               />
             ) : (
               <button
+                aria-selected={isActive}
                 className="dashboard-view-tab-label"
                 onClick={() => switchView(view.id)}
+                role="tab"
+                tabIndex={isActive ? 0 : -1}
                 type="button"
               >
                 {view.name}
@@ -65,16 +112,16 @@ export const DashboardViewTabs = () => {
                   onClick={() => startRename(view)}
                   type="button"
                 >
-                  <IconPencil size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                  <IconPencil aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                 </button>
                 {views.length > 1 ? (
                   <button
                     aria-label={`Delete ${view.name}`}
                     className="icon-button"
-                    onClick={() => deleteView(view.id)}
+                    onClick={() => void onDeleteView(view)}
                     type="button"
                   >
-                    <IconX size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                    <IconX aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                   </button>
                 ) : null}
               </span>

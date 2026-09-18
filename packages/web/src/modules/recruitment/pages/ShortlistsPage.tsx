@@ -1,4 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { formatDate } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
@@ -11,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import {
@@ -18,6 +20,7 @@ import {
   toViewColumns,
   type ColumnDefinition,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -98,15 +101,9 @@ const decisionColors: Record<EntryRecord['clientDecision'], MainColorName> = {
   rejected: 'red',
 };
 
-const formatDate = (value: string | null): string =>
-  value === null
-    ? '—'
-    : new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-        new Date(value),
-      );
-
 export const ShortlistsPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data: postingsData, loading: postingsLoading } = useQuery<{
     readonly jobPostings: readonly PostingRecord[];
   }>(JOB_POSTINGS_QUERY);
@@ -184,6 +181,13 @@ export const ShortlistsPage = () => {
   };
 
   const onClose = async (shortlist: ShortlistRecord): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Close this shortlist?',
+      body: 'The client verdicts become final and no further decisions can be recorded.',
+      confirmLabel: 'Close',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     await closeShortlist({ variables: { input: { shortlistId: shortlist.id } } });
     await refetch();
   };
@@ -289,7 +293,7 @@ export const ShortlistsPage = () => {
   );
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="hiring-content" aria-labelledby="shortlists-title">
         <header className="page-header">
           <div>
@@ -305,6 +309,7 @@ export const ShortlistsPage = () => {
               aria-label="Posting"
               className="record-field-control"
               disabled={postingsLoading || postingOptions.length === 0}
+              name="posting"
               value={selectedPostingId}
               onChange={(event) => setSelectedPostingId(event.target.value)}
             >
@@ -315,21 +320,23 @@ export const ShortlistsPage = () => {
                 </option>
               ))}
             </select>
-            <button
-              className="icon-button"
-              onClick={() => void refetch()}
-              title="Refresh shortlists"
-              type="button"
-            >
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
+            <Tooltip label="Refresh shortlists">
+              <button
+                aria-label="Refresh shortlists"
+                className="icon-button"
+                onClick={() => void refetch()}
+                type="button"
+              >
+                <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            </Tooltip>
             <button
               className="button button-primary"
               disabled={selectedPostingId === ''}
               onClick={openBuilder}
               type="button"
             >
-              <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               New round
             </button>
           </div>
@@ -365,7 +372,7 @@ export const ShortlistsPage = () => {
                   description="Build the first round from the applications received."
                   action={
                     <button className="button button-primary" onClick={openBuilder} type="button">
-                      <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                       New round
                     </button>
                   }
@@ -413,7 +420,9 @@ export const ShortlistsPage = () => {
                 return (
                   <label className="record-item" key={application.id}>
                     <input
+                      aria-label={`Select ${application.candidateName}`}
                       checked={rank > 0}
+                      name={`shortlist-candidate-${application.id}`}
                       onChange={() => toggleApplication(application.id)}
                       type="checkbox"
                     />
@@ -503,10 +512,13 @@ export const ShortlistsPage = () => {
                   </div>
                 </div>
               ))}
+              {selectedShortlist.entries.length === 0 ? (
+                <p className="table-empty">No candidates yet.</p>
+              ) : null}
             </div>
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

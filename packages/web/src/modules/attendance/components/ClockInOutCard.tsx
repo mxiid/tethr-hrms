@@ -25,7 +25,11 @@ export const ClockInOutCard = () => {
       {/* No card heading: the page header above already says what this is, and a
           second title inside the card only repeats it. */}
       <section className="table-shell clock-card">
-        {clock.notice ? <p className="form-success">{clock.notice}</p> : null}
+        {clock.notice ? (
+          <p className="form-success" role="status">
+            {clock.notice}
+          </p>
+        ) : null}
         {clock.error ? (
           <p className="auth-error" role="alert">
             {clock.error}
@@ -54,8 +58,8 @@ export const ClockInOutCard = () => {
             type="button"
             onClick={() => void clock.clockIn()}
           >
-            <IconPlayerPlay size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {clock.clockingIn ? 'Checking in...' : 'Check in'}
+            <IconPlayerPlay aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            {clock.clockingIn ? 'Checking in…' : 'Check in'}
           </button>
           <button
             className="button button-secondary"
@@ -63,8 +67,8 @@ export const ClockInOutCard = () => {
             type="button"
             onClick={() => void clock.clockOut()}
           >
-            <IconPlayerStop size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            {clock.clockingOut ? 'Checking out...' : 'Check out'}
+            <IconPlayerStop aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            {clock.clockingOut ? 'Checking out…' : 'Check out'}
           </button>
         </div>
       </section>
@@ -72,7 +76,7 @@ export const ClockInOutCard = () => {
       <section className="table-shell">
         <div className="table-title-row">
           <div className="table-title">
-            <IconClock size={theme.icon.size.md} /> Recorded days
+            <IconClock aria-hidden="true" size={theme.icon.size.md} /> Recorded days
           </div>
           <div className="table-density">Last 30 days</div>
         </div>

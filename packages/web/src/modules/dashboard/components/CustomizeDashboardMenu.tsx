@@ -20,8 +20,15 @@ export const CustomizeDashboardMenu = () => {
       if (anchorRef.current?.contains(event.target as Node)) return;
       setIsOpen(false);
     };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
     document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, []);
 
   const availableWidgets = visibleWidgetsFor(user);
@@ -39,17 +46,22 @@ export const CustomizeDashboardMenu = () => {
         onClick={() => setIsOpen((open) => !open)}
         type="button"
       >
-        <IconAdjustments size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+        <IconAdjustments aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         Customize
-        <IconChevronDown size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+        <IconChevronDown aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
       </button>
       {isOpen ? (
-        <div className="dropdown-panel dropdown-panel-customize" role="menu">
+        <div
+          aria-label="Widgets"
+          className="dropdown-panel dropdown-panel-customize"
+          role="group"
+        >
           <div className="account-dropdown-label">Widgets</div>
           {availableWidgets.map((widget) => (
             <label className="checkbox-field" key={widget.id}>
               <input
                 checked={layout.some((entry) => entry.id === widget.id)}
+                name={`widget-${widget.id}`}
                 onChange={(event) => toggleWidget(widget.id, event.target.checked)}
                 type="checkbox"
               />

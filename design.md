@@ -1,6 +1,6 @@
 # Twenty — Design Language
 
-> A reference for the visual and interaction language used across Twenty. Source of truth: `packages/twenty-ui/src/theme/`.
+> A reference for the visual and interaction language used across the product. Source of truth: `packages/ui/src/theme/`.
 
 ---
 
@@ -46,20 +46,35 @@ Restrained rounding. Nothing here is "playful" — everything is functional.
 | `pill` | `999px` | Capsule buttons, chips |
 | `rounded` | `100%` | Avatars, dots |
 
-Source: [BorderCommon.ts](packages/twenty-ui/src/theme/constants/BorderCommon.ts)
+Source: [common.ts](packages/ui/src/theme/common.ts)
 
-### 2.3 Animation
+### 2.3 Motion
 
-Fast and subtle. The default transition for clickable elements is `background 0.1s ease`.
+Fast and subtle. Tokens live in `packages/ui/src/theme/common.ts` and are emitted as
+CSS variables (`--hrms-animation-*`). All motion is CSS-first — transitions and
+`@starting-style` for entrances, WAAPI only when JavaScript control is needed.
+No motion library.
 
 | Duration | Value (s) | Usage |
 |---|---|---|
 | `instant` | `0.075` | Hover state flips |
-| `fast` | `0.15` | Standard interactions |
-| `normal` | `0.3` | Modal / panel transitions |
+| `fast` | `0.15` | Buttons, tooltips, small popovers |
+| `gentle` | `0.24` | Modals, drawers, side panel |
+| `normal` | `0.3` | Larger on-screen movement |
 | `slow` | `1.5` | Marketing-style reveals (rare) |
 
-`framer-motion` powers microinteractions where component-level easing is needed.
+| Easing | Value | Usage |
+|---|---|---|
+| `out` | `cubic-bezier(0.23, 1, 0.32, 1)` | Entrances and UI interactions (default) |
+| `inOut` | `cubic-bezier(0.77, 0, 0.175, 1)` | Elements moving or morphing on screen |
+| `drawer` | `cubic-bezier(0.32, 0.72, 0, 1)` | Sheets and drawers |
+| `soft` | `cubic-bezier(0.4, 0, 0.2, 1)` | Opacity / color fades |
+
+Rules: never transition `all`; never use `ease-in` for UI entrances; press
+feedback via `transform: scale(0.97)` on `:active`; popovers scale from their
+trigger (`transform-origin`), modals stay centered; gate hover motion behind
+`@media (hover: hover) and (pointer: fine)`; honour `prefers-reduced-motion`
+(keep opacity and color changes, drop movement).
 
 ### 2.4 Z-index
 
@@ -106,7 +121,7 @@ Three weights only — disciplined hierarchy.
 | `inverted` | `gray1` | Text on dark/inverted bg |
 | `danger` | `red` | Error messaging |
 
-Source: [FontLight.ts](packages/twenty-ui/src/theme/constants/FontLight.ts), [FontCommon.ts](packages/twenty-ui/src/theme/constants/FontCommon.ts)
+Source: [common.ts](packages/ui/src/theme/common.ts) (scale), [colors-light.ts](packages/ui/src/theme/colors-light.ts) / [colors-dark.ts](packages/ui/src/theme/colors-dark.ts) (tiers)
 
 ---
 
@@ -128,7 +143,7 @@ A 12-step display-p3 ramp from pure white (`gray1`) to near-black (`gray12`). Us
 | `gray11` | `display-p3 0.4 0.4 0.4` |
 | `gray12` | `display-p3 0.2 0.2 0.2` |
 
-Source: [GrayScaleLight.ts](packages/twenty-ui/src/theme/constants/GrayScaleLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.2 Accent (Primary brand)
 
@@ -140,7 +155,7 @@ Source: [GrayScaleLight.ts](packages/twenty-ui/src/theme/constants/GrayScaleLigh
 | `accent9` | Brand reference point |
 | `accent11` | Secondary button text |
 
-Source: [AccentLight.ts](packages/twenty-ui/src/theme/constants/AccentLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.3 Main color palette (24 hues)
 
@@ -155,7 +170,7 @@ Each named color maps to a Radix P3 `9`-step (the saturated mid-tone) and is use
 | **Purples / Pinks** | `iris`, `violet`, `purple`, `plum`, `pink` |
 | **Earth tones / Neutrals** | `bronze`, `gold`, `brown`, `gray` |
 
-Source: [MainColorsLight.ts](packages/twenty-ui/src/theme/constants/MainColorsLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.4 Background hierarchy (light theme)
 
@@ -172,7 +187,7 @@ Source: [MainColorsLight.ts](packages/twenty-ui/src/theme/constants/MainColorsLi
 | `overlayPrimary` | gray alpha | Modal scrims |
 | `radialGradient` | gray9 → gray10 | Decorative auth/empty states |
 
-Source: [BackgroundLight.ts](packages/twenty-ui/src/theme/constants/BackgroundLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.5 Border palette
 
@@ -186,7 +201,7 @@ Source: [BackgroundLight.ts](packages/twenty-ui/src/theme/constants/BackgroundLi
 | `blue` | `blue7` | Focus / selected |
 | `transparentStrong` | gray4 alpha | Floating panel borders |
 
-Source: [BorderLight.ts](packages/twenty-ui/src/theme/constants/BorderLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts)
 
 ### 4.6 Shadows
 
@@ -199,7 +214,7 @@ Built from layered gray-alpha tokens — no diffuse colored glows.
 | `underline` | `0 1px 0 gray9α` |
 | `superHeavy` | three-layer (8px + 64px + 56px spreads) — modal lift |
 
-Source: [BoxShadowLight.ts](packages/twenty-ui/src/theme/constants/BoxShadowLight.ts)
+Source: [colors-light.ts](packages/ui/src/theme/colors-light.ts). Emitted as `--hrms-box-shadow-*` (never under the color prefix).
 
 ---
 
@@ -216,7 +231,7 @@ Library: **[Tabler Icons](https://tabler.io/icons)** (`@tabler/icons-react`). Ou
 
 Strokes get *heavier* as size scales up — small icons render lighter to avoid blockiness; large icons hold weight for hierarchy.
 
-Source: [Icon.ts](packages/twenty-ui/src/theme/constants/Icon.ts)
+Source: [common.ts](packages/ui/src/theme/common.ts)
 
 ---
 
@@ -237,7 +252,7 @@ Additional toggles: `inverted`, `fullWidth`, `disabled`, `focus`, `isLoading`, `
 
 Border radius is `sm` (4px). Focus state shows a 3px blue outline. Disabled state uses reduced opacity, not a color swap.
 
-Source: [Button.tsx](packages/twenty-ui/src/input/button/components/Button/Button.tsx)
+Source: [global.css](packages/web/src/app/global.css)
 
 ### 6.2 Modals
 
@@ -254,7 +269,7 @@ Source: [Button.tsx](packages/twenty-ui/src/input/button/components/Button/Butto
 - Max-height `90dvh` with overflow scroll
 - Scrim uses `overlayPrimary` (gray alpha)
 
-Source: [Modal.ts](packages/twenty-ui/src/theme/constants/Modal.ts)
+Source: [Modal.tsx](packages/web/src/components/modal/Modal.tsx)
 
 ### 6.3 Side panels
 
@@ -274,38 +289,60 @@ Dense, spreadsheet-grade tables — Twenty's primary information surface.
 
 Variants: `highlighted`, `regular`, `transparent`, `rounded`, `static`. Flex-based alignment. Color comes from the 24-hue main palette (§4.3) — chips are how object categories and statuses get color-coded.
 
+### 6.6 Dashboard tiles
+
+The dashboard is a **fixed-size tile grid**, not a free canvas: a 12-column grid at desktop (8 at tablet, 4 at phone; 16px gutters) with a 36px row track — so two rows equal the **88px tile unit** every height is built on.
+
+Tiles never scroll. Each widget declares the sizes its content is authored to fit, and content caps (fields, legend items, funnel stages) come from the density of that size:
+
+| Size | Geometry | Density | Content contract |
+|---|---|---|---|
+| `2x1` Strip | 6 cols × 1 unit | strip | title + one headline metric |
+| `1x2` Quarter | 3 cols × 2 units | quarter | split legend (typically 2–3 items) + as many inline metrics as fit (≥2 at desktop, wrapping when needed) |
+| `2x2` Half | 6 cols × 2 units | half | bar + ≤4 legend items + ≤4 stats |
+| `2x3` Half tall | 6 cols × 3 units | halfTall | chart + legend + ≤6 stats |
+| `4x2` Full | 12 cols × 2 units | full | bar + inline legend + ≤6 stats |
+| `4x3` Full tall | 12 cols × 3 units | fullTall | chart + legend + ≤6 stats |
+
+Interaction: dragging reorders; size is chosen from the widget's allowed set (never free-resized), and **all edit chrome lives in Edit layout mode** — the resting dashboard shows only titles, accent dots, and content. The metrics picker is one ordered list shared by every size: drag the grips (or lift with the keyboard) to set display order, selected metrics beyond what the tile renders read muted, and a single **Enlarge to add** action jumps to the smallest strictly larger size that renders everything selected. Hidden metrics always keep a way back: when no larger size exists, **Show metrics only** drops the chart to free the room, and when even that can't help (already plain, or no chart) a note points at reordering or unselecting — the muted rows themselves are draggable. What renders is **measured, not guessed**: the density caps are starting points, and each tile probes the full selection against its real box, shedding legend items first and metrics one at a time until nothing clips (never below one metric and the chart's key). Controls only exist where they can act — the chart/plain toggle disappears when the size has no chart. Layouts persist per workspace + user, and the signed-in identity owns its layout: a workspace switch or a fresh sign-in loads that identity's dashboard and never reuses or overwrites the previous one. Saved layouts are sanitized against the widget registry on load — unknown widgets, unsupported sizes, retired metrics, and duplicate view/widget ids drop out, so a stale save repairs itself on the next write; a selection whose metrics have all retired falls back to the widget's defaults rather than restoring a blank tile, while an intentionally empty selection stays empty. The tile rhythm and the size-glyph diagrams are tokens (`--hrms-layout-dashboard-*`), never literal dimensions. The active view is **two-way URL state** — deep links apply, deliberate switches push history so Back returns, and a missing or stale `?view=` is corrected in place — and the session's getting-started dismissal survives in-app navigation (a reload starts fresh) while staying scoped to the workspace that chose it: switching workspaces mid-tab still shows the destination's onboarding.
+
 ---
 
 ## 7. Styling Engine
 
-- **[Linaria](https://linaria.dev/)** — zero-runtime CSS-in-JS using the `styled` API. Styles compile to static CSS at build time, no runtime style injection cost.
-- **CSS variables** — themes are exposed as CSS custom properties (`themeCssVariables`) so Linaria-compiled CSS can swap themes without re-rendering.
-- **`framer-motion`** for animated components that need orchestration beyond CSS transitions.
-- **No utility-class framework** (no Tailwind). Co-located styled components per file.
+- **`@hrms/ui` tokens** — spacing, radii, motion, typography, and the light/dark
+  palettes live in `packages/ui/src/theme/`. `buildThemeCss()` flattens them into
+  `--hrms-*` CSS custom properties, applied by toggling `data-theme` on the root —
+  no component re-render to swap modes.
+- **One global stylesheet** — `packages/web/src/app/global.css` holds the app's
+  styles, written against the CSS variables. Component behavior stays in React;
+  visuals stay in the stylesheet.
+- **CSS-first motion** — transitions and `@starting-style` for entrances; WAAPI
+  only for programmatic control. No animation library.
+- **No utility-class framework** (no Tailwind), no CSS-in-JS runtime.
 
 ---
 
 ## 8. Theme Architecture
 
 ```
-ThemeCommon ──────────────┐
-                          ├─→ ThemeLight ──→ UI
-ColorsLight, FontLight,   │
-GrayScaleLight, …         │
-                          ├─→ ThemeDark ──→ UI
-ColorsDark, FontDark,     │
-GrayScaleDark, …          │
+common.ts (sizes, radii, durations, easing) ──┐
+                                              ├─→ theme.ts ──→ css-variables.ts ──→ global.css
+colors-light.ts / colors-dark.ts ─────────────┘     (light/darkTheme)   (--hrms-* vars)
 ```
 
-Every visual concept has three files:
+Three layers:
 
-- `*Common.ts` — values shared across modes (sizes, radii, durations)
-- `*Light.ts` — light-mode color bindings
-- `*Dark.ts` — dark-mode color bindings
+- `common.ts` — mode-agnostic values (spacing, radii, motion, typography, layout)
+- `colors-light.ts` / `colors-dark.ts` — mode color bindings (`ColorTokens`)
+- `theme.ts` assembles `lightTheme` / `darkTheme`; `css-variables.ts` flattens the
+  string-valued tokens into CSS variables (light on `:root`, dark under
+  `[data-theme='dark']`).
 
-This shape makes adding a new color mode (e.g. high-contrast) a matter of authoring one new layer — the rest of the system is mode-agnostic.
+This shape makes adding a new color mode (e.g. high-contrast) a matter of authoring
+one new color layer — the rest of the system is mode-agnostic.
 
-Source: [packages/twenty-ui/src/theme/constants/](packages/twenty-ui/src/theme/constants)
+Source: [packages/ui/src/theme/](packages/ui/src/theme)
 
 ---
 
@@ -333,18 +370,16 @@ Source: [packages/twenty-ui/src/theme/constants/](packages/twenty-ui/src/theme/c
 | Hover surface | `background.tertiary` |
 | Default icon | `icon.size.md` (16px) · `stroke.md` (2) |
 | Modal elevation | `boxShadow.superHeavy` |
-| Standard transition | `clickableElementBackgroundTransition` |
+| Standard transition | `theme.animation.clickableBackgroundTransition` |
 
 ---
 
 ## Files of interest
 
-- [packages/twenty-ui/src/theme/constants/](packages/twenty-ui/src/theme/constants) — full token system
-- [ThemeCommon.ts](packages/twenty-ui/src/theme/constants/ThemeCommon.ts) — root theme assembly
-- [FontCommon.ts](packages/twenty-ui/src/theme/constants/FontCommon.ts) — typography scale
-- [MainColorsLight.ts](packages/twenty-ui/src/theme/constants/MainColorsLight.ts) — 24-hue palette
-- [BorderCommon.ts](packages/twenty-ui/src/theme/constants/BorderCommon.ts) — radii
-- [Animation.ts](packages/twenty-ui/src/theme/constants/Animation.ts) — durations
-- [Icon.ts](packages/twenty-ui/src/theme/constants/Icon.ts) — icon sizing
-- [Button.tsx](packages/twenty-ui/src/input/button/components/Button/Button.tsx) — exemplary component
-- [packages/twenty-front/index.html](packages/twenty-front/index.html) — font loading
+- [packages/ui/src/theme/common.ts](packages/ui/src/theme/common.ts) — mode-agnostic tokens (spacing, radii, motion, typography)
+- [packages/ui/src/theme/colors-light.ts](packages/ui/src/theme/colors-light.ts) / [colors-dark.ts](packages/ui/src/theme/colors-dark.ts) — per-mode palette
+- [packages/ui/src/theme/theme.ts](packages/ui/src/theme/theme.ts) — light/dark theme assembly
+- [packages/ui/src/theme/css-variables.ts](packages/ui/src/theme/css-variables.ts) — `--hrms-*` variable generation
+- [packages/web/src/app/global.css](packages/web/src/app/global.css) — the app stylesheet
+- [packages/web/src/components/modal/Modal.tsx](packages/web/src/components/modal/Modal.tsx) — overlay primitive
+- [packages/web/index.html](packages/web/index.html) — font loading

@@ -1,4 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { formatDate, todayDateKey } from '@hrms/shared';
 import {
   IconAlertTriangle,
   IconCircleCheck,
@@ -127,7 +128,7 @@ export const EmployeeJobPayHub = ({
   canApproveBankChanges,
 }: Props) => {
   const { theme } = useTheme();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateKey();
 
   const { data: salaryData } = useQuery<{ readonly salaryRevisions: readonly SalaryRevisionRecord[] }>(
     EMPLOYEE_SALARY_HISTORY_QUERY,
@@ -223,7 +224,7 @@ export const EmployeeJobPayHub = ({
               {readinessEntry.blockers.map((blocker) => (
                 <li className="record-item" key={blocker.code}>
                   <span>
-                    <IconAlertTriangle size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />{' '}
+                    <IconAlertTriangle aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />{' '}
                     {blocker.message}
                   </span>
                   <span className="employee-secondary">
@@ -234,7 +235,7 @@ export const EmployeeJobPayHub = ({
             </ul>
           ) : (
             <p className="field-hint">
-              <IconCircleCheck size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} /> Ready to be
+              <IconCircleCheck aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} /> Ready to be
               paid — no blockers this period.
             </p>
           )}
@@ -296,9 +297,9 @@ export const EmployeeJobPayHub = ({
                         {payslip.paidDays}/{payslip.standardWorkingDays}
                         {payslip.lopDays > 0 ? ` · LOP ${payslip.lopDays}` : ''}
                       </td>
-                      <td>{formatMoney(payslip.grossAmount, payslip.currency)}</td>
-                      <td>{formatMoney(payslip.incomeTaxAmount, payslip.currency)}</td>
-                      <td>
+                      <td className="tabular-nums">{formatMoney(payslip.grossAmount, payslip.currency)}</td>
+                      <td className="tabular-nums">{formatMoney(payslip.incomeTaxAmount, payslip.currency)}</td>
+                      <td className="tabular-nums">
                         <strong>{formatMoney(payslip.netPayAmount, payslip.currency)}</strong>
                       </td>
                       <td>
@@ -310,7 +311,7 @@ export const EmployeeJobPayHub = ({
                               void downloadPayslip(payslip);
                             }}
                           >
-                            <IconDownload size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                            <IconDownload aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                             PDF
                           </button>
                           <Link className="table-link" to={`/payroll/${payslip.runId}`}>
@@ -336,7 +337,7 @@ export const EmployeeJobPayHub = ({
                   <strong>{formatMoney(bonus.amount, bonus.currency)}</strong>
                   <span className="employee-secondary"> · bonus ({bonus.reason})</span>
                 </span>
-                <span className="employee-secondary">{bonus.awardDate}</span>
+                <span className="employee-secondary">{formatDate(bonus.awardDate)}</span>
               </li>
             ))}
             {adjustments.map((adjustment) => (
@@ -370,7 +371,7 @@ export const EmployeeJobPayHub = ({
             <p className="field-hint field-hint-warning">
               Not in a billing group — no client rate is set for this employee.{' '}
               <Link className="table-link" to="/billing">
-                Open billing <IconExternalLink size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                Open billing <IconExternalLink aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
               </Link>
             </p>
           ) : (

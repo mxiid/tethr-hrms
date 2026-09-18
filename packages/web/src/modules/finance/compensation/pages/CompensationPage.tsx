@@ -1,5 +1,10 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { CompensationChangeReason, PayFrequency } from '@hrms/shared';
+import {
+  formatDate,
+  todayDateKey,
+  type CompensationChangeReason,
+  type PayFrequency,
+} from '@hrms/shared';
 import { IconAlertTriangle, IconCurrencyDollar, IconRefresh, IconSettings } from '@tabler/icons-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
@@ -65,12 +70,10 @@ const reasonLabels: Record<CompensationChangeReason, string> = {
   correction: 'Correction',
 };
 
-const todayIso = (): string => new Date().toISOString().slice(0, 10);
-
 const emptyRevisionForm = {
   employeeId: '',
   salaryStructureId: '',
-  effectiveDate: todayIso(),
+  effectiveDate: todayDateKey(),
   annualAmount: '',
   reason: 'merit' as CompensationChangeReason,
   note: '',
@@ -85,11 +88,6 @@ const formatMoney = (amount: number, currency: string): string =>
     maximumFractionDigits: 0,
     style: 'currency',
   }).format(amount);
-
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
 
 export const CompensationPage = () => {
   const { theme } = useTheme();
@@ -181,7 +179,7 @@ export const CompensationPage = () => {
       setRevisionForm((current) => ({
         ...current,
         annualAmount: '',
-        effectiveDate: todayIso(),
+        effectiveDate: todayDateKey(),
         note: '',
       }));
       setOpenModal(null);
@@ -197,7 +195,7 @@ export const CompensationPage = () => {
   };
 
   return (
-    <main className="page-frame page-frame-single">
+    <section className="page-frame page-frame-single">
       <section className="employees-content" aria-labelledby="compensation-title">
         <header className="page-header">
           <div>
@@ -209,7 +207,7 @@ export const CompensationPage = () => {
           <div className="page-actions">
             {canWriteCompensation ? (
               <Link className="button button-secondary" to="/settings/pay">
-                <IconSettings size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconSettings aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Manage pay setup
               </Link>
             ) : null}
@@ -218,7 +216,7 @@ export const CompensationPage = () => {
               type="button"
               onClick={() => void refetch()}
             >
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Refresh
             </button>
           </div>
@@ -244,7 +242,11 @@ export const CompensationPage = () => {
             Could not load compensation setup. Confirm the API is running and your session is valid.
           </p>
         ) : null}
-        {formMessage ? <p className="form-success">{formMessage}</p> : null}
+        {formMessage ? (
+          <p className="form-success" role="status">
+            {formMessage}
+          </p>
+        ) : null}
 
 
         <section className="table-shell" aria-labelledby="salary-history-title">
@@ -262,7 +264,7 @@ export const CompensationPage = () => {
                   type="button"
                   onClick={openRevisionModal}
                 >
-                  <IconCurrencyDollar size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                  <IconCurrencyDollar aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   Revise salary
                 </button>
               ) : null}
@@ -342,6 +344,7 @@ export const CompensationPage = () => {
             <label htmlFor="revision-employee">Employee</label>
             <select
               id="revision-employee"
+              name="revision-employee"
               required
               value={revisionForm.employeeId || (effectiveEmployeeId ?? '')}
               onChange={(event) => onSelectEmployee(event.target.value)}
@@ -358,6 +361,7 @@ export const CompensationPage = () => {
             <label htmlFor="revision-structure">Salary structure</label>
             <select
               id="revision-structure"
+              name="revision-structure"
               required
               value={revisionForm.salaryStructureId}
               onChange={(event) =>
@@ -380,6 +384,7 @@ export const CompensationPage = () => {
               <label htmlFor="revision-effective">Effective date</label>
               <input
                 id="revision-effective"
+                name="revision-effective"
                 required
                 type="date"
                 value={revisionForm.effectiveDate}
@@ -395,7 +400,9 @@ export const CompensationPage = () => {
               <label htmlFor="revision-amount">Annual amount</label>
               <input
                 id="revision-amount"
+                inputMode="decimal"
                 min="0.01"
+                name="revision-amount"
                 required
                 step="0.01"
                 type="number"
@@ -410,6 +417,7 @@ export const CompensationPage = () => {
             <label htmlFor="revision-reason">Reason</label>
             <select
               id="revision-reason"
+              name="revision-reason"
               value={revisionForm.reason}
               onChange={(event) =>
                 setRevisionForm((current) => ({
@@ -430,6 +438,7 @@ export const CompensationPage = () => {
             <textarea
               id="revision-note"
               maxLength={300}
+              name="revision-note"
               rows={3}
               value={revisionForm.note}
               onChange={(event) =>
@@ -442,11 +451,11 @@ export const CompensationPage = () => {
             disabled={revisingSalary}
             type="submit"
           >
-            <IconCurrencyDollar size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconCurrencyDollar aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {revisingSalary ? 'Saving…' : 'Save revision'}
           </button>
         </form>
       </Modal>
-    </main>
+    </section>
   );
 };

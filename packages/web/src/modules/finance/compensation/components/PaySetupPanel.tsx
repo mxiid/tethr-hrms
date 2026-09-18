@@ -156,7 +156,11 @@ export const PaySetupPanel = () => {
 
   return (
     <>
-      {formMessage ? <p className="form-success">{formMessage}</p> : null}
+      {formMessage ? (
+        <p className="form-success" role="status">
+          {formMessage}
+        </p>
+      ) : null}
       <div className="compensation-grid">
         <section className="table-shell" aria-labelledby="pay-components-title">
           <div className="table-title-row">
@@ -178,7 +182,7 @@ export const PaySetupPanel = () => {
                   setOpenModal('component');
                 }}
               >
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 New component
               </button>
             </div>
@@ -214,7 +218,7 @@ export const PaySetupPanel = () => {
                             onClick={() => setOpenModal('component')}
                             type="button"
                           >
-                            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                            <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                             New component
                           </button>
                         }
@@ -264,7 +268,7 @@ export const PaySetupPanel = () => {
                   setOpenModal('structure');
                 }}
               >
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 New structure
               </button>
             </div>
@@ -300,7 +304,7 @@ export const PaySetupPanel = () => {
                             onClick={() => setOpenModal('structure')}
                             type="button"
                           >
-                            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                            <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                             New structure
                           </button>
                         }
@@ -347,6 +351,7 @@ export const PaySetupPanel = () => {
             <label htmlFor="component-name">Name</label>
             <input
               id="component-name"
+              name="component-name"
               required
               value={payComponentForm.name}
               onChange={(event) =>
@@ -358,6 +363,9 @@ export const PaySetupPanel = () => {
             <label htmlFor="component-code">Code</label>
             <input
               id="component-code"
+              name="component-code"
+              autoComplete="off"
+              spellCheck={false}
               required
               value={payComponentForm.code}
               onChange={(event) =>
@@ -369,6 +377,7 @@ export const PaySetupPanel = () => {
             <label htmlFor="component-category">Category</label>
             <select
               id="component-category"
+              name="component-category"
               value={payComponentForm.category}
               onChange={(event) =>
                 setPayComponentForm((current) => ({
@@ -387,6 +396,7 @@ export const PaySetupPanel = () => {
           <label className="checkbox-field">
             <input
               checked={payComponentForm.taxable}
+              name="taxable"
               type="checkbox"
               onChange={(event) =>
                 setPayComponentForm((current) => ({ ...current, taxable: event.target.checked }))
@@ -397,6 +407,7 @@ export const PaySetupPanel = () => {
           <label className="checkbox-field">
             <input
               checked={payComponentForm.recurring}
+              name="recurring"
               type="checkbox"
               onChange={(event) =>
                 setPayComponentForm((current) => ({ ...current, recurring: event.target.checked }))
@@ -409,7 +420,7 @@ export const PaySetupPanel = () => {
             disabled={creatingComponent}
             type="submit"
           >
-            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {creatingComponent ? 'Saving…' : 'Add component'}
           </button>
         </form>
@@ -431,6 +442,7 @@ export const PaySetupPanel = () => {
             <label htmlFor="structure-name">Name</label>
             <input
               id="structure-name"
+              name="structure-name"
               required
               value={salaryStructureForm.name}
               onChange={(event) =>
@@ -442,6 +454,9 @@ export const PaySetupPanel = () => {
             <label htmlFor="structure-code">Code</label>
             <input
               id="structure-code"
+              name="structure-code"
+              autoComplete="off"
+              spellCheck={false}
               required
               value={salaryStructureForm.code}
               onChange={(event) =>
@@ -454,6 +469,9 @@ export const PaySetupPanel = () => {
               <label htmlFor="structure-currency">Currency</label>
               <input
                 id="structure-currency"
+                name="structure-currency"
+                autoComplete="off"
+                spellCheck={false}
                 maxLength={3}
                 required
                 value={salaryStructureForm.currency}
@@ -469,6 +487,7 @@ export const PaySetupPanel = () => {
               <label htmlFor="structure-frequency">Frequency</label>
               <select
                 id="structure-frequency"
+                name="structure-frequency"
                 value={salaryStructureForm.payFrequency}
                 onChange={(event) =>
                   setSalaryStructureForm((current) => ({
@@ -490,7 +509,7 @@ export const PaySetupPanel = () => {
             disabled={creatingStructure}
             type="submit"
           >
-            <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {creatingStructure ? 'Saving…' : 'Add structure'}
           </button>
         </form>

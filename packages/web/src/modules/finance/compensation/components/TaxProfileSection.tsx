@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { formatDate, todayDateKey } from '@hrms/shared';
 import { IconPencil } from '@tabler/icons-react';
 import { useState, type FormEvent } from 'react';
 
@@ -29,7 +30,7 @@ const formatAmount = (value: number): string =>
   );
 
 const formatPeriod = (profile: TaxProfileRecord): string =>
-  `${profile.validFrom} → ${profile.validTo ?? 'open'}`;
+  `${formatDate(profile.validFrom)} → ${profile.validTo ? formatDate(profile.validTo) : 'open'}`;
 
 // The employee's effective-dated withholding facts, on the Job & Pay tab:
 // what payroll will apply and the history of changes. Roles holding
@@ -60,7 +61,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
   const [priorIncome, setPriorIncome] = useState('');
   const [credit, setCredit] = useState('');
   const [fixed, setFixed] = useState('');
-  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [effectiveDate, setEffectiveDate] = useState(() => todayDateKey());
   const [note, setNote] = useState('');
 
   const profile = current.data?.employeeTaxProfile ?? null;
@@ -126,7 +127,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
           <div className="panel-actions">
             {canEdit ? (
               <button className="button button-secondary" type="button" onClick={openEditor}>
-                <IconPencil size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+                <IconPencil aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                 {profile ? 'Update profile' : 'Set profile'}
               </button>
             ) : null}
@@ -212,6 +213,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
             <label htmlFor="tax-effective-date">Effective from</label>
             <input
               id="tax-effective-date"
+              name="tax-effective-date"
               type="date"
               value={effectiveDate}
               onChange={(event) => setEffectiveDate(event.target.value)}
@@ -221,6 +223,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
             <label htmlFor="tax-filer-status">Filer status</label>
             <select
               id="tax-filer-status"
+              name="tax-filer-status"
               value={filerStatus}
               onChange={(event) => setFilerStatus(event.target.value as 'filer' | 'nonFiler')}
             >
@@ -232,6 +235,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
             <label htmlFor="tax-exemption">Monthly exemption (PKR)</label>
             <input
               id="tax-exemption"
+              name="tax-exemption"
               inputMode="decimal"
               placeholder="0"
               value={exemption}
@@ -242,6 +246,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
             <label htmlFor="tax-prior-income">Prior income this year (PKR)</label>
             <input
               id="tax-prior-income"
+              name="tax-prior-income"
               inputMode="decimal"
               placeholder="0"
               value={priorIncome}
@@ -252,6 +257,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
             <label htmlFor="tax-credit">Annual tax credit (PKR)</label>
             <input
               id="tax-credit"
+              name="tax-credit"
               inputMode="decimal"
               placeholder="0"
               value={credit}
@@ -262,6 +268,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
             <label htmlFor="tax-fixed">Fixed monthly withholding (blank = ladder)</label>
             <input
               id="tax-fixed"
+              name="tax-fixed"
               inputMode="decimal"
               placeholder="Computed from the ladder"
               value={fixed}
@@ -272,6 +279,7 @@ export const TaxProfileSection = ({ employeeId }: { readonly employeeId: string 
             <label htmlFor="tax-note">Note</label>
             <input
               id="tax-note"
+              name="tax-note"
               maxLength={300}
               value={note}
               onChange={(event) => setNote(event.target.value)}

@@ -2,6 +2,7 @@ import { IconLogout, IconMoon, IconSun, IconX } from '@tabler/icons-react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { portalHome } from '../../../app/portal';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { visibleSettingsTabs } from '../settingsTabs';
@@ -46,15 +47,16 @@ export const SettingsLayout = () => {
       <aside className="settings-sidebar">
         <div className="settings-sidebar-header">
           <h1 className="settings-sidebar-title">Settings</h1>
-          <button
-            aria-label="Close settings"
-            className="icon-button"
-            onClick={close}
-            title="Close settings"
-            type="button"
-          >
-            <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-          </button>
+          <Tooltip label="Close settings">
+            <button
+              aria-label="Close settings"
+              className="icon-button"
+              onClick={close}
+              type="button"
+            >
+              <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+            </button>
+          </Tooltip>
         </div>
 
         <nav aria-label="Settings sections" className="settings-sidebar-nav">
@@ -76,7 +78,7 @@ export const SettingsLayout = () => {
 
         <div className="settings-sidebar-footer">
           <button className="settings-nav-item" onClick={toggle} type="button">
-            <ThemeIcon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <ThemeIcon aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             <span>Theme · {theme.name === 'light' ? 'Light' : 'Dark'}</span>
           </button>
           <button
@@ -84,7 +86,7 @@ export const SettingsLayout = () => {
             onClick={() => void onLogout()}
             type="button"
           >
-            <IconLogout size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconLogout aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             <span>Log out</span>
           </button>
         </div>

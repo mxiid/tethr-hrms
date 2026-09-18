@@ -1,17 +1,34 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 
-export type RecordFieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox';
+import { prefersCoarsePointer } from '../form/pointer';
+
+export type RecordFieldType = 'text' | 'email' | 'tel' | 'number' | 'date' | 'select' | 'checkbox';
 
 export type RecordFieldOption = {
   readonly value: string;
   readonly label: string;
 };
 
+// `name` is required for autofill/autocomplete to work; derive a stable slug
+// from the label when a call site doesn't pass one explicitly.
+const nameFromLabel = (label: string): string =>
+  label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
 type FieldRowProps = {
   readonly label: string;
   readonly type: RecordFieldType;
   /** The committed value, as a string (checkboxes use 'true'/'false'). */
   readonly value: string;
+  /** Form control name; defaults to a slug of the label. */
+  readonly name?: string;
+  /** HTML autocomplete hint for identity/contact fields. */
+  readonly autoComplete?: string;
+  /** Turn off browser spellcheck for emails, codes, and identifiers. */
+  readonly spellCheck?: boolean;
+  readonly inputMode?: 'text' | 'tel' | 'email' | 'numeric' | 'decimal';
   /** Formatted display for read mode; defaults to the raw value. */
   readonly display?: ReactNode;
   readonly options?: readonly RecordFieldOption[];
@@ -38,6 +55,10 @@ export const FieldRow = ({
   label,
   type,
   value,
+  name,
+  autoComplete,
+  spellCheck,
+  inputMode,
   display,
   options,
   placeholder,
@@ -50,6 +71,8 @@ export const FieldRow = ({
 }: FieldRowProps) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  const fieldName = name ?? nameFromLabel(label);
+  const fieldId = useId();
 
   useEffect(() => {
     if (editing) setDraft(value);
@@ -115,10 +138,11 @@ export const FieldRow = ({
     if (type === 'checkbox') {
       return (
         <input
-          aria-label={label}
           checked={editorValue === 'true'}
           className="record-field-checkbox"
           disabled={readOnly}
+          id={fieldId}
+          name={fieldName}
           onChange={(event) => handleChange(event.target.checked ? 'true' : 'false')}
           type="checkbox"
         />
@@ -128,9 +152,10 @@ export const FieldRow = ({
       return (
         <select
           aria-label={required ? `${label} (required)` : label}
-          autoFocus={!alwaysEditing}
+          autoFocus={!alwaysEditing && !prefersCoarsePointer()}
           className="record-field-control"
           disabled={readOnly}
+          name={fieldName}
           onChange={(event) => handleChange(event.target.value)}
           onKeyDown={onKeyDown}
           value={editorValue}
@@ -147,32 +172,50 @@ export const FieldRow = ({
     return (
       <input
         aria-label={required ? `${label} (required)` : label}
-        autoFocus={!alwaysEditing}
+        autoComplete={autoComplete}
+        autoFocus={!alwaysEditing && !prefersCoarsePointer()}
         className="record-field-control"
         disabled={readOnly}
+        inputMode={inputMode}
         min={min}
+        name={fieldName}
         onBlur={() => {
           if (!alwaysEditing) commit();
         }}
         onChange={(event) => handleChange(event.target.value)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
+        spellCheck={spellCheck}
         type={type}
         value={editorValue}
       />
     );
   };
 
+  const labelContent = (
+    <>
+      {label}
+      {required ? (
+        <span aria-hidden="true" className="record-field-required">
+          *
+        </span>
+      ) : null}
+    </>
+  );
+  // A rendered checkbox shares its label with the control (one hit target, no
+  // dead zone); every other control is named directly, so the label stays a
+  // plain span there.
+  const labelIsForControl = type === 'checkbox' && showEditor;
+
   return (
     <div className="record-field">
-      <span className="record-field-label">
-        {label}
-        {required ? (
-          <span aria-hidden="true" className="record-field-required">
-            *
-          </span>
-        ) : null}
-      </span>
+      {labelIsForControl ? (
+        <label className="record-field-label" htmlFor={fieldId}>
+          {labelContent}
+        </label>
+      ) : (
+        <span className="record-field-label">{labelContent}</span>
+      )}
       <span className="record-field-value">
         {showEditor ? (
           renderEditor()

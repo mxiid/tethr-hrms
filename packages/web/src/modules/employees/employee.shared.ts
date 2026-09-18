@@ -94,10 +94,7 @@ export const chipStyle = (color: MainColorName): ChipStyle => ({
   '--chip-color': `var(--hrms-color-tag-${color})`,
 });
 
-export const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
+export { formatDate } from '@hrms/shared';
 
 export const daysSince = (value: string): number =>
   Math.max(0, Math.floor((Date.now() - new Date(`${value}T00:00:00`).getTime()) / 86_400_000));

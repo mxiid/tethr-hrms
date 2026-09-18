@@ -1,4 +1,5 @@
 import { useQuery } from '@apollo/client';
+import { formatDate } from '@hrms/shared';
 
 import { MY_PAYSLIPS_QUERY } from '../../finance/payroll/graphql/payroll.operations';
 
@@ -46,7 +47,7 @@ export const useMyPayHistoryData = (): WidgetData => {
     values: {
       latestNetPay: latest ? money(latest.netPayAmount) : '—',
       latestGrossPay: latest ? money(latest.grossAmount) : '—',
-      latestPayDate: latest?.payDate ?? '—',
+      latestPayDate: formatDate(latest?.payDate),
       payslips: payslips.length,
     },
     points: payslips.map((payslip) => ({

@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { dateKeyDaysAgo, todayDateKey } from '@hrms/shared';
 import { useState } from 'react';
 
 import {
@@ -30,9 +31,9 @@ type SelfClock = {
   readonly clockOut: () => Promise<void>;
 };
 
-const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
-const today = (): string => isoDate(new Date());
-const daysAgo = (days: number): string => isoDate(new Date(Date.now() - days * 86_400_000));
+/** The local calendar key `days` before today — calendar math, so a DST
+ *  transition can never land on the neighbouring date. */
+const daysAgo = (days: number): string => dateKeyDaysAgo(days);
 
 /**
  * Self-service clocking. Both mutations resolve the employee from the session on
@@ -45,7 +46,7 @@ export const useSelfClock = (historyDays = 7): SelfClock => {
   const [error, setError] = useState<string | null>(null);
 
   const { data, refetch } = useQuery<MyTimeEntriesData>(MY_TIME_ENTRIES_QUERY, {
-    variables: { from: daysAgo(historyDays), to: today() },
+    variables: { from: daysAgo(historyDays), to: todayDateKey() },
   });
   const [clockInMe, { loading: clockingIn }] = useMutation(CLOCK_IN_ME_MUTATION);
   const [clockOutMe, { loading: clockingOut }] = useMutation(CLOCK_OUT_ME_MUTATION);
@@ -53,7 +54,7 @@ export const useSelfClock = (historyDays = 7): SelfClock => {
   const entries = [...(data?.myTimeEntries ?? [])].sort((left, right) =>
     right.date.localeCompare(left.date),
   );
-  const todayEntry = entries.find((entry) => entry.date === today()) ?? null;
+  const todayEntry = entries.find((entry) => entry.date === todayDateKey()) ?? null;
   // Always the last seven days, whatever range was fetched, so the figure means
   // the same thing wherever it is shown.
   const weekStart = daysAgo(7);

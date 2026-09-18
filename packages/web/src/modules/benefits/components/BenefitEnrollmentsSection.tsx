@@ -1,8 +1,10 @@
 import { useMutation, useQuery } from '@apollo/client';
+import { todayDateKey } from '@hrms/shared';
 import { IconPlus } from '@tabler/icons-react';
 import { useState, type FormEvent } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { Modal } from '../../../components/modal/Modal';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { useAuth } from '../../auth/hooks/useAuth';
@@ -45,6 +47,7 @@ const formatMoney = (amount: number): string =>
 // each month, when it started, and (for open ones) how to end it.
 export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId: string }) => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const canManage =
     user?.roleKeys.includes('tethrAdmin') === true ||
@@ -62,7 +65,7 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
 
   const [modalOpen, setModalOpen] = useState(false);
   const [planId, setPlanId] = useState('');
-  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [effectiveDate, setEffectiveDate] = useState(() => todayDateKey());
   const [note, setNote] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -85,10 +88,17 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
   };
 
   const onEnd = async (row: BenefitEnrollmentRecord): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'End this enrollment?',
+      body: 'The benefit will end today and payroll will stop billing it.',
+      confirmLabel: 'End',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setErrorMessage(null);
     try {
       await endEnrollment({
-        variables: { employeeId, planId: row.planId, endDate: new Date().toISOString().slice(0, 10) },
+        variables: { employeeId, planId: row.planId, endDate: todayDateKey() },
       });
       await enrollments.refetch();
     } catch (cause) {
@@ -111,11 +121,11 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
                 onClick={() => {
                   setErrorMessage(null);
                   setPlanId('');
-                  setEffectiveDate(new Date().toISOString().slice(0, 10));
+                  setEffectiveDate(todayDateKey());
                   setModalOpen(true);
                 }}
               >
-                <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                 Enroll
               </button>
             ) : null}
@@ -182,6 +192,7 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
             <label htmlFor="enrollment-plan">Plan</label>
             <select
               id="enrollment-plan"
+              name="enrollment-plan"
               value={planId}
               onChange={(event) => setPlanId(event.target.value)}
             >
@@ -198,6 +209,7 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
             <label htmlFor="enrollment-date">Effective from</label>
             <input
               id="enrollment-date"
+              name="enrollment-date"
               type="date"
               value={effectiveDate}
               onChange={(event) => setEffectiveDate(event.target.value)}
@@ -208,6 +220,7 @@ export const BenefitEnrollmentsSection = ({ employeeId }: { readonly employeeId:
             <input
               id="enrollment-note"
               maxLength={300}
+              name="enrollment-note"
               value={note}
               onChange={(event) => setNote(event.target.value)}
             />

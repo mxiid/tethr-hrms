@@ -1,5 +1,10 @@
 import { useMutation, useQuery } from '@apollo/client';
-import { INTERVIEW_OUTCOMES, type InterviewOutcome, type InterviewStatus } from '@hrms/shared';
+import {
+  formatDateTime,
+  INTERVIEW_OUTCOMES,
+  type InterviewOutcome,
+  type InterviewStatus,
+} from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
@@ -10,6 +15,7 @@ import {
 import { useMemo, useState } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import {
@@ -17,6 +23,7 @@ import {
   toViewColumns,
   type ColumnDefinition,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -93,17 +100,9 @@ const outcomeLabels: Record<InterviewOutcome, string> = {
   noShow: 'No-show',
 };
 
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
-
 export const InterviewsPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, error, refetch } = useQuery<{
     readonly interviews: readonly InterviewRecord[];
   }>(INTERVIEWS_QUERY);
@@ -270,6 +269,15 @@ export const InterviewsPage = () => {
   };
 
   const onStatus = async (interview: InterviewRecord, status: InterviewStatus): Promise<void> => {
+    if (status === 'cancelled') {
+      const confirmed = await confirm({
+        title: 'Cancel this interview?',
+        body: 'The interview will be cancelled and the panel will see it as cancelled.',
+        confirmLabel: 'Cancel',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     await updateInterview({ variables: { input: { interviewId: interview.id, status } } });
     await refetch();
   };
@@ -284,12 +292,19 @@ export const InterviewsPage = () => {
   };
 
   const onWithdraw = async (feedback: FeedbackRecord): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Withdraw this feedback?',
+      body: 'The scorecard will be removed from this interview.',
+      confirmLabel: 'Withdraw',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     await withdrawFeedback({ variables: { input: { feedbackId: feedback.id } } });
     await refetch();
   };
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="hiring-content" aria-labelledby="interviews-title">
         <header className="page-header">
           <div>
@@ -301,14 +316,16 @@ export const InterviewsPage = () => {
             </p>
           </div>
           <div className="page-actions">
-            <button
-              className="icon-button"
-              onClick={() => void refetch()}
-              title="Refresh interviews"
-              type="button"
-            >
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
+            <Tooltip label="Refresh interviews">
+              <button
+                aria-label="Refresh interviews"
+                className="icon-button"
+                onClick={() => void refetch()}
+                type="button"
+              >
+                <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            </Tooltip>
             <button
               className="button button-primary"
               onClick={() => {
@@ -317,7 +334,7 @@ export const InterviewsPage = () => {
               }}
               type="button"
             >
-              <IconCalendarPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconCalendarPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Schedule interview
             </button>
           </div>
@@ -380,6 +397,7 @@ export const InterviewsPage = () => {
               <label htmlFor="interview-application">Application</label>
               <select
                 id="interview-application"
+                name="interview-application"
                 value={scheduleForm.applicationId}
                 onChange={(event) =>
                   setScheduleForm((current) => ({ ...current, applicationId: event.target.value }))
@@ -398,6 +416,7 @@ export const InterviewsPage = () => {
               <label htmlFor="interview-round">Round</label>
               <select
                 id="interview-round"
+                name="interview-round"
                 value={scheduleForm.interviewRoundId}
                 onChange={(event) =>
                   setScheduleForm((current) => ({
@@ -418,6 +437,7 @@ export const InterviewsPage = () => {
               <label htmlFor="interview-time">Scheduled at</label>
               <input
                 id="interview-time"
+                name="interview-time"
                 type="datetime-local"
                 value={scheduleForm.scheduledAt}
                 onChange={(event) =>
@@ -430,6 +450,7 @@ export const InterviewsPage = () => {
                 <label htmlFor={`interview-panel-${index}`}>Panellist {index + 1} (external name)</label>
                 <input
                   id={`interview-panel-${index}`}
+                  name={`interview-panel-${index}`}
                   value={member}
                   onChange={(event) =>
                     setScheduleForm((current) => ({
@@ -455,6 +476,7 @@ export const InterviewsPage = () => {
               <label htmlFor="interview-notes">Notes</label>
               <textarea
                 id="interview-notes"
+                name="interview-notes"
                 value={scheduleForm.notes}
                 onChange={(event) =>
                   setScheduleForm((current) => ({ ...current, notes: event.target.value }))
@@ -529,6 +551,7 @@ export const InterviewsPage = () => {
                 <select
                   aria-label="Outcome"
                   className="record-field-control"
+                  name="interview-outcome"
                   value={selected.outcome ?? ''}
                   onChange={(event) =>
                     void onOutcome(selected, event.target.value as InterviewOutcome)
@@ -590,8 +613,10 @@ export const InterviewsPage = () => {
                               <label htmlFor={`score-${member.id}-${skill}`}>{skill}</label>
                               <input
                                 id={`score-${member.id}-${skill}`}
+                                inputMode="numeric"
                                 max={5}
                                 min={1}
+                                name={`score-${member.id}-${skill}`}
                                 type="number"
                                 value={scoreDrafts[`${member.id}:${skill}`] ?? ''}
                                 onChange={(event) =>
@@ -607,6 +632,7 @@ export const InterviewsPage = () => {
                             <label htmlFor={`note-${member.id}`}>Overall note</label>
                             <textarea
                               id={`note-${member.id}`}
+                              name={`note-${member.id}`}
                               value={feedbackNote}
                               onChange={(event) => setFeedbackNote(event.target.value)}
                             />
@@ -659,6 +685,6 @@ export const InterviewsPage = () => {
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

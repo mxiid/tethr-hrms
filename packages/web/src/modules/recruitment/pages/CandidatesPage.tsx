@@ -2,6 +2,7 @@ import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import {
   APPLICATION_OUTCOMES,
   APPLICATION_STAGES,
+  formatDate,
   type ApplicationOutcome,
   type ApplicationStage,
 } from '@hrms/shared';
@@ -16,7 +17,9 @@ import {
 import { useState } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
+import { focusFirstByName } from '../../../components/form/validation';
 import { FieldGroup } from '../../../components/record-panel/FieldGroup';
 import { FieldRow } from '../../../components/record-panel/FieldRow';
 import { useInlineCreate } from '../../../components/record-panel/useInlineCreate';
@@ -26,6 +29,7 @@ import {
   toViewColumns,
   type ColumnDefinition,
 } from '../../../components/table/DataTable';
+import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
 import { useTheme } from '../../../providers/theme/useTheme';
@@ -128,11 +132,6 @@ const outcomeLabels: Record<ApplicationOutcome, string> = {
   hired: 'Hired',
 };
 
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(value),
-  );
-
 type CandidateDraft = {
   fullName: string;
   email: string;
@@ -151,6 +150,7 @@ const emptyCandidateDraft = (): CandidateDraft => ({
 
 export const CandidatesPage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { data, loading, error, refetch } = useQuery<{
     readonly candidates: readonly CandidateRecord[];
   }>(CANDIDATES_QUERY);
@@ -189,6 +189,8 @@ export const CandidatesPage = () => {
   const create = useInlineCreate<CandidateDraft, { id: string }>({
     createEmptyDraft: emptyCandidateDraft,
     isComplete: (draft) => draft.fullName.trim() !== '' && draft.email.trim() !== '',
+    requiredFieldNames: ['candidate-full-name', 'candidate-email'],
+    incompleteMessage: 'Enter a full name and email before adding the candidate.',
     createRecord: async (draft) => {
       const result = await createCandidate({
         variables: {
@@ -291,7 +293,7 @@ export const CandidatesPage = () => {
   };
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="hiring-content" aria-labelledby="candidates-title">
         <header className="page-header">
           <div>
@@ -303,16 +305,18 @@ export const CandidatesPage = () => {
             </p>
           </div>
           <div className="page-actions">
-            <button
-              className="icon-button"
-              onClick={() => void refetch()}
-              title="Refresh candidates"
-              type="button"
-            >
-              <IconRefresh size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-            </button>
+            <Tooltip label="Refresh candidates">
+              <button
+                aria-label="Refresh candidates"
+                className="icon-button"
+                onClick={() => void refetch()}
+                type="button"
+              >
+                <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              </button>
+            </Tooltip>
             <button className="button button-primary" onClick={startCreate} type="button">
-              <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+              <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
               Add candidate
             </button>
           </div>
@@ -342,7 +346,7 @@ export const CandidatesPage = () => {
                   description="Applications land here the moment someone submits an application form — or add a candidate by hand."
                   action={
                     <button className="button button-primary" onClick={startCreate} type="button">
-                      <IconPlus size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <IconPlus aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                       Add candidate
                     </button>
                   }
@@ -385,7 +389,9 @@ export const CandidatesPage = () => {
             <FieldGroup title="Person">
               <FieldRow
                 alwaysEditing
+                autoComplete="name"
                 label="Full name"
+                name="candidate-full-name"
                 onChange={(value) => create.patchDraft({ fullName: value })}
                 required
                 type="text"
@@ -393,32 +399,43 @@ export const CandidatesPage = () => {
               />
               <FieldRow
                 alwaysEditing
+                autoComplete="email"
                 label="Email"
+                name="candidate-email"
                 onChange={(value) => create.patchDraft({ email: value })}
                 required
-                type="text"
+                spellCheck={false}
+                type="email"
                 value={create.draft.email}
               />
               <FieldRow
                 alwaysEditing
+                inputMode="tel"
                 label="Phone"
+                name="candidate-phone"
                 onChange={(value) => create.patchDraft({ phone: value })}
-                type="text"
+                type="tel"
                 value={create.draft.phone}
               />
             </FieldGroup>
             <FieldGroup title="Links">
               <FieldRow
                 alwaysEditing
+                autoComplete="off"
                 label="LinkedIn"
+                name="candidate-linkedin"
                 onChange={(value) => create.patchDraft({ linkedin: value })}
+                spellCheck={false}
                 type="text"
                 value={create.draft.linkedin}
               />
               <FieldRow
                 alwaysEditing
+                autoComplete="off"
                 label="Portfolio"
+                name="candidate-portfolio"
                 onChange={(value) => create.patchDraft({ portfolio: value })}
+                spellCheck={false}
                 type="text"
                 value={create.draft.portfolio}
               />
@@ -431,7 +448,7 @@ export const CandidatesPage = () => {
             <div className="record-panel-actions">
               <button
                 className="button button-primary"
-                disabled={!create.canCreate || create.isSaving}
+                disabled={create.isSaving}
                 onClick={() => void create.commit()}
                 type="button"
               >
@@ -472,8 +489,20 @@ export const CandidatesPage = () => {
               {detail.applications.map((application) => {
                 const draft = draftFor(application);
   const submitOffer = async (application: ApplicationRecord): Promise<void> => {
-    if (offerForm.baseSalary.trim() === '' || offerForm.startDate === '') {
-      setOfferError('Base salary and start date are required');
+    const missingSalary = offerForm.baseSalary.trim() === '';
+    const missingStart = offerForm.startDate === '';
+    if (missingSalary || missingStart) {
+      setOfferError(
+        missingSalary && missingStart
+          ? 'Enter a base salary and start date before creating the offer.'
+          : missingSalary
+            ? 'Enter a base salary before creating the offer.'
+            : 'Choose a start date before creating the offer.',
+      );
+      focusFirstByName(document.querySelector<HTMLElement>('.side-panel'), [
+        ...(missingSalary ? [`offer-salary-${application.id}`] : []),
+        ...(missingStart ? [`offer-start-${application.id}`] : []),
+      ]);
       return;
     }
     setOfferError(null);
@@ -511,6 +540,24 @@ export const CandidatesPage = () => {
     action: 'send' | 'accept' | 'withdraw' | 'decline',
     offer: OfferRecord,
   ): Promise<void> => {
+    if (action === 'withdraw') {
+      const confirmed = await confirm({
+        title: 'Withdraw this offer?',
+        body: 'The candidate will see the offer as withdrawn.',
+        confirmLabel: 'Withdraw',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
+    if (action === 'decline') {
+      const confirmed = await confirm({
+        title: 'Record this decline?',
+        body: 'The offer will be marked as declined by the candidate.',
+        confirmLabel: 'Record decline',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
     setOfferError(null);
     try {
       if (action === 'send') {
@@ -570,6 +617,7 @@ export const CandidatesPage = () => {
                           <label htmlFor={`stage-${application.id}`}>Stage</label>
                           <select
                             id={`stage-${application.id}`}
+                            name={`stage-${application.id}`}
                             value={draft.stage}
                             onChange={(event) =>
                               setApplicationDrafts((current) => ({
@@ -592,6 +640,7 @@ export const CandidatesPage = () => {
                           <label htmlFor={`outcome-${application.id}`}>Outcome</label>
                           <select
                             id={`outcome-${application.id}`}
+                            name={`outcome-${application.id}`}
                             value={draft.outcome}
                             onChange={(event) =>
                               setApplicationDrafts((current) => ({
@@ -614,8 +663,10 @@ export const CandidatesPage = () => {
                           <label htmlFor={`rating-${application.id}`}>Manual rating</label>
                           <input
                             id={`rating-${application.id}`}
+                            inputMode="numeric"
                             max={5}
                             min={1}
+                            name={`rating-${application.id}`}
                             type="number"
                             value={draft.rating}
                             onChange={(event) =>
@@ -653,7 +704,7 @@ export const CandidatesPage = () => {
                             />
                             <span className="employee-secondary">
                               {offer.salaryCurrency} {offer.baseSalary.toLocaleString()} · starts{' '}
-                              {offer.startDate}
+                              {formatDate(offer.startDate)}
                             </span>
                             {offer.status === 'draft' ? (
                               <button
@@ -702,7 +753,9 @@ export const CandidatesPage = () => {
                             <label htmlFor={`offer-salary-${application.id}`}>Base salary</label>
                             <input
                               id={`offer-salary-${application.id}`}
+                              inputMode="decimal"
                               min={1}
+                              name={`offer-salary-${application.id}`}
                               type="number"
                               value={offerForm.baseSalary}
                               onChange={(event) =>
@@ -717,7 +770,10 @@ export const CandidatesPage = () => {
                             <label htmlFor={`offer-currency-${application.id}`}>Currency</label>
                             <input
                               id={`offer-currency-${application.id}`}
+                              autoComplete="off"
                               maxLength={3}
+                              name={`offer-currency-${application.id}`}
+                              spellCheck={false}
                               value={offerForm.salaryCurrency}
                               onChange={(event) =>
                                 setOfferForm((current) => ({
@@ -731,6 +787,7 @@ export const CandidatesPage = () => {
                             <label htmlFor={`offer-start-${application.id}`}>Start date</label>
                             <input
                               id={`offer-start-${application.id}`}
+                              name={`offer-start-${application.id}`}
                               type="date"
                               value={offerForm.startDate}
                               onChange={(event) =>
@@ -745,7 +802,9 @@ export const CandidatesPage = () => {
                             <label htmlFor={`offer-probation-${application.id}`}>Probation days</label>
                             <input
                               id={`offer-probation-${application.id}`}
+                              inputMode="numeric"
                               min={0}
+                              name={`offer-probation-${application.id}`}
                               type="number"
                               value={offerForm.probationDays}
                               onChange={(event) =>
@@ -760,7 +819,9 @@ export const CandidatesPage = () => {
                             <label htmlFor={`offer-notice-${application.id}`}>Notice days</label>
                             <input
                               id={`offer-notice-${application.id}`}
+                              inputMode="numeric"
                               min={0}
+                              name={`offer-notice-${application.id}`}
                               type="number"
                               value={offerForm.noticePeriodDays}
                               onChange={(event) =>
@@ -820,6 +881,6 @@ export const CandidatesPage = () => {
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

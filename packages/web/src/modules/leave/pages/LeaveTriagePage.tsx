@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client';
-import type { ApprovalStatus } from '@hrms/shared';
+import { formatDate, formatDateTime, type ApprovalStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconAlertTriangle,
@@ -13,6 +13,7 @@ import {
 import { useMemo, useState, type FormEvent, type MouseEvent } from 'react';
 
 import { StatusChip } from '../../../components/chip/StatusChip';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { EmptyState } from '../../../components/empty-state/EmptyState';
 import { SidePanel } from '../../../components/side-panel/SidePanel';
 import {
@@ -71,23 +72,12 @@ const statusColor: Record<ApprovalStatus, MainColorName> = {
   cancelled: 'gray',
 };
 
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
 const fullName = (employee: EmployeeRecord | undefined): string =>
   employee ? `${employee.firstName} ${employee.lastName}` : 'Employee';
 
 export const LeaveTriagePage = () => {
   const { theme } = useTheme();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const canDecide = user?.portal === 'tethr';
   const { data, loading, error, refetch } = useQuery<LeaveTriageData>(LEAVE_TRIAGE_QUERY);
@@ -241,13 +231,20 @@ export const LeaveTriagePage = () => {
     void decide('approve');
   };
 
-  const onReject = (event: MouseEvent<HTMLButtonElement>): void => {
+  const onReject = async (event: MouseEvent<HTMLButtonElement>): Promise<void> => {
     event.preventDefault();
-    void decide('reject');
+    const confirmed = await confirm({
+      title: 'Reject this leave request?',
+      body: 'The employee will see the request as rejected.',
+      confirmLabel: 'Reject',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await decide('reject');
   };
 
   return (
-    <main className="list-with-panel">
+    <section className="list-with-panel">
       <section className="leave-content" aria-labelledby="leave-title">
         <header className="page-header">
           <div>
@@ -261,17 +258,17 @@ export const LeaveTriagePage = () => {
         <div className="metric-strip metric-strip-3 employee-metrics">
           <div className="metric-card">
             <div className="metric-label">Pending</div>
-            <div className="metric-value">{loading ? '...' : pendingCount}</div>
+            <div className="metric-value">{loading ? '…' : pendingCount}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Approved</div>
             <div className="metric-value">
-              {loading ? '...' : requests.filter((request) => request.status === 'approved').length}
+              {loading ? '…' : requests.filter((request) => request.status === 'approved').length}
             </div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Total</div>
-            <div className="metric-value">{loading ? '...' : requests.length}</div>
+            <div className="metric-value">{loading ? '…' : requests.length}</div>
           </div>
         </div>
 
@@ -339,7 +336,7 @@ export const LeaveTriagePage = () => {
                 </div>
                 <h2 className="panel-title">{fullName(selectedEmployee)}</h2>
               </div>
-              <IconPlaneDeparture size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              <IconPlaneDeparture aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
 
             <div className="field-list">
@@ -391,14 +388,15 @@ export const LeaveTriagePage = () => {
                   <label htmlFor="leave-decision-note">Decision note</label>
                   <textarea
                     id="leave-decision-note"
+                    name="leave-decision-note"
                     value={note}
                     onChange={(event) => setNote(event.target.value)}
                   />
                 </div>
                 <div className="page-actions">
                   <button className="button button-primary" disabled={approving} type="submit">
-                    <IconCheck size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {approving ? 'Approving...' : 'Approve'}
+                    <IconCheck aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    {approving ? 'Approving…' : 'Approve'}
                   </button>
                   <button
                     className="button button-secondary"
@@ -406,8 +404,8 @@ export const LeaveTriagePage = () => {
                     type="button"
                     onClick={onReject}
                   >
-                    <IconX size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                    {rejecting ? 'Rejecting...' : 'Reject'}
+                    <IconX aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    {rejecting ? 'Rejecting…' : 'Reject'}
                   </button>
                 </div>
               </form>
@@ -415,6 +413,6 @@ export const LeaveTriagePage = () => {
           </section>
         ) : null}
       </SidePanel>
-    </main>
+    </section>
   );
 };

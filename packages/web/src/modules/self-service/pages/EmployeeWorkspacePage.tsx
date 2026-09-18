@@ -1,5 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
-import type { ApprovalStatus } from '@hrms/shared';
+import { formatDate, formatDateTime, todayDateKey, type ApprovalStatus } from '@hrms/shared';
 import type { MainColorName } from '@hrms/ui';
 import {
   IconCalendarEvent,
@@ -200,16 +200,11 @@ const QUICK_LINKS: ReadonlyArray<{
   },
 ];
 
-const today = (): string => new Date().toISOString().slice(0, 10);
 const addDays = (date: Date, amount: number): string => {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
-  return next.toISOString().slice(0, 10);
+  return todayDateKey(next);
 };
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
-  );
 const formatMonth = (value: string): string =>
   new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(
     new Date(`${value}T00:00:00`),
@@ -218,14 +213,6 @@ const formatDay = (value: string): string =>
   new Intl.DateTimeFormat('en', { day: '2-digit' }).format(new Date(`${value}T00:00:00`));
 const formatWeekday = (value: string): string =>
   new Intl.DateTimeFormat('en', { weekday: 'short' }).format(new Date(`${value}T00:00:00`));
-const formatDateTime = (value: string): string =>
-  new Intl.DateTimeFormat('en', {
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
 
 const requestColor: Record<ApprovalStatus, MainColorName> = {
   pending: 'amber',
@@ -262,7 +249,11 @@ const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
       </h1>
       <p className="me-hero-status">{status}</p>
 
-      {clock.notice ? <p className="form-success">{clock.notice}</p> : null}
+      {clock.notice ? (
+        <p className="form-success" role="status">
+          {clock.notice}
+        </p>
+      ) : null}
       {clock.error ? (
         <p className="auth-error" role="alert">
           {clock.error}
@@ -276,8 +267,8 @@ const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
           type="button"
           onClick={() => void clock.clockIn()}
         >
-          <IconPlayerPlay size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-          {clock.clockingIn ? 'Checking in...' : 'Check in'}
+          <IconPlayerPlay aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          {clock.clockingIn ? 'Checking in…' : 'Check in'}
         </button>
         <button
           className="me-hero-button"
@@ -285,8 +276,8 @@ const EmployeeHomeHero = ({ firstName }: EmployeeHomeHeroProps) => {
           type="button"
           onClick={() => void clock.clockOut()}
         >
-          <IconPlayerStop size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-          {clock.clockingOut ? 'Checking out...' : 'Check out'}
+          <IconPlayerStop aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+          {clock.clockingOut ? 'Checking out…' : 'Check out'}
         </button>
       </div>
     </section>
@@ -297,7 +288,7 @@ export const EmployeeWorkspacePage = () => {
   const { theme } = useTheme();
   const date = useMemo(() => new Date(), []);
   const variables = useMemo(
-    () => ({ asOf: today(), from: today(), to: addDays(date, 120) }),
+    () => ({ asOf: todayDateKey(), from: todayDateKey(), to: addDays(date, 120) }),
     [date],
   );
   const { data, loading, error, refetch } = useQuery<WorkspaceData>(MY_WORKSPACE_QUERY, {
@@ -410,19 +401,19 @@ export const EmployeeWorkspacePage = () => {
   };
 
   if (loading) {
-    return <main className="portal-loading">Loading your workspace...</main>;
+    return <section className="portal-loading">Loading your workspace…</section>;
   }
 
   if (error || !data || !employee) {
     return (
-      <main className="portal-loading">
+      <section className="portal-loading">
         {error?.message ?? 'Your account is not linked to an employee record yet.'}
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="employee-app">
+    <section className="employee-app">
       {view === 'home' ? (
         <>
           <EmployeeHomeHero firstName={employee.firstName} />
@@ -435,13 +426,13 @@ export const EmployeeWorkspacePage = () => {
                 return (
                   <Link className="app-tile" key={link.to} to={link.to}>
                     <span className="app-tile-icon">
-                      <LinkIcon size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                      <LinkIcon aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                     </span>
                     <span className="app-tile-copy">
                       <span className="app-tile-label">{link.label}</span>
                       <span className="app-tile-meta">{link.meta(homeCounts)}</span>
                     </span>
-                    <IconChevronRight size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                    <IconChevronRight aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
                   </Link>
                 );
               })}
@@ -485,7 +476,7 @@ export const EmployeeWorkspacePage = () => {
       ) : (
         <>
           <Link className="profile-back" to="/me">
-            <IconArrowLeft size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
+            <IconArrowLeft aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
             My workspace
           </Link>
           <header className="page-header">
@@ -507,7 +498,7 @@ export const EmployeeWorkspacePage = () => {
                 <div className="panel-kicker">Time off</div>
                 <h2 className="panel-title">Request leave</h2>
               </div>
-              <IconPlaneDeparture size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              <IconPlaneDeparture aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
             <form className="config-form" onSubmit={onLeaveSubmit}>
               {leaveError ? (
@@ -519,6 +510,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="leave-type">Leave type</label>
                 <select
                   id="leave-type"
+                  name="leave-type"
                   required
                   value={leaveForm.leaveTypeId}
                   onChange={(event) =>
@@ -538,6 +530,7 @@ export const EmployeeWorkspacePage = () => {
                   <label htmlFor="leave-start">Start date</label>
                   <input
                     id="leave-start"
+                    name="leave-start"
                     required
                     type="date"
                     value={leaveForm.startDate}
@@ -550,6 +543,7 @@ export const EmployeeWorkspacePage = () => {
                   <label htmlFor="leave-end">End date</label>
                   <input
                     id="leave-end"
+                    name="leave-end"
                     required
                     type="date"
                     value={leaveForm.endDate}
@@ -563,6 +557,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="leave-reason">Reason</label>
                 <textarea
                   id="leave-reason"
+                  name="leave-reason"
                   value={leaveForm.reason}
                   onChange={(event) =>
                     setLeaveForm((current) => ({ ...current, reason: event.target.value }))
@@ -570,14 +565,14 @@ export const EmployeeWorkspacePage = () => {
                 />
               </div>
               <button className="button button-primary" disabled={submittingLeave} type="submit">
-                {submittingLeave ? 'Submitting...' : 'Submit request'}
+                {submittingLeave ? 'Submitting…' : 'Submit request'}
               </button>
             </form>
           </section>
             <section className="table-shell">
               <div className="table-title-row">
                 <div className="table-title">
-                  <IconPlaneDeparture size={theme.icon.size.md} /> Leave balance
+                  <IconPlaneDeparture aria-hidden="true" size={theme.icon.size.md} /> Leave balance
                 </div>
                 <div className="table-density">{new Date().getFullYear()}</div>
               </div>
@@ -595,9 +590,9 @@ export const EmployeeWorkspacePage = () => {
                     {data.myLeaveBalances.map((balance) => (
                       <tr key={balance.id}>
                         <td>{leaveTypesById.get(balance.leaveTypeId)?.name ?? 'Leave'}</td>
-                        <td data-label="Available">{balance.availableDays.toFixed(1)} days</td>
-                        <td data-label="Used">{balance.usedDays.toFixed(1)} days</td>
-                        <td data-label="Pending">{balance.pendingDays.toFixed(1)} days</td>
+                        <td className="tabular-nums" data-label="Available">{balance.availableDays.toFixed(1)} days</td>
+                        <td className="tabular-nums" data-label="Used">{balance.usedDays.toFixed(1)} days</td>
+                        <td className="tabular-nums" data-label="Pending">{balance.pendingDays.toFixed(1)} days</td>
                       </tr>
                     ))}
                     {data.myLeaveBalances.length === 0 ? (
@@ -614,7 +609,7 @@ export const EmployeeWorkspacePage = () => {
           <section className="table-shell">
             <div className="table-title-row">
               <div className="table-title">
-                <IconClock size={theme.icon.size.md} /> Leave requests
+                <IconClock aria-hidden="true" size={theme.icon.size.md} /> Leave requests
               </div>
               <div className="table-density">
                 {sortedRequests.length} record{sortedRequests.length === 1 ? '' : 's'}
@@ -639,7 +634,7 @@ export const EmployeeWorkspacePage = () => {
                       <td data-label="Dates">
                         {formatDate(request.startDate)} - {formatDate(request.endDate)}
                       </td>
-                      <td data-label="Days">{request.dayCount.toFixed(1)}</td>
+                      <td className="tabular-nums" data-label="Days">{request.dayCount.toFixed(1)}</td>
                       <td data-label="Status">
                         <StatusChip color={requestColor[request.status]} label={requestLabel[request.status]} />
                       </td>
@@ -674,7 +669,7 @@ export const EmployeeWorkspacePage = () => {
             <section className="table-shell">
               <div className="table-title-row">
                 <div className="table-title">
-                  <IconCalendarEvent size={theme.icon.size.md} /> Upcoming holidays
+                  <IconCalendarEvent aria-hidden="true" size={theme.icon.size.md} /> Upcoming holidays
                 </div>
                 <div className="table-density">Next 120 days</div>
               </div>
@@ -712,10 +707,14 @@ export const EmployeeWorkspacePage = () => {
                 <div className="panel-kicker">Feedback</div>
                 <h2 className="panel-title">Share feedback</h2>
               </div>
-              <IconMessageCircle size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
+              <IconMessageCircle aria-hidden="true" size={theme.icon.size.lg} stroke={theme.icon.stroke.lg} />
             </div>
             <form className="config-form" onSubmit={onFeedbackSubmit}>
-              {feedbackNotice ? <p className="form-success">{feedbackNotice}</p> : null}
+              {feedbackNotice ? (
+                <p className="form-success" role="status">
+                  {feedbackNotice}
+                </p>
+              ) : null}
               {feedbackError ? (
                 <p className="auth-error" role="alert">
                   {feedbackError}
@@ -725,6 +724,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="feedback-category">Category</label>
                 <select
                   id="feedback-category"
+                  name="feedback-category"
                   value={feedbackForm.category}
                   onChange={(event) =>
                     setFeedbackForm((current) => ({ ...current, category: event.target.value }))
@@ -741,6 +741,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="feedback-subject">Subject</label>
                 <input
                   id="feedback-subject"
+                  name="feedback-subject"
                   required
                   value={feedbackForm.subject}
                   onChange={(event) =>
@@ -752,6 +753,7 @@ export const EmployeeWorkspacePage = () => {
                 <label htmlFor="feedback-body">Feedback</label>
                 <textarea
                   id="feedback-body"
+                  name="feedback-body"
                   required
                   value={feedbackForm.body}
                   onChange={(event) =>
@@ -760,15 +762,15 @@ export const EmployeeWorkspacePage = () => {
                 />
               </div>
               <button className="button button-secondary" disabled={submittingFeedback} type="submit">
-                <IconMessageCircle size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
-                {submittingFeedback ? 'Submitting...' : 'Submit feedback'}
+                <IconMessageCircle aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
+                {submittingFeedback ? 'Submitting…' : 'Submit feedback'}
               </button>
             </form>
           </section>
           ) : null}
         </>
       )}
-    </main>
+    </section>
   );
 };
 
@@ -897,11 +899,11 @@ function MyPayslipsSection() {
                       </button>
                     </td>
                     <td data-label="Period">{monthNames[payslip.periodMonth - 1]} {payslip.periodYear}</td>
-                    <td data-label="Pay date">{payslip.payDate}</td>
+                    <td data-label="Pay date">{formatDate(payslip.payDate)}</td>
                     <td>{payslip.paidDays}{payslip.lopDays > 0 ? ` / LOP ${payslip.lopDays}` : ''}</td>
-                    <td>{money(payslip.grossAmount, payslip.currency)}</td>
-                    <td>{money(payslip.incomeTaxAmount, payslip.currency)}</td>
-                    <td><strong>{money(payslip.netPayAmount, payslip.currency)}</strong></td>
+                    <td className="tabular-nums">{money(payslip.grossAmount, payslip.currency)}</td>
+                    <td className="tabular-nums">{money(payslip.incomeTaxAmount, payslip.currency)}</td>
+                    <td className="tabular-nums"><strong>{money(payslip.netPayAmount, payslip.currency)}</strong></td>
                     <td>
                       <button
                         className="button button-secondary"
@@ -914,7 +916,7 @@ function MyPayslipsSection() {
                               if (!result.data) return;
                               downloadBase64File(`${payslip.payslipNumber}.pdf`, result.data.myPayslipPdf);
                             } catch (cause) {
-                              setError(cause instanceof Error ? cause.message : 'Could not render PDF.');
+                              setError(cause instanceof Error ? cause.message : 'Could not render the PDF. Refresh and try again.');
                             }
                           })();
                         }}

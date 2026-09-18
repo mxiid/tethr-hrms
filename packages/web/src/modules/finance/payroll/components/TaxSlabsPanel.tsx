@@ -70,7 +70,11 @@ export const TaxSlabsPanel = () => {
             {formError}
           </p>
         ) : null}
-        {notice ? <p className="form-success">{notice}</p> : null}
+        {notice ? (
+          <p className="form-success" role="status">
+            {notice}
+          </p>
+        ) : null}
         <p className="field-hint">
           Active ladder:{' '}
           <strong>
@@ -111,6 +115,7 @@ export const TaxSlabsPanel = () => {
             <label htmlFor="tax-group-name">New group name</label>
             <input
               id="tax-group-name"
+              name="tax-group-name"
               placeholder="e.g. Finance Act 2026"
               value={taxGroupName}
               onChange={(event) => setTaxGroupName(event.target.value)}
@@ -120,6 +125,7 @@ export const TaxSlabsPanel = () => {
             <label htmlFor="tax-group-year">Financial year label</label>
             <input
               id="tax-group-year"
+              name="tax-group-year"
               value={taxGroupYear}
               onChange={(event) => setTaxGroupYear(event.target.value)}
             />
@@ -132,7 +138,7 @@ export const TaxSlabsPanel = () => {
             {creatingTaxGroup ? 'Adding…' : 'Add slab group'}
           </button>
           <p className="field-hint">
-            Configure the band rows from the group&apos;s detail once created; the last band stays
+            Configure the band rows from the group&rsquo;s detail once created; the last band stays
             open-ended.
           </p>
         </form>
