@@ -10,6 +10,12 @@ import { PDF_STYLESHEET } from './pdf-styles.generated';
 const CONTENT_LOAD_TIMEOUT_MS = 10_000;
 const PDF_TIMEOUT_MS = 30_000;
 const MAX_CONCURRENT_RENDERS = 2;
+const SHUTDOWN_ERROR_MESSAGE = 'PDF renderer is shutting down';
+
+type QueuedRender = {
+  readonly grant: () => void;
+  readonly reject: (error: Error) => void;
+};
 
 // Generic HTML → PDF rendering over a lazily-launched, reused headless Chromium.
 // Knows nothing about documents or domains (core/ rule): callers hand it markup,
@@ -20,7 +26,8 @@ export class PdfRendererService implements OnModuleDestroy {
   private browser: Browser | null = null;
   private launching: Promise<Browser> | null = null;
   private activeRenders = 0;
-  private readonly waitingRenders: Array<() => void> = [];
+  private shuttingDown = false;
+  private readonly waitingRenders: QueuedRender[] = [];
 
   async renderHtmlToPdf(html: string): Promise<Buffer> {
     const release = await this.acquireRenderSlot();
@@ -30,8 +37,9 @@ export class PdfRendererService implements OnModuleDestroy {
       } catch (error) {
         // The shared browser can die underneath us (OOM, external kill, crash).
         // Drop it and retry exactly once against a fresh launch instead of
-        // failing every render from here on.
-        if (!isConnectionError(error)) throw error;
+        // failing every render from here on. During shutdown the browser is
+        // intentionally gone: propagate instead of relaunching it.
+        if (!isConnectionError(error) || this.shuttingDown) throw error;
         this.logger.warn('PDF browser connection lost; relaunching for retry');
         await this.discardBrowser();
         return await this.renderOnce(html);
@@ -62,29 +70,37 @@ export class PdfRendererService implements OnModuleDestroy {
   }
 
   // A tiny FIFO semaphore: renders beyond the limit wait their turn instead of
-  // opening another page on the shared browser.
+  // opening another page on the shared browser. Once shutdown starts, new
+  // renders are rejected and queued ones are released with an error.
   private acquireRenderSlot(): Promise<() => void> {
-    if (this.activeRenders < MAX_CONCURRENT_RENDERS) {
-      this.activeRenders += 1;
-      return Promise.resolve(() => this.releaseRenderSlot());
+    if (this.shuttingDown) {
+      return Promise.reject(new Error(SHUTDOWN_ERROR_MESSAGE));
     }
-    return new Promise<() => void>((resolve) => {
-      this.waitingRenders.push(() => {
+    return new Promise<() => void>((resolve, reject) => {
+      const grant = (): void => {
         this.activeRenders += 1;
         resolve(() => this.releaseRenderSlot());
-      });
+      };
+      if (this.activeRenders < MAX_CONCURRENT_RENDERS) {
+        grant();
+      } else {
+        this.waitingRenders.push({ grant, reject });
+      }
     });
   }
 
   private releaseRenderSlot(): void {
     this.activeRenders -= 1;
-    this.waitingRenders.shift()?.();
+    this.waitingRenders.shift()?.grant();
   }
 
   // Launch once on first use so booting/tests never pay the Chromium cost.
   // A cached browser that has since disconnected is discarded — callers must
   // never hold a dead connection.
   private async getBrowser(): Promise<Browser> {
+    if (this.shuttingDown) {
+      throw new Error(SHUTDOWN_ERROR_MESSAGE);
+    }
     if (this.browser && this.browser.connected) {
       return this.browser;
     }
@@ -124,7 +140,14 @@ export class PdfRendererService implements OnModuleDestroy {
     }
   }
 
+  // Shutdown starts here: no new render may start or wait, and an in-flight
+  // render that loses its connection must not relaunch a browser we are about
+  // to tear down.
   async onModuleDestroy(): Promise<void> {
+    this.shuttingDown = true;
+    for (const waiter of this.waitingRenders.splice(0)) {
+      waiter.reject(new Error(SHUTDOWN_ERROR_MESSAGE));
+    }
     await this.discardBrowser();
   }
 }

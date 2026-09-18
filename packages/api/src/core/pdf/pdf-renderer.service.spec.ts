@@ -133,4 +133,75 @@ describe('PdfRendererService', () => {
     expect(pdf.toString()).toBe('FRESH');
     await service.onModuleDestroy();
   });
+
+  it('rejects renders that start after shutdown', async () => {
+    puppeteerMock.launch.mockResolvedValue(fakeBrowser(fakePage()));
+
+    const service = new PdfRendererService();
+    await service.onModuleDestroy();
+
+    await expect(service.renderHtmlToPdf('<p>hi</p>')).rejects.toThrow('shutting down');
+    expect(puppeteerMock.launch).not.toHaveBeenCalled();
+  });
+
+  it('rejects queued renders when shutdown starts', async () => {
+    const pending = Array.from({ length: 3 }, () => {
+      let resolve!: (value: Buffer) => void;
+      const promise = new Promise<Buffer>((resolvePromise) => {
+        resolve = resolvePromise;
+      });
+      return { promise, resolve };
+    });
+    let pdfCalls = 0;
+    const page = fakePage();
+    page.pdf.mockImplementation(() => {
+      const current = pending[pdfCalls];
+      pdfCalls += 1;
+      return current.promise;
+    });
+    const browser = fakeBrowser(page);
+    browser.newPage.mockImplementation(() => Promise.resolve(page));
+    puppeteerMock.launch.mockResolvedValue(browser);
+
+    const service = new PdfRendererService();
+    const renders = [0, 1, 2].map((index) => service.renderHtmlToPdf(`<p>${index}</p>`));
+    // Let the first two slots reach Chromium; the third waits in the queue.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(pdfCalls).toBe(2);
+
+    const queued = expect(renders[2]).rejects.toThrow('shutting down');
+    await service.onModuleDestroy();
+    await queued;
+
+    // Shutdown only blocks new work; in-flight renders still settle.
+    pending[0].resolve(Buffer.from('FIRST'));
+    pending[1].resolve(Buffer.from('SECOND'));
+    await expect(Promise.all([renders[0], renders[1]])).resolves.toEqual([
+      Buffer.from('FIRST'),
+      Buffer.from('SECOND'),
+    ]);
+  });
+
+  it('does not relaunch the browser when a connection error arrives after shutdown', async () => {
+    const browser = fakeBrowser(fakePage());
+    let rejectNewPage!: (error: Error) => void;
+    browser.newPage.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectNewPage = reject;
+        }),
+    );
+    puppeteerMock.launch.mockResolvedValue(browser);
+
+    const service = new PdfRendererService();
+    const pending = service.renderHtmlToPdf('<p>hi</p>');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const assertion = expect(pending).rejects.toThrow('Connection closed');
+    await service.onModuleDestroy();
+    rejectNewPage(connectionClosedError());
+    await assertion;
+
+    expect(puppeteerMock.launch).toHaveBeenCalledTimes(1);
+  });
 });
