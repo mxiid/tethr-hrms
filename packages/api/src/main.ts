@@ -18,6 +18,10 @@ async function bootstrap(): Promise<void> {
   app.use(json({ limit: '2mb' }));
   app.use(urlencoded({ extended: true, limit: '2mb' }));
 
+  // Run onModuleDestroy on SIGTERM/SIGINT so the shared PDF browser is closed
+  // gracefully instead of being orphaned on redeploy.
+  app.enableShutdownHooks();
+
   // Dev-permissive CORS so the Vite SPA (:5173) can call the API (:3000).
   app.enableCors({ origin: true, credentials: true });
 

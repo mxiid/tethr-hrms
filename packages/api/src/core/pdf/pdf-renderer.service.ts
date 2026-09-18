@@ -1,11 +1,15 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import type { Browser } from 'puppeteer';
 
-// Tailwind v2 compiled CSS, injected into every rendered page — the exact
-// mechanism Invoify uses, so ported templates render pixel-identically without
-// any build-time CSS pipeline in this package.
-const TAILWIND_CSS_URL =
-  'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css';
+import { PDF_STYLESHEET } from './pdf-styles.generated';
+
+// Rendering bounds: the page is local content only (no network requests), so
+// the content load is quick; the PDF protocol call and the number of pages
+// alive at once are capped so a burst of exports cannot pin every Chromium
+// resource.
+const CONTENT_LOAD_TIMEOUT_MS = 10_000;
+const PDF_TIMEOUT_MS = 30_000;
+const MAX_CONCURRENT_RENDERS = 2;
 
 // Generic HTML → PDF rendering over a lazily-launched, reused headless Chromium.
 // Knows nothing about documents or domains (core/ rule): callers hand it markup,
@@ -15,18 +19,25 @@ export class PdfRendererService implements OnModuleDestroy {
   private readonly logger = new Logger(PdfRendererService.name);
   private browser: Browser | null = null;
   private launching: Promise<Browser> | null = null;
+  private activeRenders = 0;
+  private readonly waitingRenders: Array<() => void> = [];
 
   async renderHtmlToPdf(html: string): Promise<Buffer> {
+    const release = await this.acquireRenderSlot();
     try {
-      return await this.renderOnce(html);
-    } catch (error) {
-      // The shared browser can die underneath us (OOM, external kill, crash).
-      // Drop it and retry exactly once against a fresh launch instead of
-      // failing every render from here on.
-      if (!isConnectionError(error)) throw error;
-      this.logger.warn('PDF browser connection lost; relaunching for retry');
-      await this.discardBrowser();
-      return this.renderOnce(html);
+      try {
+        return await this.renderOnce(html);
+      } catch (error) {
+        // The shared browser can die underneath us (OOM, external kill, crash).
+        // Drop it and retry exactly once against a fresh launch instead of
+        // failing every render from here on.
+        if (!isConnectionError(error)) throw error;
+        this.logger.warn('PDF browser connection lost; relaunching for retry');
+        await this.discardBrowser();
+        return await this.renderOnce(html);
+      }
+    } finally {
+      release();
     }
   }
 
@@ -34,23 +45,40 @@ export class PdfRendererService implements OnModuleDestroy {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
     try {
-      await page.setContent(html, {
-        // networkidle0 lets the Google-Fonts + CDN stylesheet requests finish so
-        // documents render with full typography; puppeteer's public type for
-        // setContent narrows this union even though runtime supports it.
-        waitUntil: ['networkidle0', 'load', 'domcontentloaded'] as unknown as 'load',
-        timeout: 45_000,
-      });
-      await page.addStyleTag({ url: TAILWIND_CSS_URL });
+      // No remote requests are made — the stylesheet below is local — so
+      // `load` is the right settle signal and there is no network-idle stall.
+      await page.setContent(html, { waitUntil: 'load', timeout: CONTENT_LOAD_TIMEOUT_MS });
+      await page.addStyleTag({ content: PDF_STYLESHEET });
       const pdf = await page.pdf({
         format: 'a4',
         printBackground: true,
         preferCSSPageSize: true,
+        timeout: PDF_TIMEOUT_MS,
       });
       return Buffer.from(pdf);
     } finally {
       await page.close().catch(() => undefined);
     }
+  }
+
+  // A tiny FIFO semaphore: renders beyond the limit wait their turn instead of
+  // opening another page on the shared browser.
+  private acquireRenderSlot(): Promise<() => void> {
+    if (this.activeRenders < MAX_CONCURRENT_RENDERS) {
+      this.activeRenders += 1;
+      return Promise.resolve(() => this.releaseRenderSlot());
+    }
+    return new Promise<() => void>((resolve) => {
+      this.waitingRenders.push(() => {
+        this.activeRenders += 1;
+        resolve(() => this.releaseRenderSlot());
+      });
+    });
+  }
+
+  private releaseRenderSlot(): void {
+    this.activeRenders -= 1;
+    this.waitingRenders.shift()?.();
   }
 
   // Launch once on first use so booting/tests never pay the Chromium cost.

@@ -20,7 +20,8 @@
     "seed:org-chart": "node -r ts-node/register scripts/seed-org-chart.ts",
     "backfill:hiring-statuses": "node -r ts-node/register scripts/backfill-hiring-statuses.ts",
     "reconcile:cv-parses": "node -r ts-node/register scripts/reconcile-cv-parses.ts",
-    "prune:empty-assignments": "node -r ts-node/register scripts/prune-empty-assignments.ts"
+    "prune:empty-assignments": "node -r ts-node/register scripts/prune-empty-assignments.ts",
+    "build:pdf-styles": "node scripts/build-pdf-styles.mjs"
   },
   "dependencies": {
     "@apollo/server": "^4.11.0",
