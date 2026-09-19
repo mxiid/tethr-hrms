@@ -727,6 +727,47 @@ export const EmployeeProfilePage = () => {
   // query leaves the form empty; saving it would overwrite bank details with
   // nulls, so the save is blocked while the read is in error (TET-219).
   const hrRecordReady = !hrRecordError;
+  // Value signatures, not object identities: a refetch hands back new objects
+  // with the same values, and re-seeding on that would wipe in-progress edits
+  // (TET-219).
+  const hrRecordSignature = useMemo(
+    () =>
+      hrRecord
+        ? JSON.stringify([
+            hrRecord.roleTitle,
+            hrRecord.salaryBreakdown,
+            hrRecord.paymentMode,
+            hrRecord.bankName,
+            hrRecord.bankAccountTitle,
+            hrRecord.bankAccountNumber,
+            hrRecord.bankIban,
+            hrRecord.hardwareInfo,
+            hrRecord.employeeRecordForm,
+          ])
+        : null,
+    [hrRecord],
+  );
+  const onboardingSignature = useMemo(
+    () =>
+      JSON.stringify(
+        onboardingTasks.map((task) => [task.taskKey, task.status, task.dueDate, task.notes]),
+      ),
+    [onboardingTasks],
+  );
+  const offboardingSignature = useMemo(
+    () =>
+      JSON.stringify(
+        offboardingTasks.map((task) => [task.taskKey, task.status, task.dueDate, task.notes]),
+      ),
+    [offboardingTasks],
+  );
+  const salarySignature = useMemo(
+    () =>
+      salary
+        ? JSON.stringify([salary.salaryStructureId, salary.annualAmount, salary.validFrom])
+        : null,
+    [salary],
+  );
   useEffect(() => {
     // Only seed the form once the record actually arrived. Re-seeding on every
     // refetch identity change would wipe in-progress edits.
@@ -742,7 +783,7 @@ export const EmployeeProfilePage = () => {
       hardwareInfo: hrRecord.hardwareInfo ?? '',
       employeeRecordForm: hrRecord.employeeRecordForm ?? '',
     });
-  }, [hrRecord, detailEmployee?.roleTitle]);
+  }, [hrRecordSignature, detailEmployee?.roleTitle]);
 
   useEffect(() => {
     setOnboardingDrafts(
@@ -757,7 +798,10 @@ export const EmployeeProfilePage = () => {
         ]),
       ),
     );
-  }, [onboardingTasks]);
+    // `onboardingTasks` is a new array on every refetch; depending on it alone
+    // would wipe in-progress edits. Re-seed only when the server values
+    // actually change (or the employee changes).
+  }, [onboardingSignature, detailEmployee?.id]);
 
   useEffect(() => {
     setOffboardingDrafts(
@@ -772,7 +816,7 @@ export const EmployeeProfilePage = () => {
         ]),
       ),
     );
-  }, [offboardingTasks]);
+  }, [offboardingSignature, detailEmployee?.id]);
 
   useEffect(() => {
     setSalaryRevisionForm({
@@ -782,7 +826,7 @@ export const EmployeeProfilePage = () => {
       reason: 'merit',
       note: '',
     });
-  }, [defaultSalaryStructureId, salary, detailEmployee?.id]);
+  }, [defaultSalaryStructureId, salarySignature, detailEmployee?.id]);
 
   useEffect(() => {
     setPhotoNotice(null);
