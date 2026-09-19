@@ -9,6 +9,15 @@ const envBoolean = (defaultValue: boolean) =>
     return defaultValue;
   }, z.boolean());
 
+// Optional keys are declared as empty placeholders in .env.example (so their
+// shape is visible); copying that file must not fail validation. An empty or
+// whitespace-only value is treated as unset before the inner schema runs.
+const envOptional = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    schema,
+  );
+
 // The single source of truth for environment shape. Validated once at startup;
 // a missing or malformed variable stops boot rather than failing at runtime
 // (architecture.md §12).
@@ -36,9 +45,9 @@ const configObjectSchema = z.object({
 
   // Notification delivery. Both optional: without credentials the logger
   // transport records the intent instead of sending (the dev default).
-  RESEND_API_KEY: z.string().min(1).optional(),
-  EMAIL_FROM: z.string().email().optional(),
-  SLACK_WEBHOOK_URL: z.string().url().optional(),
+  RESEND_API_KEY: envOptional(z.string().min(1).optional()),
+  EMAIL_FROM: envOptional(z.string().email().optional()),
+  SLACK_WEBHOOK_URL: envOptional(z.string().url().optional()),
 
   // A weak JWT secret is a security hole; require real entropy.
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
@@ -66,19 +75,19 @@ const configObjectSchema = z.object({
 
   // Browser origins allowed to call the API. Comma-separated; unset keeps the
   // Vite dev origins in development and refuses to boot in production.
-  CORS_ORIGINS: z.string().optional(),
+  CORS_ORIGINS: envOptional(z.string().optional()),
 
   // Object storage. 'supabase' is the real driver; 'local' writes to disk under
   // the API's working directory and exists so development can exercise the real
   // upload/download flow without a bucket — it is refused in production.
   STORAGE_DRIVER: z.enum(['local', 'supabase']).default('local'),
-  SUPABASE_URL: z.string().url().optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  SUPABASE_URL: envOptional(z.string().url().optional()),
+  SUPABASE_SERVICE_ROLE_KEY: envOptional(z.string().min(1).optional()),
   SUPABASE_STORAGE_BUCKET: z.string().min(1).default('hrms-documents'),
   STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   // Absolute base the browser can reach the API on; needed by the local
   // storage driver to mint links. Falls back to http://localhost:${PORT}.
-  PUBLIC_API_URL: z.string().url().optional(),
+  PUBLIC_API_URL: envOptional(z.string().url().optional()),
 
   // Employer identity printed on generated payslip PDFs.
   PDF_EMPLOYER_NAME: z.string().min(1).default('Tethr Pvt. Ltd.'),

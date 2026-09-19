@@ -49,6 +49,16 @@ const PortalHomeRedirect = () => {
   return <Navigate to={portalHome(user?.portal ?? 'none')} replace />;
 };
 
+// Remounts the whole shell whenever the signed-in identity changes. Switching
+// workspaces clears the Apollo cache in useAuth, but the shell's own queries
+// (organization, jump lists) are active and would keep their previous result;
+// a key change guarantees every query in the tree re-runs under the new
+// session — the structural half of the no-stale-tenant-data guarantee (TET-217).
+const SessionKeyedShell = () => {
+  const { user } = useAuth();
+  return <AppShell key={user?.organizationId ?? 'anonymous'} />;
+};
+
 // One page per settings tab; the guards that admit them live with the tab
 // definitions so the route, the sub-nav, and the page's own API calls agree.
 const SETTINGS_PAGES: Record<SettingsTabKey, ReactElement> = {
@@ -86,7 +96,7 @@ export const AppRouter = () => (
             ))}
           </Route>
         </Route>
-        <Route element={<AppShell />}>
+        <Route element={<SessionKeyedShell />}>
           <Route element={<RequirePortal portals={['tethr']} />}>
             <Route path="/dashboard" element={<DashboardPage />} />
           </Route>

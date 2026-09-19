@@ -61,4 +61,18 @@ describe('loadConfig', () => {
     expect(config.GRAPHQL_INTROSPECTION).toBe(false);
     expect(config.GRAPHQL_PLAYGROUND).toBe(false);
   });
+
+  it('treats empty optional placeholders as unset (copying .env.example works)', () => {
+    const config = loadConfig({
+      ...validEnv,
+      SUPABASE_URL: '',
+      SUPABASE_SERVICE_ROLE_KEY: '   ',
+      PUBLIC_API_URL: '',
+      CORS_ORIGINS: '',
+    } as NodeJS.ProcessEnv);
+    expect(config.SUPABASE_URL).toBeUndefined();
+    expect(config.SUPABASE_SERVICE_ROLE_KEY).toBeUndefined();
+    expect(config.PUBLIC_API_URL).toBeUndefined();
+    expect(config.CORS_ORIGINS).toBeUndefined();
+  });
 });
