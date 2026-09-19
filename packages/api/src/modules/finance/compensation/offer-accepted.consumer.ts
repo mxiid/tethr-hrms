@@ -26,7 +26,7 @@ export class OfferAcceptedCompensationConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('offer.accepted', (event) => this.handle(event));
+    this.eventBus.register('offer.accepted', CONSUMER_NAME, (event) => this.handle(event));
   }
 
   private async handle(event: DomainEvent): Promise<void> {

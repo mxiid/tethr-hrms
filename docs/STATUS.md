@@ -2,6 +2,22 @@
 
 > As of 2026-09-16 (`feat/dashboard-system`). Phases 0–2 plus the V1 portal foundation are complete; Finance F1 (payroll core) and F2 (billing core) are built and smoke-verified — see [finance-plan.md](finance-plan.md). **Attendance is now exposed and guarded**, and the employee/onboarding surfaces have been reworked. Sections below run newest-first.
 
+## Reliability phase 2: worker, queue, outbox (2026-09-18, TET-187)
+
+The Sept 2026 audit's Phase 2 reliability work (P2.1, P2.4, P2.5, P2.6; P2.3 is deferred to P5.1's migration batch). No migrations.
+
+**P2.1 — worker.** The BullMQ `Worker` on `QUEUES.default` now attaches `error`/`failed`/`stalled` listeners (an unhandled `'error'` previously crashed the process) and unknown job names throw instead of completing silently, so they are retried and then enter BullMQ's `failed` set (`assertNever` keeps the switch exhaustive). Retry/backoff remain producer-side (`defaultJobOptions`, P2.2) because BullMQ's `WorkerOptions` has no job-option defaults. New mocked specs plus a Redis-gated round-trip spec (failing processor retried, unknown job lands in `failed`), run explicitly with `REDIS_INTEGRATION=1 npm run test:integration -w @hrms/worker` — the pretest guard fails loudly when unconfigured (CI provisioning lands with TET-237); `--passWithNoTests` is gone from `packages/worker`.
+
+**P2.2 follow-up (found by the manual outage check).** TET-208's fail-fast options were not sufficient: BullMQ waits for connection readiness without a bound, so `queue.add` still hung with Redis down. `MessageQueueService.add` now bounds that wait (5s) and rejects; the connection keeps retrying, so the cached queue reconnects once Redis is restored. Verified against a closed port: rejection at ~5s (previously hung), with two new specs covering the readiness rejection and the timeout.
+
+**P2.4 — event bus.** Consumers register with their ledger name; dispatch runs each in its own try/catch, logs per-consumer outcomes, and rethrows an `AggregateError` naming only the failures, so the outbox retry skips ledger-recorded consumers. Specs cover one failing + one succeeding consumer and the no-re-invocation-on-redelivery property.
+
+**P2.5 — documents.** `register`/`addVersion` run in transactions; a concurrent `addVersion` loser retries after 23505 (bounded, re-reading the winner's row inside the transaction). The local-storage download stream now has an `'error'` listener (destroy/500 instead of an unhandled stream error), and Supabase signing calls carry a 10s `AbortSignal.timeout`. Specs cover rollback, the concurrent-version retry, both stream failure paths, and the timeout signal.
+
+**P2.6 — PDF.** The jsDelivr Tailwind URL is gone: `pdf-styles.generated.ts` is a committed local stylesheet built from the templates by `npm run build:pdf-styles` (dev-only Tailwind CLI, no runtime dependency). Renders are capped at 2 concurrent pages and the PDF call has a 30s timeout; `enableShutdownHooks()` closes the shared browser on SIGTERM, and a shutdown guard rejects new/queued renders and blocks a post-shutdown relaunch. Specs assert the local stylesheet, the timeouts, the concurrency cap and the shutdown paths. Per D8, moving rendering to the worker stays BACKLOG-3.
+
+**Verification.** `npm run typecheck`, `npm run lint` (0 errors; the 39 pre-existing import-order warnings reduced to 36), `npm test` (API **47 suites / 341 tests**, shared **36**, UI **11**, worker **7** plus 2 Redis-gated). Manual Redis-outage checks: producer `add` rejects at ~5s; worker logs connection errors without crashing and shuts down cleanly; `REDIS_INTEGRATION=1` round trip green.
+
 ## Phase 6: dead code & cleanup (2026-09-17)
 
 The Sept 2026 audit's cleanup phase, all four workstreams. No migrations, no behavior change.

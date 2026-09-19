@@ -15,6 +15,10 @@ type SupabaseSignResponse = {
   readonly signedURL?: string;
 };
 
+// Signing and stat calls hit Supabase over the network; a stalled connection
+// must reject instead of holding a request open forever.
+const STORAGE_REQUEST_TIMEOUT_MS = 10_000;
+
 // Supabase Storage over its REST API — deliberately not the SDK: the shape we
 // need is two signed-URL endpoints, and keeping it as fetch keeps the API's
 // dependency list untouched. Requires the service-role key (bypasses RLS by
@@ -58,7 +62,7 @@ export class SupabaseStorageDriver implements StorageDriver {
     const serviceKey = this.serviceKey();
     const response = await fetch(`${this.baseUrl()}/object/info/${this.bucketPath(storageKey)}`, {
       headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` },
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(STORAGE_REQUEST_TIMEOUT_MS),
     });
     if (response.status === 404 || response.status === 400) {
       return null;
@@ -83,6 +87,7 @@ export class SupabaseStorageDriver implements StorageDriver {
         'content-type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(STORAGE_REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => '');

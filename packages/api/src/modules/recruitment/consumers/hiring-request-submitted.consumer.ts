@@ -24,7 +24,9 @@ export class HiringRequestSubmittedConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('hiringRequest.submitted', (event) => this.handle(event));
+    this.eventBus.register('hiringRequest.submitted', CONSUMER_NAME, (event) =>
+      this.handle(event),
+    );
   }
 
   private async handle(event: DomainEvent): Promise<void> {

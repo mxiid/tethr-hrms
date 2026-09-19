@@ -1,6 +1,7 @@
 import { toId, type DocumentId, type OrganizationId, type UserId } from '@hrms/shared';
-import type { FindManyOptions } from 'typeorm';
+import type { DataSource, EntityManager, FindManyOptions } from 'typeorm';
 
+import type { TenantContextService } from '../tenancy/tenant-context.service';
 import type { TenantScopedRepository } from '../tenancy/tenant-scoped.repository';
 
 import { DocumentVersion } from './document-version.entity';
@@ -44,6 +45,8 @@ const makeVersion = (versionNumber: number, storageKey: string): DocumentVersion
 const buildService = () => {
   let currentDocument = makeDocument();
   const savedVersions: DocumentVersion[] = [];
+  let pendingVersionFailure: { cause: unknown; winnerVersionNumber?: number } | null = null;
+
   const documents = {
     create: jest.fn((value: Partial<Document>) => ({ ...currentDocument, ...value })),
     save: jest.fn((value: Document) => {
@@ -81,6 +84,65 @@ const buildService = () => {
     }),
   } as unknown as TenantScopedRepository<DocumentVersion>;
 
+  // A transaction-scoped manager over the same in-memory stores. The
+  // transaction fake restores the document pointer on failure so the
+  // "no orphaned document" contract is observable.
+  const manager = {
+    create: jest.fn((entity: unknown, value: Record<string, unknown>) => {
+      if (entity === DocumentVersion) {
+        return {
+          ...makeVersion(value.versionNumber as number, (value.storageKey as string) ?? ''),
+          ...value,
+        };
+      }
+      return { ...value };
+    }),
+    save: jest.fn((value: Document | DocumentVersion) => {
+      if ('versionNumber' in value) {
+        if (pendingVersionFailure) {
+          const { cause, winnerVersionNumber } = pendingVersionFailure;
+          pendingVersionFailure = null;
+          if (winnerVersionNumber !== undefined) {
+            // The concurrent winner commits its row before the loser retries.
+            savedVersions.push(makeVersion(winnerVersionNumber, 'winner.pdf'));
+          }
+          return Promise.reject(cause);
+        }
+        const existingIndex = savedVersions.findIndex((version) => version.id === value.id);
+        if (existingIndex >= 0) {
+          savedVersions[existingIndex] = value;
+        } else {
+          savedVersions.push(value);
+        }
+        return Promise.resolve(value);
+      }
+      currentDocument = { ...currentDocument, ...value };
+      return Promise.resolve(currentDocument);
+    }),
+    findOne: jest.fn((_entity: unknown, options: { where: { documentId: DocumentId } }) => {
+      const rows = savedVersions
+        .filter((version) => version.documentId === options.where.documentId)
+        .sort((left, right) => right.versionNumber - left.versionNumber);
+      return Promise.resolve(rows[0] ?? null);
+    }),
+  } as unknown as EntityManager;
+
+  const dataSource = {
+    transaction: jest.fn(async (work: (manager: EntityManager) => Promise<unknown>) => {
+      const documentSnapshot = currentDocument;
+      try {
+        return await work(manager);
+      } catch (cause) {
+        currentDocument = documentSnapshot;
+        throw cause;
+      }
+    }),
+  } as unknown as DataSource;
+
+  const tenantContext = {
+    getOrganizationId: jest.fn(() => ORGANIZATION),
+  } as unknown as TenantContextService;
+
   const storage = {
     createSignedUpload: jest.fn((input: { storageKey: string; contentType: string }) =>
       Promise.resolve({
@@ -101,16 +163,21 @@ const buildService = () => {
   } as unknown as StorageService;
 
   return {
+    dataSource,
     documents,
+    manager,
     savedVersions,
-    storage,
-    service: new DocumentService(documents, versions, storage),
+    currentDocument: () => currentDocument,
+    failNextVersionSave: (cause: unknown, winnerVersionNumber?: number) => {
+      pendingVersionFailure = { cause, winnerVersionNumber };
+    },
+    service: new DocumentService(documents, versions, storage, dataSource, tenantContext),
   };
 };
 
 describe('DocumentService', () => {
   it('registers a document with an initial version and signature metadata', async () => {
-    const { savedVersions, service } = buildService();
+    const { dataSource, savedVersions, service } = buildService();
 
     await service.register({
       name: 'Contract.pdf',
@@ -125,6 +192,7 @@ describe('DocumentService', () => {
       createdByUserId: USER,
     });
 
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
     expect(savedVersions).toHaveLength(1);
     expect(savedVersions[0]).toMatchObject({
       versionNumber: 1,
@@ -133,8 +201,24 @@ describe('DocumentService', () => {
     });
   });
 
+  it('rolls the document write back when the initial version fails', async () => {
+    const { currentDocument, failNextVersionSave, service } = buildService();
+    failNextVersionSave(new Error('version write failed'));
+
+    await expect(
+      service.register({
+        name: 'Renamed Contract.pdf',
+        contentType: 'application/pdf',
+        storageKey: 'employees/employee-1/contract.pdf',
+        sizeBytes: 1200,
+      }),
+    ).rejects.toThrow('version write failed');
+
+    expect(currentDocument().name).toBe('Contract.pdf');
+  });
+
   it('adds a newer version and updates the latest document pointer', async () => {
-    const { documents, savedVersions, service } = buildService();
+    const { manager, savedVersions, service } = buildService();
     savedVersions.push(makeVersion(1, 'employees/employee-1/contract.pdf'));
 
     const record = await service.addVersion({
@@ -148,9 +232,28 @@ describe('DocumentService', () => {
 
     expect(record.latestVersion?.versionNumber).toBe(2);
     expect(record.versionCount).toBe(2);
-    expect(documents.save).toHaveBeenCalledWith(
+    expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ storageKey: 'employees/employee-1/contract-v2.pdf' }),
     );
+  });
+
+  it('retries version allocation after a concurrent winner commits', async () => {
+    const { failNextVersionSave, savedVersions, service } = buildService();
+    savedVersions.push(makeVersion(1, 'employees/employee-1/contract.pdf'));
+    failNextVersionSave({ driverError: { code: '23505' } }, 2);
+
+    const record = await service.addVersion({
+      documentId: DOCUMENT,
+      contentType: 'application/pdf',
+      storageKey: 'employees/employee-1/contract-v3.pdf',
+      sizeBytes: 1800,
+    });
+
+    const numbers = savedVersions.map((version) => version.versionNumber).sort((left, right) => left - right);
+    expect(numbers).toEqual([1, 2, 3]);
+    expect(new Set(numbers).size).toBe(numbers.length);
+    expect(record.latestVersion?.versionNumber).toBe(3);
+    expect(record.versionCount).toBe(3);
   });
 
   it('prepares upload and download access descriptors from signed URLs', async () => {

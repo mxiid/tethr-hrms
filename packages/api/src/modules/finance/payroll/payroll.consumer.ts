@@ -27,7 +27,7 @@ export class SalaryRevisedPayrollConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('compensation.revised', (event) => this.handle(event));
+    this.eventBus.register('compensation.revised', CONSUMER_NAME, (event) => this.handle(event));
   }
 
   private async handle(event: DomainEvent): Promise<void> {
@@ -62,7 +62,11 @@ export class TaxProfileChangedPayrollConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('compensation.taxProfileChanged', (event) => this.handle(event));
+    this.eventBus.register(
+      'compensation.taxProfileChanged',
+      TAX_PROFILE_CONSUMER_NAME,
+      (event) => this.handle(event),
+    );
   }
 
   private async handle(event: DomainEvent): Promise<void> {
@@ -98,7 +102,11 @@ export class BenefitsChangedPayrollConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('benefits.enrollmentChanged', (event) => this.handle(event));
+    this.eventBus.register(
+      'benefits.enrollmentChanged',
+      BENEFITS_CONSUMER_NAME,
+      (event) => this.handle(event),
+    );
   }
 
   private async handle(event: DomainEvent): Promise<void> {

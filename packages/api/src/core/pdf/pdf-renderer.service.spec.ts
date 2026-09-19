@@ -32,7 +32,7 @@ describe('PdfRendererService', () => {
     puppeteerMock.launch.mockReset();
   });
 
-  it('renders through a freshly launched browser', async () => {
+  it('renders through a freshly launched browser with a local stylesheet', async () => {
     const page = fakePage();
     const browser = fakeBrowser(page);
     puppeteerMock.launch.mockResolvedValue(browser);
@@ -42,7 +42,57 @@ describe('PdfRendererService', () => {
 
     expect(pdf.toString()).toBe('PDF-BYTES');
     expect(puppeteerMock.launch).toHaveBeenCalledTimes(1);
-    expect(page.setContent).toHaveBeenCalledTimes(1);
+    expect(page.setContent).toHaveBeenCalledWith(
+      '<p>hi</p>',
+      expect.objectContaining({ waitUntil: 'load', timeout: 10_000 }),
+    );
+    // The stylesheet is inlined; a remote URL would make rendering depend on
+    // the network and could stall on an unreachable CDN.
+    expect(page.addStyleTag).toHaveBeenCalledWith({ content: expect.any(String) });
+    expect(page.addStyleTag).not.toHaveBeenCalledWith(
+      expect.objectContaining({ url: expect.any(String) }),
+    );
+    expect(page.pdf).toHaveBeenCalledWith(expect.objectContaining({ timeout: 30_000 }));
+    await service.onModuleDestroy();
+  });
+
+  it('bounds concurrent renders with a semaphore', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const pending = Array.from({ length: 5 }, () => {
+      let resolve!: (value: Buffer) => void;
+      const promise = new Promise<Buffer>((resolvePromise) => {
+        resolve = resolvePromise;
+      });
+      return { promise, resolve };
+    });
+    let pdfCalls = 0;
+    const page = fakePage();
+    page.pdf.mockImplementation(() => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      const current = pending[pdfCalls];
+      pdfCalls += 1;
+      return current.promise.then((buffer) => {
+        inFlight -= 1;
+        return buffer;
+      });
+    });
+    const browser = fakeBrowser(page);
+    browser.newPage.mockImplementation(() => Promise.resolve(page));
+    puppeteerMock.launch.mockResolvedValue(browser);
+
+    const service = new PdfRendererService();
+    const renders = pending.map((_, index) => service.renderHtmlToPdf(`<p>${index}</p>`));
+    // Let the first slots reach Chromium before asserting the cap.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(pdfCalls).toBe(2);
+
+    pending.forEach((entry) => entry.resolve(Buffer.from('PDF')));
+    await Promise.all(renders);
+
+    expect(pdfCalls).toBe(5);
+    expect(maxInFlight).toBe(2);
     await service.onModuleDestroy();
   });
 
@@ -82,5 +132,76 @@ describe('PdfRendererService', () => {
     const pdf = await service.renderHtmlToPdf('<p>again</p>');
     expect(pdf.toString()).toBe('FRESH');
     await service.onModuleDestroy();
+  });
+
+  it('rejects renders that start after shutdown', async () => {
+    puppeteerMock.launch.mockResolvedValue(fakeBrowser(fakePage()));
+
+    const service = new PdfRendererService();
+    await service.onModuleDestroy();
+
+    await expect(service.renderHtmlToPdf('<p>hi</p>')).rejects.toThrow('shutting down');
+    expect(puppeteerMock.launch).not.toHaveBeenCalled();
+  });
+
+  it('rejects queued renders when shutdown starts', async () => {
+    const pending = Array.from({ length: 3 }, () => {
+      let resolve!: (value: Buffer) => void;
+      const promise = new Promise<Buffer>((resolvePromise) => {
+        resolve = resolvePromise;
+      });
+      return { promise, resolve };
+    });
+    let pdfCalls = 0;
+    const page = fakePage();
+    page.pdf.mockImplementation(() => {
+      const current = pending[pdfCalls];
+      pdfCalls += 1;
+      return current.promise;
+    });
+    const browser = fakeBrowser(page);
+    browser.newPage.mockImplementation(() => Promise.resolve(page));
+    puppeteerMock.launch.mockResolvedValue(browser);
+
+    const service = new PdfRendererService();
+    const renders = [0, 1, 2].map((index) => service.renderHtmlToPdf(`<p>${index}</p>`));
+    // Let the first two slots reach Chromium; the third waits in the queue.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(pdfCalls).toBe(2);
+
+    const queued = expect(renders[2]).rejects.toThrow('shutting down');
+    await service.onModuleDestroy();
+    await queued;
+
+    // Shutdown only blocks new work; in-flight renders still settle.
+    pending[0].resolve(Buffer.from('FIRST'));
+    pending[1].resolve(Buffer.from('SECOND'));
+    await expect(Promise.all([renders[0], renders[1]])).resolves.toEqual([
+      Buffer.from('FIRST'),
+      Buffer.from('SECOND'),
+    ]);
+  });
+
+  it('does not relaunch the browser when a connection error arrives after shutdown', async () => {
+    const browser = fakeBrowser(fakePage());
+    let rejectNewPage!: (error: Error) => void;
+    browser.newPage.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectNewPage = reject;
+        }),
+    );
+    puppeteerMock.launch.mockResolvedValue(browser);
+
+    const service = new PdfRendererService();
+    const pending = service.renderHtmlToPdf('<p>hi</p>');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const assertion = expect(pending).rejects.toThrow('Connection closed');
+    await service.onModuleDestroy();
+    rejectNewPage(connectionClosedError());
+    await assertion;
+
+    expect(puppeteerMock.launch).toHaveBeenCalledTimes(1);
   });
 });

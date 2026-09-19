@@ -4,6 +4,11 @@ import { Queue } from 'bullmq';
 
 import { ConfigService } from '../config/config.service';
 
+// BullMQ's Queue waits for its Redis connection to become ready without a
+// bound; the connection is allowed to keep retrying (so a restored Redis heals
+// the cached Queue), which together hang `add` forever while Redis is down.
+const QUEUE_READY_TIMEOUT_MS = 5_000;
+
 // The API's queue producer. Business code calls `add(queue, job, payload)` and
 // never touches BullMQ (architecture.md §4) — the transport stays swappable and
 // job names/payloads stay typed by the @hrms/shared contract. Queues are created
@@ -20,12 +25,37 @@ export class MessageQueueService implements OnModuleDestroy {
     payload: JobPayloads[TJob],
     options?: { readonly jobId?: string },
   ): Promise<void> {
-    await this.queue(queueName).add(jobName, payload, options);
+    const queue = this.queue(queueName);
+    await this.waitUntilReady(queue);
+    await queue.add(jobName, payload, options);
   }
 
   async onModuleDestroy(): Promise<void> {
     await Promise.all([...this.queues.values()].map((queue) => queue.close()));
     this.queues.clear();
+  }
+
+  // Bound the readiness wait: a request or consumer calling `add` must never
+  // hang on a missing Redis. The connection keeps retrying in the background,
+  // so the next `add` succeeds once Redis is back.
+  private async waitUntilReady(queue: Queue): Promise<void> {
+    let timeout: NodeJS.Timeout | null = null;
+    try {
+      await Promise.race([
+        queue.waitUntilReady(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('Redis is not reachable; the job was not enqueued')),
+            QUEUE_READY_TIMEOUT_MS,
+          );
+          timeout.unref();
+        }),
+      ]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
   }
 
   private queue(name: QueueName): Queue {

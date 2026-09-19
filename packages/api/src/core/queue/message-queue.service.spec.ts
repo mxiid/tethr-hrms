@@ -5,12 +5,23 @@ import type { ConfigService } from '../config/config.service';
 
 import { MessageQueueService } from './message-queue.service';
 
+const QUEUE_READY_TIMEOUT_MS = 5_000;
+
+const buildQueue = () => ({
+  add: jest.fn().mockResolvedValue(undefined),
+  close: jest.fn().mockResolvedValue(undefined),
+  waitUntilReady: jest.fn().mockResolvedValue(undefined),
+});
+
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({
     add: jest.fn().mockResolvedValue(undefined),
     close: jest.fn().mockResolvedValue(undefined),
+    waitUntilReady: jest.fn().mockResolvedValue(undefined),
   })),
 }));
+
+const QueueMock = Queue as unknown as jest.Mock;
 
 const buildService = () => {
   const config = {
@@ -19,20 +30,23 @@ const buildService = () => {
   return { service: new MessageQueueService(config) };
 };
 
+const addParseCv = (service: MessageQueueService) =>
+  service.add(QUEUES.default, JOBS.parseCv, {
+    organizationId: 'org-1',
+    candidateDocumentId: 'doc-1',
+  } as never);
+
 describe('MessageQueueService', () => {
   beforeEach(() => {
-    (Queue as unknown as jest.Mock).mockClear();
+    QueueMock.mockClear();
   });
 
   it('creates the producer with fail-fast connection options', async () => {
     const { service } = buildService();
 
-    await service.add(QUEUES.default, JOBS.parseCv, {
-      organizationId: 'org-1',
-      candidateDocumentId: 'doc-1',
-    } as never);
+    await addParseCv(service);
 
-    const options = (Queue as unknown as jest.Mock).mock.calls[0][1] as {
+    const options = QueueMock.mock.calls[0][1] as {
       connection: {
         enableOfflineQueue: boolean;
         maxRetriesPerRequest: number;
@@ -59,15 +73,41 @@ describe('MessageQueueService', () => {
   it('reuses one queue per name', async () => {
     const { service } = buildService();
 
-    await service.add(QUEUES.default, JOBS.parseCv, {
-      organizationId: 'org-1',
-      candidateDocumentId: 'doc-1',
-    } as never);
+    await addParseCv(service);
     await service.add(QUEUES.default, JOBS.parseCv, {
       organizationId: 'org-1',
       candidateDocumentId: 'doc-2',
     } as never);
 
-    expect(Queue).toHaveBeenCalledTimes(1);
+    expect(QueueMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces a missing Redis instead of hanging the caller', async () => {
+    const queue = buildQueue();
+    queue.waitUntilReady.mockRejectedValueOnce(new Error('Redis is not reachable'));
+    QueueMock.mockImplementationOnce(() => queue);
+    const { service } = buildService();
+
+    await expect(addParseCv(service)).rejects.toThrow('Redis is not reachable');
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('rejects once the bounded readiness wait elapses', async () => {
+    jest.useFakeTimers();
+    try {
+      const queue = buildQueue();
+      queue.waitUntilReady.mockImplementationOnce(() => new Promise(() => undefined));
+      QueueMock.mockImplementationOnce(() => queue);
+      const { service } = buildService();
+
+      const pending = addParseCv(service);
+      const assertion = expect(pending).rejects.toThrow('Redis is not reachable');
+      await jest.advanceTimersByTimeAsync(QUEUE_READY_TIMEOUT_MS);
+
+      await assertion;
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

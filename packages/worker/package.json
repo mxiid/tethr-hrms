@@ -9,7 +9,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "start:dev": "node --watch -r ts-node/register src/main.ts",
-    "test": "jest --passWithNoTests"
+    "test": "jest",
+    "pretest:integration": "node scripts/assert-redis-integration.mjs",
+    "test:integration": "jest --config jest.integration.config.js"
   },
   "dependencies": {
     "@hrms/shared": "*",

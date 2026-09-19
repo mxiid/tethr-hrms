@@ -25,7 +25,7 @@ export class EmployeeCreatedOnboardingConsumer implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.eventBus.register('employee.created', (event) => this.handle(event));
+    this.eventBus.register('employee.created', CONSUMER_NAME, (event) => this.handle(event));
   }
 
   private async handle(event: DomainEvent): Promise<void> {
