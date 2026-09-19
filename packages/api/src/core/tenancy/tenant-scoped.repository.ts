@@ -63,6 +63,15 @@ export class TenantScopedRepository<TEntity extends TenantScopedEntity> {
     } as DeepPartial<TEntity>);
   }
 
+  // Delete by primary key within the current tenant. The tenant predicate is
+  // part of the DELETE itself, so a cross-tenant id can never match a row even
+  // if the caller skipped its own scoped read (no TOCTOU window).
+  deleteById(id: string): Promise<void> {
+    return this.repository
+      .delete({ id, organizationId: this.currentTenantId() } as FindOptionsWhere<TEntity>)
+      .then(() => undefined);
+  }
+
   // Persist, forcing the current tenant. Refuses a write carrying a different
   // tenant's id — defense in depth against a cross-tenant leak.
   save(entity: DeepPartial<TEntity>): Promise<TEntity> {
