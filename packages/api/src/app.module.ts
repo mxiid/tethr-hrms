@@ -5,6 +5,7 @@ import { GraphQLModule } from '@nestjs/graphql';
 
 import { AuditModule } from './core/audit/audit.module';
 import { AuthModule } from './core/auth/auth.module';
+import { SessionGuard } from './core/auth/session.guard';
 import { AuthzModule } from './core/authz/authz.module';
 import { PermissionsGuard } from './core/authz/permissions.guard';
 import { ConfigModule } from './core/config/config.module';
@@ -83,9 +84,11 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
   ],
   providers: [
     HealthResolver,
-    // Deny-by-default authorization for every entrypoint (GraphQL operations,
-    // field resolvers, REST handlers). Operations opt in explicitly through
-    // @RequirePermissions/@RequireAnyPermissions or opt out through @Public().
+    // Session validity first (active user, tenant match, session epoch), then
+    // deny-by-default authorization. Both are global so no entrypoint can
+    // forget them; @Public() operations still pass through the session check,
+    // which is what makes termination revoke access on the next request.
+    { provide: APP_GUARD, useClass: SessionGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })

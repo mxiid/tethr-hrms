@@ -1,10 +1,11 @@
-import type { EmployeeId, UserId } from '@hrms/shared';
+import { toId, type EmployeeId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, type EntityManager, type FindOptionsWhere } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { NotFoundError, UnauthenticatedError } from '../../common/errors';
+import { AuthorizationService } from '../authz/authz.service';
 import { TenantContextService } from '../tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../tenancy/tenant-scoped.repository';
 
@@ -33,9 +34,11 @@ export class AuthService {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: TenantScopedRepository<User>,
     @InjectRepository(User) private readonly userRepository: Repository<User>,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly passwords: PasswordService,
     private readonly jwtService: JwtService,
     private readonly tenantContext: TenantContextService,
+    private readonly authorization: AuthorizationService,
   ) {}
 
   // Create a user in the CURRENT tenant context (the caller establishes it).
@@ -125,8 +128,36 @@ export class AuthService {
   }
 
   issueToken(user: User): string {
-    const claims: JwtClaims = { sub: user.id, org: user.organizationId, email: user.email };
+    const claims: JwtClaims = {
+      sub: user.id,
+      org: user.organizationId,
+      email: user.email,
+      ver: user.tokenVersion ?? 0,
+    };
     return this.jwtService.sign(claims);
+  }
+
+  // Resolves the user behind a session token, enforcing existence, tenant
+  // match, active status, and the session epoch in one read. Memoized on the
+  // request, so the session guard and the authorization path share it. Returns
+  // null (never throws) so the caller decides how the rejection surfaces.
+  async resolveActiveSession(
+    userId: UserId,
+    organizationId: string,
+    tokenVersion: number | undefined,
+  ): Promise<User | null> {
+    const user = await this.tenantContext.memo(`session-user:${userId}`, () =>
+      this.userRepository.findOne({ where: { id: userId } as FindOptionsWhere<User> }),
+    );
+    if (
+      !user ||
+      user.organizationId !== organizationId ||
+      user.status !== 'active' ||
+      (user.tokenVersion ?? 0) !== (tokenVersion ?? 0)
+    ) {
+      return null;
+    }
+    return user;
   }
 
   // Stands in for a session token while the caller picks which of several
@@ -167,7 +198,7 @@ export class AuthService {
       throw new UnauthenticatedError();
     }
     const user = await this.users.findById(userId);
-    if (!user) {
+    if (!user || user.status !== 'active') {
       throw new UnauthenticatedError();
     }
     return user;
@@ -188,24 +219,38 @@ export class AuthService {
     return count > 1;
   }
 
-  // Disable any login linked to an employee. Naturally idempotent (re-running is
-  // harmless), which makes it safe as an event-driven side effect (plan.md §5.2).
+  // Disable any login linked to an employee, revoke its role assignments, and
+  // bump the session epoch so every outstanding token is rejected on its next
+  // use. Naturally idempotent (re-running is harmless), which makes it safe as
+  // an event-driven side effect (plan.md §5.2).
   // The `employee.terminated` consumer passes its transaction manager so the
-  // disable commits with the idempotency ledger row.
+  // disable commits with the idempotency ledger row; without one this opens its
+  // own transaction so the three writes can never half-apply.
   async disableUsersForEmployee(employeeId: EmployeeId, manager?: EntityManager): Promise<number> {
+    if (manager) {
+      return this.disableUsersWithin(manager, employeeId);
+    }
+    return this.dataSource.transaction((transactionManager) =>
+      this.disableUsersWithin(transactionManager, employeeId),
+    );
+  }
+
+  private async disableUsersWithin(
+    manager: EntityManager,
+    employeeId: EmployeeId,
+  ): Promise<number> {
     const organizationId = this.tenantContext.getOrganizationId();
-    const users = manager
-      ? await manager.find(User, {
-          where: { organizationId, employeeId } as FindOptionsWhere<User>,
-        })
-      : await this.users.find({ where: { employeeId } as FindOptionsWhere<User> });
+    const users = await manager.find(User, {
+      where: { organizationId, employeeId } as FindOptionsWhere<User>,
+    });
     let disabledCount = 0;
     for (const user of users) {
-      if (user.status !== 'disabled') {
-        user.status = 'disabled';
-        await (manager ? manager.save(user) : this.users.save(user));
-        disabledCount += 1;
-      }
+      if (user.status === 'disabled') continue;
+      user.status = 'disabled';
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+      await manager.save(user);
+      await this.authorization.removeAllRolesForUser(toId<UserId>(user.id), manager);
+      disabledCount += 1;
     }
     return disabledCount;
   }

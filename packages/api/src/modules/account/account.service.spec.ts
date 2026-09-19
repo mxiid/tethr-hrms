@@ -45,6 +45,7 @@ const adminUser = {
   email: 'admin@acme.test',
   passwordHash: 'hash',
   status: 'active',
+  tokenVersion: 0,
   mfaEnabled: false,
   employeeId: null,
   isWorkspaceCreator: true,

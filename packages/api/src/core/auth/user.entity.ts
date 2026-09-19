@@ -23,6 +23,13 @@ export class User extends TenantScopedEntity {
   @Column({ type: 'varchar', length: 16, default: 'invited' })
   status!: UserStatus;
 
+  // Session epoch: every issued JWT carries the value at issue time, and the
+  // session guard rejects a token whose value no longer matches. Bumping it
+  // revokes every outstanding token for this user (disable, termination,
+  // future password changes) without a denylist.
+  @Column({ type: 'int', default: 0 })
+  tokenVersion!: number;
+
   @Column({ type: 'boolean', default: false })
   mfaEnabled!: boolean;
 

@@ -1,6 +1,7 @@
 import { toId, type OrganizationId, type RoleId, type UserId } from '@hrms/shared';
 import type { Repository } from 'typeorm';
 
+import type { User } from '../auth/user.entity';
 import type { TenantContextService } from '../tenancy/tenant-context.service';
 
 import { AuthorizationService } from './authz.service';
@@ -13,6 +14,34 @@ const USER = toId<UserId>('user-1');
 const CLIENT_ROLE = toId<RoleId>('role-client');
 const EMPLOYEE_ROLE = toId<RoleId>('role-employee');
 const TETHR_ROLE = toId<RoleId>('role-tethr');
+
+const activeUser = (id: UserId): User =>
+  ({
+    id,
+    organizationId: ORGANIZATION,
+    email: 'user@example.com',
+    passwordHash: 'scrypt$aa$bb',
+    status: 'active',
+    tokenVersion: 0,
+    mfaEnabled: false,
+    isWorkspaceCreator: false,
+    employeeId: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  }) as User;
+
+const activeUsers = (): Repository<User> =>
+  ({ findOne: jest.fn().mockResolvedValue(activeUser(USER)) }) as unknown as Repository<User>;
+
+// A request-scoped memo that just runs the factory (the real one caches per
+// request; caching is not what these specs assert).
+const passThroughContext = (
+  overrides: Partial<Record<keyof TenantContextService, unknown>> = {},
+): TenantContextService =>
+  ({
+    memo: jest.fn((_key: string, factory: () => unknown) => factory()),
+    ...overrides,
+  }) as unknown as TenantContextService;
 
 const role = (id: RoleId, key: string, permissions: string[]): Role => ({
   id,
@@ -41,8 +70,8 @@ describe('AuthorizationService', () => {
         { userId: USER, roleId: EMPLOYEE_ROLE },
       ]),
     } as unknown as Repository<UserRoleAssignment>;
-    const tenantContext = {} as TenantContextService;
-    const service = new AuthorizationService(roles, assignments, tenantContext);
+    const tenantContext = passThroughContext();
+    const service = new AuthorizationService(roles, assignments, activeUsers(), tenantContext);
 
     const access = await service.getAccessForUserInOrganization(USER, ORGANIZATION);
 
@@ -58,8 +87,8 @@ describe('AuthorizationService', () => {
     const assignments = {
       find: jest.fn().mockResolvedValue([]),
     } as unknown as Repository<UserRoleAssignment>;
-    const tenantContext = {} as TenantContextService;
-    const service = new AuthorizationService(roles, assignments, tenantContext);
+    const tenantContext = passThroughContext();
+    const service = new AuthorizationService(roles, assignments, activeUsers(), tenantContext);
 
     await expect(service.getAccessForUserInOrganization(USER, ORGANIZATION)).resolves.toEqual({
       roleKeys: [],
@@ -67,6 +96,49 @@ describe('AuthorizationService', () => {
       portal: 'none',
     });
     expect(roles.find).not.toHaveBeenCalled();
+  });
+
+  it('resolves no access for a disabled user', async () => {
+    const roles = { find: jest.fn() } as unknown as Repository<Role>;
+    const assignments = {
+      find: jest.fn().mockResolvedValue([{ userId: USER, roleId: CLIENT_ROLE }]),
+    } as unknown as Repository<UserRoleAssignment>;
+    const users = {
+      findOne: jest.fn().mockResolvedValue({ ...activeUser(USER), status: 'disabled' }),
+    } as unknown as Repository<User>;
+    const service = new AuthorizationService(
+      roles,
+      assignments,
+      users,
+      passThroughContext(),
+    );
+
+    await expect(service.getAccessForUserInOrganization(USER, ORGANIZATION)).resolves.toEqual({
+      roleKeys: [],
+      permissions: [],
+      portal: 'none',
+    });
+    expect(assignments.find).not.toHaveBeenCalled();
+  });
+
+  it('rejects getCurrentAccess for a disabled user', async () => {
+    const roles = { find: jest.fn() } as unknown as Repository<Role>;
+    const assignments = { find: jest.fn() } as unknown as Repository<UserRoleAssignment>;
+    const users = {
+      findOne: jest.fn().mockResolvedValue({ ...activeUser(USER), status: 'disabled' }),
+    } as unknown as Repository<User>;
+    const service = new AuthorizationService(
+      roles,
+      assignments,
+      users,
+      passThroughContext({
+        getUserId: jest.fn().mockReturnValue(USER),
+        getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
+      }),
+    );
+
+    await expect(service.getCurrentAccess()).rejects.toThrow(/no longer valid/);
+    expect(assignments.find).not.toHaveBeenCalled();
   });
 
   it('replaces existing system role assignments with the selected role', async () => {
@@ -84,10 +156,10 @@ describe('AuthorizationService', () => {
       create: jest.fn((value: unknown) => value),
       save: jest.fn().mockResolvedValue(undefined),
     } as unknown as Repository<UserRoleAssignment>;
-    const tenantContext = {
+    const tenantContext = passThroughContext({
       getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
-    } as unknown as TenantContextService;
-    const service = new AuthorizationService(roles, assignments, tenantContext);
+    });
+    const service = new AuthorizationService(roles, assignments, activeUsers(), tenantContext);
 
     await service.replaceSystemRole(USER, 'clientMember');
 
@@ -106,11 +178,11 @@ describe('AuthorizationService', () => {
     const assignments = {
       find: jest.fn().mockResolvedValue([{ userId: USER, roleId: TETHR_ROLE }]),
     } as unknown as Repository<UserRoleAssignment>;
-    const tenantContext = {
+    const tenantContext = passThroughContext({
       getUserId: jest.fn().mockReturnValue(USER),
       getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
-    } as unknown as TenantContextService;
-    const service = new AuthorizationService(roles, assignments, tenantContext);
+    });
+    const service = new AuthorizationService(roles, assignments, activeUsers(), tenantContext);
 
     await expect(service.listAssignableSystemRoleKeys()).resolves.toEqual([
       'tethrAdmin',
@@ -130,11 +202,11 @@ describe('AuthorizationService', () => {
     const assignments = {
       find: jest.fn().mockResolvedValue([{ userId: USER, roleId: CLIENT_ROLE }]),
     } as unknown as Repository<UserRoleAssignment>;
-    const tenantContext = {
+    const tenantContext = passThroughContext({
       getUserId: jest.fn().mockReturnValue(USER),
       getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
-    } as unknown as TenantContextService;
-    const service = new AuthorizationService(roles, assignments, tenantContext);
+    });
+    const service = new AuthorizationService(roles, assignments, activeUsers(), tenantContext);
 
     await expect(service.listAssignableSystemRoleKeys()).resolves.toEqual([
       'clientMember',

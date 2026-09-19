@@ -1,10 +1,14 @@
-// The signed JWT payload. Kept tiny and stateless: the user, their tenant, and
-// email. The TenantContextMiddleware verifies this and establishes tenant +
-// principal from it, so no per-request DB lookup is needed for auth.
+// The signed JWT payload: the user, their tenant, email, and the session epoch
+// (`ver`) the token was minted under. The TenantContextMiddleware establishes
+// tenant + principal from this, and SessionGuard checks the epoch against the
+// user row so a disabled user or a bumped tokenVersion revokes outstanding
+// tokens immediately.
 export type JwtClaims = {
   readonly sub: string;
   readonly org: string;
   readonly email: string;
+  // Absent on tokens minted before tokenVersion existed; treated as 0.
+  readonly ver?: number;
 };
 
 // Issued instead of a session JWT when a login's email matches more than one

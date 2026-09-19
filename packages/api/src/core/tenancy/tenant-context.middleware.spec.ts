@@ -28,10 +28,28 @@ describe('TenantContextMiddleware', () => {
     middleware.use({ headers: { authorization: `Bearer ${token}` } }, undefined, next);
 
     expect(run).toHaveBeenCalledWith(
-      { organizationId: ORGANIZATION, userId: USER },
+      { organizationId: ORGANIZATION, userId: USER, tokenVersion: 0 },
       expect.any(Function),
     );
     expect(next).toHaveBeenCalled();
+  });
+
+  it('carries the session epoch claim into the tenant context', () => {
+    const { middleware, run, jwtService } = buildMiddleware();
+    const token = jwtService.sign({
+      sub: USER,
+      org: ORGANIZATION,
+      email: 'user@example.com',
+      ver: 3,
+    });
+    const next = jest.fn();
+
+    middleware.use({ headers: { authorization: `Bearer ${token}` } }, undefined, next);
+
+    expect(run).toHaveBeenCalledWith(
+      { organizationId: ORGANIZATION, userId: USER, tokenVersion: 3 },
+      expect.any(Function),
+    );
   });
 
   it('never promotes a form-link token to a session, even with the right secret', () => {
