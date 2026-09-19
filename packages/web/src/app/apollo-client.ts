@@ -6,7 +6,6 @@ import { getDefaultStore } from 'jotai';
 import {
   authState,
   clearStoredSession,
-  readStoredSession,
 } from '../modules/auth/states/authState';
 
 const httpLink = new HttpLink({
@@ -14,11 +13,12 @@ const httpLink = new HttpLink({
 });
 
 // Attach the bearer token (if signed in) to every request. The token carries the
-// tenant, so no `x-organization-id` header is needed once authenticated. The
-// read is guarded: a corrupt value is cleared and treated as logged out instead
-// of throwing on every request.
+// tenant, so no `x-organization-id` header is needed once authenticated. Read
+// from the mounted Jotai store (App passes it `getDefaultStore()`): the atom is
+// authoritative even when localStorage is unavailable, so an in-memory session
+// still authenticates.
 const authLink = setContext((_request, previousContext) => {
-  const token = readStoredSession()?.token;
+  const token = getDefaultStore().get(authState)?.token;
   const headers = (previousContext.headers ?? {}) as Record<string, string>;
   return { headers: token ? { ...headers, authorization: `Bearer ${token}` } : headers };
 });

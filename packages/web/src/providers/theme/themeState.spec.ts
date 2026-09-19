@@ -1,8 +1,11 @@
-import { initialThemeMode, THEME_STORAGE_KEY } from './themeState';
+import { createStore } from 'jotai';
+
+import { initialThemeMode, THEME_STORAGE_KEY, themeModeState } from './themeState';
 
 const installWindow = (
   stored: string | null,
   prefersDark: boolean,
+  options: { readonly failWrites?: boolean } = {},
 ): Map<string, string> => {
   const store = new Map<string, string>();
   if (stored !== null) store.set(THEME_STORAGE_KEY, stored);
@@ -12,6 +15,7 @@ const installWindow = (
       localStorage: {
         getItem: (key: string) => store.get(key) ?? null,
         setItem: (key: string, value: string) => {
+          if (options.failWrites) throw new Error('QuotaExceededError');
           store.set(key, value);
         },
         removeItem: (key: string) => {
@@ -44,5 +48,13 @@ describe('initialThemeMode', () => {
   it('falls back to light when storage and matchMedia are unavailable', () => {
     Object.defineProperty(globalThis, 'window', { configurable: true, value: undefined });
     expect(initialThemeMode()).toBe('light');
+  });
+
+  it('keeps the in-memory theme when a storage write throws', () => {
+    installWindow('light', false, { failWrites: true });
+    const store = createStore();
+
+    expect(() => store.set(themeModeState, 'dark')).not.toThrow();
+    expect(store.get(themeModeState)).toBe('dark');
   });
 });

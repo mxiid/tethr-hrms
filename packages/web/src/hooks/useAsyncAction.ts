@@ -28,6 +28,9 @@ export const useAsyncAction = (): AsyncActionResult => {
   const run = useCallback(async (action: () => Promise<void>, fallbackMessage?: string) => {
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
+    // A new attempt clears the previous failure, so a stale banner cannot
+    // outlive the action that produced it.
+    setError(null);
     setIsPending(true);
     try {
       await action();

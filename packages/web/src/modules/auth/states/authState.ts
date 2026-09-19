@@ -21,6 +21,28 @@ export type AuthSession = {
 // link reads the same key to attach the bearer token to every request.
 export const AUTH_STORAGE_KEY = 'hrms.auth';
 
+// Every required field is checked before the value is trusted: a partial object
+// (`user: {}`) would otherwise reach the shell and throw on `roleKeys.includes`.
+const isAuthUser = (value: unknown): value is AuthUser => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const user = value as Record<string, unknown>;
+  return (
+    typeof user.id === 'string' &&
+    typeof user.email === 'string' &&
+    typeof user.organizationId === 'string' &&
+    typeof user.status === 'string' &&
+    (user.employeeId === null || typeof user.employeeId === 'string') &&
+    Array.isArray(user.roleKeys) &&
+    user.roleKeys.every((roleKey) => typeof roleKey === 'string') &&
+    (user.portal === 'tethr' ||
+      user.portal === 'client' ||
+      user.portal === 'employee' ||
+      user.portal === 'none')
+  );
+};
+
 // The one reader of the persisted session. A corrupt or legacy value must never
 // throw (it would break every request through the Apollo auth link and there
 // would be no way back to /login): the bad value is cleared and treated as
@@ -42,8 +64,7 @@ export const readStoredSession = (): AuthSession | null => {
       typeof parsed === 'object' &&
       parsed !== null &&
       typeof (parsed as { token?: unknown }).token === 'string' &&
-      typeof (parsed as { user?: unknown }).user === 'object' &&
-      (parsed as { user?: unknown }).user !== null
+      isAuthUser((parsed as { user?: unknown }).user)
     ) {
       return parsed as AuthSession;
     }
@@ -86,6 +107,24 @@ const authStorage = {
     if (key === AUTH_STORAGE_KEY) {
       clearStoredSession();
     }
+  },
+  // Cross-tab sync: another tab signing out (or in) removes/writes the key and
+  // the browser fires `storage` here. Without this, a mounted tab would keep
+  // its in-memory session until a refresh.
+  subscribe: (
+    key: string,
+    callback: (value: AuthSession | null) => void,
+  ): (() => void) => {
+    if (key !== AUTH_STORAGE_KEY) {
+      return () => undefined;
+    }
+    const listener = (event: StorageEvent): void => {
+      if (event.key === AUTH_STORAGE_KEY || event.key === null) {
+        callback(readStoredSession());
+      }
+    };
+    window.addEventListener('storage', listener);
+    return () => window.removeEventListener('storage', listener);
   },
 };
 

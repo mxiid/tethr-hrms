@@ -723,10 +723,11 @@ export const EmployeeProfilePage = () => {
     }));
   }, [detailEmployee?.currentAssignment?.reportsToEmployeeId]);
 
-  // The HR-record form may only be saved from a successful read. A failed
-  // query leaves the form empty; saving it would overwrite bank details with
-  // nulls, so the save is blocked while the read is in error (TET-219).
-  const hrRecordReady = !hrRecordError;
+  // The HR-record form may only be saved from a completed, successful read. A
+  // loading or failed query leaves the form empty; saving it would overwrite
+  // stored bank details with nulls, so the save stays blocked until the read
+  // has actually delivered data (TET-219 review round).
+  const hrRecordReady = !hrRecordLoading && !hrRecordError && hrRecordData !== undefined;
   // Value signatures, not object identities: a refetch hands back new objects
   // with the same values, and re-seeding on that would wipe in-progress edits
   // (TET-219).
@@ -769,9 +770,15 @@ export const EmployeeProfilePage = () => {
     [salary],
   );
   useEffect(() => {
-    // Only seed the form once the record actually arrived. Re-seeding on every
-    // refetch identity change would wipe in-progress edits.
-    if (!hrRecord) return;
+    // A completed read that found no record clears the form — otherwise the
+    // previous employee's values would stay on screen and be saved against the
+    // new one. Re-seeding on a mere refetch identity change would wipe
+    // in-progress edits, so the value signature (plus the employee id) drives
+    // this effect.
+    if (!hrRecord) {
+      setHrRecordForm(emptyHrRecordForm);
+      return;
+    }
     setHrRecordForm({
       roleTitle: hrRecord.roleTitle ?? detailEmployee?.roleTitle ?? '',
       salaryBreakdown: hrRecord.salaryBreakdown ?? '',
@@ -783,7 +790,7 @@ export const EmployeeProfilePage = () => {
       hardwareInfo: hrRecord.hardwareInfo ?? '',
       employeeRecordForm: hrRecord.employeeRecordForm ?? '',
     });
-  }, [hrRecordSignature, detailEmployee?.roleTitle]);
+  }, [hrRecordSignature, detailEmployee?.id, detailEmployee?.roleTitle]);
 
   useEffect(() => {
     setOnboardingDrafts(
@@ -1148,7 +1155,9 @@ export const EmployeeProfilePage = () => {
 
   const onSaveHrRecord = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!detailEmployee) return;
+    // Belt and braces: the button/fields are disabled until the read lands, but
+    // a stray submit must never write an unloaded (empty) form over stored data.
+    if (!detailEmployee || !hrRecordReady) return;
     setDetailError(null);
     try {
       await updateHrRecord({
