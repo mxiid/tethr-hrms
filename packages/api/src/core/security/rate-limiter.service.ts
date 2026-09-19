@@ -1,23 +1,23 @@
 import { Injectable } from '@nestjs/common';
 
-import { ValidationFailedError } from '../../common/errors';
+import { RateLimitedError } from '../../common/errors';
 
-// Per-key sliding window used by the public form surface (no global limiter
-// exists in the stack). In-memory, so it guards a single API instance — enough
-// for the anonymous endpoints' purpose (blunt abuse), and swappable behind this
+// Per-key sliding window shared by every surface that needs abuse protection
+// (anonymous forms, login, signup). In-memory, so it guards a single API
+// instance — enough for blunt abuse protection, and swappable behind this
 // class when a shared store is warranted. Keys are evicted once the map exceeds
 // the cap, so a stream of distinct IPs cannot grow it without bound.
 const MAX_TRACKED_KEYS = 5000;
 
 @Injectable()
-export class FormRateLimiter {
+export class RateLimiterService {
   private readonly hits = new Map<string, number[]>();
 
-  consume(key: string, limit: number, windowMs: number): void {
+  consume(key: string, limit: number, windowMs: number, message?: string): void {
     const now = Date.now();
     const recent = (this.hits.get(key) ?? []).filter((timestamp) => now - timestamp < windowMs);
     if (recent.length >= limit) {
-      throw new ValidationFailedError('Too many submissions — please try again later.');
+      throw new RateLimitedError(message);
     }
     recent.push(now);
     // Re-insert so the key moves to the end of the insertion order.

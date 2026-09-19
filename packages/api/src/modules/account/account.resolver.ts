@@ -1,5 +1,5 @@
 import { toId, type EmployeeId, type SystemRoleKey, type UserId } from '@hrms/shared';
-import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Context, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { ValidationFailedError } from '../../common/errors';
 import { AuthPayload } from '../../core/auth/dto/auth-payload.output';
@@ -9,6 +9,8 @@ import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
 import { Public } from '../../core/authz/public.decorator';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
+import { ConfigService } from '../../core/config/config.service';
+import { RateLimiterService } from '../../core/security/rate-limiter.service';
 import { toClientView } from '../clients/dto/client.output';
 import { toWorkspaceSummaryView } from '../organization/dto/workspace-summary.output';
 
@@ -21,17 +23,40 @@ import { SignUpInput } from './dto/sign-up.input';
 import { UpdateWorkspaceUserRoleInput } from './dto/update-workspace-user-role.input';
 import { EmployeeLinkGuard } from './employee-link-guard.service';
 
+type GraphqlContext = {
+  readonly req?: {
+    readonly ip?: string;
+    readonly socket?: { readonly remoteAddress?: string };
+  };
+};
+
+const clientAddress = (context: GraphqlContext): string =>
+  context.req?.ip ?? context.req?.socket?.remoteAddress ?? 'unknown';
+
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+
 @Resolver()
 export class AccountResolver {
   constructor(
     private readonly accountService: AccountService,
     private readonly authorization: AuthorizationService,
     private readonly employeeLinkGuard: EmployeeLinkGuard,
+    private readonly rateLimiter: RateLimiterService,
+    private readonly config: ConfigService,
   ) {}
 
   @Mutation(() => AuthPayload)
   @Public()
-  async signUp(@Args('input') input: SignUpInput): Promise<AuthPayload> {
+  async signUp(
+    @Args('input') input: SignUpInput,
+    @Context() context: GraphqlContext,
+  ): Promise<AuthPayload> {
+    // Signup is anonymous and expensive (org + scrypt + rows): throttle per IP.
+    this.rateLimiter.consume(
+      `signup:${clientAddress(context)}`,
+      this.config.get('AUTH_SIGNUP_LIMIT_PER_10_MIN'),
+      RATE_LIMIT_WINDOW_MS,
+    );
     const { user, token } = await this.accountService.signUp({
       organizationName: input.organizationName,
       email: input.email,
@@ -49,7 +74,18 @@ export class AccountResolver {
   // (modules) read that core is not allowed to depend on.
   @Mutation(() => LoginResult)
   @Public()
-  async login(@Args('input') input: LoginInput): Promise<LoginResult> {
+  async login(
+    @Args('input') input: LoginInput,
+    @Context() context: GraphqlContext,
+  ): Promise<LoginResult> {
+    // Throttled per email+IP: bounds both brute force and the scrypt work a
+    // caller can demand (TET-214).
+    this.rateLimiter.consume(
+      `login:${input.email.toLowerCase()}:${clientAddress(context)}`,
+      this.config.get('AUTH_LOGIN_LIMIT_PER_10_MIN'),
+      RATE_LIMIT_WINDOW_MS,
+      'Too many sign-in attempts — please try again later.',
+    );
     const outcome = await this.accountService.login(input.email, input.password);
     if (outcome.kind === 'authenticated') {
       return {

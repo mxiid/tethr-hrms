@@ -52,6 +52,12 @@ const configObjectSchema = z.object({
   FORM_SUBMIT_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(10),
   FORM_UPLOAD_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(30),
 
+  // Auth boundary throttles (ten-minute windows): login per email+IP and
+  // signup per IP. The login limiter also bounds the scrypt work an attacker
+  // can demand; the per-request candidate cap bounds it further.
+  AUTH_LOGIN_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(10),
+  AUTH_SIGNUP_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(5),
+
   GRAPHQL_PLAYGROUND: envBoolean(false),
 
   // Object storage. 'supabase' is the real driver; 'local' writes to disk under

@@ -15,6 +15,7 @@ import { DocumentsModule } from './core/documents/documents.module';
 import { EventsModule } from './core/events/events.module';
 import { NotificationModule } from './core/notifications/notification.module';
 import { QueueModule } from './core/queue/queue.module';
+import { SecurityModule } from './core/security/security.module';
 import { PlatformScopeModule } from './core/tenancy/platform-scope.module';
 import { TenancyModule } from './core/tenancy/tenancy.module';
 import { TenantContextMiddleware } from './core/tenancy/tenant-context.middleware';
@@ -51,6 +52,7 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
     WorkflowModule,
     NotificationModule,
     QueueModule,
+    SecurityModule,
     DocumentsModule,
     // Code-first GraphQL. Schema is generated in memory at boot from the
     // decorators on resolvers and types (architecture.md §2.5, §11).

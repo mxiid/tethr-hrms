@@ -2,7 +2,7 @@ import { toId, type EmployeeId, type UserId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, type EntityManager, type FindOptionsWhere } from 'typeorm';
+import { DataSource, Not, Repository, type EntityManager, type FindOptionsWhere } from 'typeorm';
 
 import { NotFoundError, UnauthenticatedError } from '../../common/errors';
 import { AuthorizationService } from '../authz/authz.service';
@@ -17,6 +17,13 @@ import { User } from './user.entity';
 // Short enough that a stale "pick a workspace" screen can't be used as a
 // lingering credential; long enough for a human to actually pick one.
 const WORKSPACE_SELECTION_TOKEN_TTL = '5m';
+
+// Upper bound on scrypt verifications per login attempt. The same email can
+// legitimately hold an account in several workspaces, but verifying against an
+// unbounded number turns a login into a CPU-amplification primitive. The
+// eventual fix is a Slack-style workspace-first login (organization picked
+// before the password is checked); until then this caps the work (TET-214).
+const MAX_PASSWORD_CANDIDATES = 5;
 
 type CreateUserData = {
   readonly email: string;
@@ -84,13 +91,18 @@ export class AuthService {
   // yet, and finding every candidate is the whole point. It's the one
   // legitimate cross-tenant read (the auth boundary); nothing past it ever
   // spans organizations. Zero, one, or many rows may verify.
+  //
+  // Bounded (TET-214): disabled accounts are excluded in SQL and the candidate
+  // list is capped, so the scrypt cost per request cannot scale with how many
+  // workspaces an email exists in.
   async findVerifiedUsers(email: string, password: string): Promise<User[]> {
     const candidates = await this.userRepository.find({
-      where: { email: email.toLowerCase() } as FindOptionsWhere<User>,
+      where: { email: email.toLowerCase(), status: Not('disabled') } as FindOptionsWhere<User>,
+      order: { createdAt: 'ASC' },
+      take: MAX_PASSWORD_CANDIDATES,
     });
     const verified: User[] = [];
     for (const candidate of candidates) {
-      if (candidate.status === 'disabled') continue;
       if (await this.passwords.verify(password, candidate.passwordHash)) {
         verified.push(candidate);
       }

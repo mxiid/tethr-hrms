@@ -62,3 +62,11 @@ export class EffectiveDatingError extends DomainError {
     super('EFFECTIVE_DATE_OVERLAP', message, details);
   }
 }
+
+// Thrown when a caller exceeds a sliding-window limit (login attempts, public
+// form submissions). Maps to HTTP 429.
+export class RateLimitedError extends DomainError {
+  constructor(message = 'Too many requests — please try again later.') {
+    super('RATE_LIMITED', message);
+  }
+}
