@@ -32,6 +32,7 @@ import {
 import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
+import { useAsyncAction } from '../../../hooks/useAsyncAction';
 import { useTheme } from '../../../providers/theme/useTheme';
 import {
   ACCEPT_OFFER_MUTATION,
@@ -169,6 +170,8 @@ export const CandidatesPage = () => {
   const [declineOffer] = useMutation(DECLINE_OFFER_MUTATION);
   const [offerFormFor, setOfferFormFor] = useState<string | null>(null);
   const [offerError, setOfferError] = useState<string | null>(null);
+  // Pending/error bookkeeping for the fire-and-forget list and detail loads.
+  const listAction = useAsyncAction();
   const [offerForm, setOfferForm] = useState({
     baseSalary: '',
     salaryCurrency: 'USD',
@@ -208,7 +211,12 @@ export const CandidatesPage = () => {
     },
     onCreated: (record) => {
       setSelectedId(record.id);
-      void loadDetail({ variables: { id: record.id } });
+      void listAction.run(
+        async () => {
+          await loadDetail({ variables: { id: record.id } });
+        },
+        'Could not load this candidate',
+      );
     },
   });
 
@@ -260,7 +268,12 @@ export const CandidatesPage = () => {
   const openCandidate = (candidate: CandidateRecord): void => {
     if (create.draft !== null) create.discard();
     setSelectedId(candidate.id);
-    void loadDetail({ variables: { id: candidate.id } });
+    void listAction.run(
+      async () => {
+        await loadDetail({ variables: { id: candidate.id } });
+      },
+      'Could not load this candidate',
+    );
   };
 
   const startCreate = (): void => {
@@ -309,7 +322,11 @@ export const CandidatesPage = () => {
               <button
                 aria-label="Refresh candidates"
                 className="icon-button"
-                onClick={() => void refetch()}
+                onClick={() =>
+                  void listAction.run(async () => {
+                    await refetch();
+                  }, 'Could not refresh candidates')
+                }
                 type="button"
               >
                 <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -321,6 +338,12 @@ export const CandidatesPage = () => {
             </button>
           </div>
         </header>
+
+        {listAction.error ? (
+          <p className="auth-error" role="alert">
+            {listAction.error}
+          </p>
+        ) : null}
 
         <section className="table-shell" aria-label="Candidates">
           <ViewBar
@@ -680,7 +703,11 @@ export const CandidatesPage = () => {
                       </div>
                       <button
                         className="button button-secondary"
-                        onClick={() => void saveApplication(application)}
+                        onClick={() =>
+                          void listAction.run(async () => {
+                            await saveApplication(application);
+                          }, 'Could not save this application')
+                        }
                         type="button"
                       >
                         Save

@@ -6,7 +6,7 @@ import {
   IconDeviceFloppy,
   IconLoader2,
 } from '@tabler/icons-react';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { OnboardingCard } from '../../../components/onboarding/OnboardingFlow';
@@ -205,7 +205,9 @@ export const MyProfilePage = () => {
 
   useEffect(() => {
     setForm(profileFrom(profile));
-  }, [profile]);
+    // Seeded per employee identity only: refetches (which hand back a new
+    // object identity) must not wipe in-progress edits (TET-219).
+  }, [profile?.employeeId]);
 
   const setField = (key: keyof ProfileForm, value: string): void =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -236,8 +238,7 @@ export const MyProfilePage = () => {
     reader.readAsDataURL(file);
   };
 
-  const onSubmit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
+  const onSubmit = async (): Promise<void> => {
     setNotice(null);
     setError(null);
     try {
@@ -264,7 +265,11 @@ export const MyProfilePage = () => {
   }
 
   return (
-    <form className="profile-page profile-page-narrow" onSubmit={(event) => void onSubmit(event)}>
+    // A plain container, not a <form>: BankDetailsCard renders its own form,
+    // and nested forms are invalid HTML — the browser drops the inner one, so
+    // its "Request change" submit would silently save the profile instead
+    // (TET-219).
+    <div className="profile-page profile-page-narrow">
       <Link className="profile-back" to="/me">
         <IconArrowLeft aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         My workspace
@@ -720,12 +725,17 @@ export const MyProfilePage = () => {
           <Link className="button button-secondary" to="/me">
             Cancel
           </Link>
-          <button className="button button-primary" disabled={saving} type="submit">
+          <button
+            className="button button-primary"
+            disabled={saving}
+            onClick={() => void onSubmit()}
+            type="button"
+          >
             <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
             {saving ? 'Saving…' : 'Save profile'}
           </button>
         </div>
       </footer>
-    </form>
+    </div>
   );
 };

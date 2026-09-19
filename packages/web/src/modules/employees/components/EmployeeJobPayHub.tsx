@@ -9,6 +9,7 @@ import {
 import { Link } from 'react-router-dom';
 
 import { downloadBase64File } from '../../../app/download';
+import { useAsyncAction } from '../../../hooks/useAsyncAction';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { BenefitEnrollmentsSection } from '../../benefits/components/BenefitEnrollmentsSection';
 import { TaxProfileSection } from '../../finance/compensation/components/TaxProfileSection';
@@ -178,6 +179,8 @@ export const EmployeeJobPayHub = ({
   const [decideBankChange] = useMutation(DECIDE_BANK_CHANGE_MUTATION, {
     refetchQueries: [{ query: EMPLOYEE_BANK_CHANGE_REQUESTS_QUERY, variables: { employeeId } }],
   });
+  // Pending/error bookkeeping for the PDF download and bank-change decisions.
+  const hubAction = useAsyncAction();
 
   const revisions = [...(salaryData?.salaryRevisions ?? [])].sort((a, b) =>
     b.validFrom.localeCompare(a.validFrom),
@@ -217,6 +220,11 @@ export const EmployeeJobPayHub = ({
 
   return (
     <>
+      {hubAction.error ? (
+        <p className="auth-error" role="alert">
+          {hubAction.error}
+        </p>
+      ) : null}
       {canViewPayroll ? (
         <DetailSection title="Pay readiness">
           {readinessEntry ? (
@@ -307,9 +315,11 @@ export const EmployeeJobPayHub = ({
                           <button
                             className="button button-secondary"
                             type="button"
-                            onClick={() => {
-                              void downloadPayslip(payslip);
-                            }}
+                            onClick={() =>
+                              void hubAction.run(async () => {
+                                await downloadPayslip(payslip);
+                              }, 'Could not download the payslip')
+                            }
                           >
                             <IconDownload aria-hidden="true" size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
                             PDF
@@ -429,22 +439,26 @@ export const EmployeeJobPayHub = ({
                   <button
                     className="button button-primary"
                     type="button"
-                    onClick={() => {
-                      void decideBankChange({
-                        variables: { input: { requestId: request.id, approve: true } },
-                      });
-                    }}
+                    onClick={() =>
+                      void hubAction.run(async () => {
+                        await decideBankChange({
+                          variables: { input: { requestId: request.id, approve: true } },
+                        });
+                      }, 'Could not approve this change')
+                    }
                   >
                     Approve
                   </button>
                   <button
                     className="button button-secondary"
                     type="button"
-                    onClick={() => {
-                      void decideBankChange({
-                        variables: { input: { requestId: request.id, approve: false } },
-                      });
-                    }}
+                    onClick={() =>
+                      void hubAction.run(async () => {
+                        await decideBankChange({
+                          variables: { input: { requestId: request.id, approve: false } },
+                        });
+                      }, 'Could not reject this change')
+                    }
                   >
                     Reject
                   </button>

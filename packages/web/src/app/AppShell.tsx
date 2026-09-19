@@ -460,8 +460,10 @@ export const AppShell = () => {
   const openSearch = (): void => {
     setSearchOpen(true);
     if (canManagePayroll) {
-      void loadJumpRuns();
-      void loadJumpInvoices();
+      // Jump results are a convenience; a failed load leaves the sections empty
+      // rather than surfacing an error, but it must never reject unhandled.
+      void loadJumpRuns().catch(() => undefined);
+      void loadJumpInvoices().catch(() => undefined);
     }
   };
 

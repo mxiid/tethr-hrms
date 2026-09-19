@@ -31,7 +31,6 @@ import { uploadToSignedUrl } from '../../../app/upload';
 import { StatusChip } from '../../../components/chip/StatusChip';
 import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { useTheme } from '../../../providers/theme/useTheme';
-import { CREATE_WORKSPACE_USER_MUTATION } from '../../auth/graphql/auth.operations';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { DetailSection } from '../components/DetailSection';
 import { EmployeeJobPayHub } from '../components/EmployeeJobPayHub';
@@ -528,7 +527,6 @@ export const EmployeeProfilePage = () => {
   const [updatePhoto, { loading: savingPhoto }] = useMutation(UPDATE_EMPLOYEE_PHOTO_MUTATION);
   const [updateEmployee, { loading: updatingEmployee }] = useMutation(UPDATE_EMPLOYEE_MUTATION);
   const [separateEmployee, { loading: separatingEmployee }] = useMutation(SEPARATE_EMPLOYEE_MUTATION);
-  const [createWorkspaceUser, { loading: creatingWorkspaceUser }] = useMutation(CREATE_WORKSPACE_USER_MUTATION);
   const [updateOffboardingTask, { loading: savingOffboardingTask }] = useMutation(UPDATE_OFFBOARDING_TASK_MUTATION);
   const [upsertExitInterview, { loading: savingExitInterview }] = useMutation(UPSERT_EXIT_INTERVIEW_MUTATION);
 
@@ -639,6 +637,7 @@ export const EmployeeProfilePage = () => {
   const {
     data: hrRecordData,
     loading: hrRecordLoading,
+    error: hrRecordError,
     refetch: refetchHrRecord,
   } = useQuery<EmployeeHrRecordData>(EMPLOYEE_HR_RECORD_QUERY, {
     skip: !employeeId || !canManageHrRecord,
@@ -724,19 +723,26 @@ export const EmployeeProfilePage = () => {
     }));
   }, [detailEmployee?.currentAssignment?.reportsToEmployeeId]);
 
+  // The HR-record form may only be saved from a successful read. A failed
+  // query leaves the form empty; saving it would overwrite bank details with
+  // nulls, so the save is blocked while the read is in error (TET-219).
+  const hrRecordReady = !hrRecordError;
   useEffect(() => {
+    // Only seed the form once the record actually arrived. Re-seeding on every
+    // refetch identity change would wipe in-progress edits.
+    if (!hrRecord) return;
     setHrRecordForm({
-      roleTitle: hrRecord?.roleTitle ?? detailEmployee?.roleTitle ?? '',
-      salaryBreakdown: hrRecord?.salaryBreakdown ?? '',
-      paymentMode: hrRecord?.paymentMode ?? '',
-      bankName: hrRecord?.bankName ?? '',
-      bankAccountTitle: hrRecord?.bankAccountTitle ?? '',
-      bankAccountNumber: hrRecord?.bankAccountNumber ?? '',
-      bankIban: hrRecord?.bankIban ?? '',
-      hardwareInfo: hrRecord?.hardwareInfo ?? '',
-      employeeRecordForm: hrRecord?.employeeRecordForm ?? '',
+      roleTitle: hrRecord.roleTitle ?? detailEmployee?.roleTitle ?? '',
+      salaryBreakdown: hrRecord.salaryBreakdown ?? '',
+      paymentMode: hrRecord.paymentMode ?? '',
+      bankName: hrRecord.bankName ?? '',
+      bankAccountTitle: hrRecord.bankAccountTitle ?? '',
+      bankAccountNumber: hrRecord.bankAccountNumber ?? '',
+      bankIban: hrRecord.bankIban ?? '',
+      hardwareInfo: hrRecord.hardwareInfo ?? '',
+      employeeRecordForm: hrRecord.employeeRecordForm ?? '',
     });
-  }, [detailEmployee?.roleTitle, hrRecord]);
+  }, [hrRecord, detailEmployee?.roleTitle]);
 
   useEffect(() => {
     setOnboardingDrafts(
@@ -797,7 +803,7 @@ export const EmployeeProfilePage = () => {
         roleTitle: detailEmployee.roleTitle ?? '',
       });
     }
-  }, [detailEmployee]);
+  }, [detailEmployee?.id]);
 
   const onUpdateEmployee = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -822,7 +828,7 @@ export const EmployeeProfilePage = () => {
         },
       });
       setShowEdit(false);
-      await Promise.all([refetchDetail(), refetchDetail()]);
+      await refetchDetail();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not update employee');
     }
@@ -1158,7 +1164,7 @@ export const EmployeeProfilePage = () => {
         },
       });
       setShowSeparation(false);
-      await Promise.all([refetchDetail(), refetchDetail()]);
+      await refetchDetail();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not record separation');
     }
@@ -1209,27 +1215,6 @@ export const EmployeeProfilePage = () => {
       await refetchDetail();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not save exit interview');
-    }
-  };
-
-  const onCreateLogin = async (): Promise<void> => {
-    if (!detailEmployee) return;
-    setDetailError(null);
-    try {
-      await createWorkspaceUser({
-        variables: {
-          input: {
-            email: detailEmployee?.workEmail ?? `${detailEmployee.employeeNumber}@example.com`,
-            password: 'Temp1234!',
-            employeeId: detailEmployee.id,
-            roleId: undefined,
-          },
-        },
-      });
-      setDetailError('Login created for ' + detailEmployee.employeeNumber);
-      await refetchDetail();
-    } catch (caught) {
-      setDetailError(caught instanceof Error ? caught.message : 'Could not create login');
     }
   };
 
@@ -1760,10 +1745,17 @@ export const EmployeeProfilePage = () => {
                 {hrRecordLoading ? (
                   <p className="page-subtitle">Loading private HR record…</p>
                 ) : null}
+                {hrRecordError ? (
+                  <p className="auth-error" role="alert">
+                    Could not load the private HR record — saving is disabled so the stored bank
+                    details cannot be overwritten with blanks. Refresh to try again.
+                  </p>
+                ) : null}
                 <form className="config-form compact-form" onSubmit={onSaveHrRecord}>
                   <div className="field">
                     <label htmlFor="hr-role">Role</label>
                     <input
+                      disabled={!hrRecordReady}
                       id="hr-role"
                       name="hr-role"
                       maxLength={160}
@@ -1779,6 +1771,7 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="hr-salary-breakdown">Salary breakdown</label>
                     <textarea
+                      disabled={!hrRecordReady}
                       id="hr-salary-breakdown"
                       name="hr-salary-breakdown"
                       maxLength={8000}
@@ -1794,6 +1787,7 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="hr-payment-mode">Payment mode</label>
                       <select
+                        disabled={!hrRecordReady}
                         id="hr-payment-mode"
                         name="hr-payment-mode"
                         value={hrRecordForm.paymentMode}
@@ -1814,6 +1808,7 @@ export const EmployeeProfilePage = () => {
                     <div className="field">
                       <label htmlFor="hr-bank-name">Bank</label>
                       <input
+                        disabled={!hrRecordReady}
                         id="hr-bank-name"
                         name="hr-bank-name"
                         maxLength={160}
@@ -1829,6 +1824,7 @@ export const EmployeeProfilePage = () => {
                     <div className="field">
                       <label htmlFor="hr-bank-title">Account title</label>
                       <input
+                        disabled={!hrRecordReady}
                         id="hr-bank-title"
                         name="hr-bank-title"
                         maxLength={160}
@@ -1846,6 +1842,7 @@ export const EmployeeProfilePage = () => {
                     <div className="field">
                       <label htmlFor="hr-bank-account">Account number</label>
                       <input
+                        disabled={!hrRecordReady}
                         id="hr-bank-account"
                         name="hr-bank-account"
                         maxLength={80}
@@ -1861,6 +1858,7 @@ export const EmployeeProfilePage = () => {
                     <div className="field">
                       <label htmlFor="hr-bank-iban">IBAN</label>
                       <input
+                        disabled={!hrRecordReady}
                         id="hr-bank-iban"
                         name="hr-bank-iban"
                         maxLength={80}
@@ -1877,6 +1875,7 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="hr-hardware">Hardware</label>
                     <textarea
+                      disabled={!hrRecordReady}
                       id="hr-hardware"
                       name="hr-hardware"
                       maxLength={8000}
@@ -1892,6 +1891,7 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="hr-employee-form">Employee record form</label>
                     <textarea
+                      disabled={!hrRecordReady}
                       id="hr-employee-form"
                       name="hr-employee-form"
                       maxLength={20000}
@@ -1906,7 +1906,7 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <button
                     className="button button-secondary"
-                    disabled={savingHrRecord}
+                    disabled={savingHrRecord || !hrRecordReady}
                     type="submit"
                   >
                     <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -2845,9 +2845,18 @@ export const EmployeeProfilePage = () => {
           {tab === 'lifecycle' ? (
             <>
             <DetailSection title="Access">
-              <p className="page-subtitle">Create a login for this employee or manage their account.</p>
-              <button className="button button-secondary" type="button" onClick={() => void onCreateLogin()} disabled={creatingWorkspaceUser}>
-                {creatingWorkspaceUser ? 'Creating…' : 'Create login'}
+              <p className="page-subtitle">
+                Logins are provisioned through the workspace invitation flow. Invitations
+                (one-time setup links by email) are not available yet, so login creation is
+                disabled for now.
+              </p>
+              <button
+                className="button button-secondary"
+                type="button"
+                disabled
+                title="Available once the invitation flow ships"
+              >
+                Create login
               </button>
             </DetailSection>
             <DetailSection title="Separation">

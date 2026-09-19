@@ -26,6 +26,7 @@ import {
 import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
+import { useAsyncAction } from '../../../hooks/useAsyncAction';
 import { useTheme } from '../../../providers/theme/useTheme';
 import {
   INTERVIEWS_QUERY,
@@ -134,6 +135,9 @@ export const InterviewsPage = () => {
   });
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
   const [feedbackNote, setFeedbackNote] = useState('');
+  // Pending/error bookkeeping for fire-and-forget actions (row status changes,
+  // outcome selects, feedback withdrawal, refresh).
+  const rowAction = useAsyncAction();
 
   const selected = interviews.find((entry) => entry.id === selectedId) ?? null;
 
@@ -303,6 +307,10 @@ export const InterviewsPage = () => {
     await refetch();
   };
 
+  const runRowAction = (action: () => Promise<void>, fallbackMessage: string): void => {
+    void rowAction.run(action, fallbackMessage);
+  };
+
   return (
     <section className="list-with-panel">
       <section className="hiring-content" aria-labelledby="interviews-title">
@@ -320,7 +328,11 @@ export const InterviewsPage = () => {
               <button
                 aria-label="Refresh interviews"
                 className="icon-button"
-                onClick={() => void refetch()}
+                onClick={() =>
+                  runRowAction(async () => {
+                    await refetch();
+                  }, 'Could not refresh interviews')
+                }
                 type="button"
               >
                 <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -339,6 +351,12 @@ export const InterviewsPage = () => {
             </button>
           </div>
         </header>
+
+        {rowAction.error ? (
+          <p className="auth-error" role="alert">
+            {rowAction.error}
+          </p>
+        ) : null}
 
         <section className="table-shell" aria-label="Interviews">
           <ViewBar
@@ -533,14 +551,22 @@ export const InterviewsPage = () => {
                 <>
                   <button
                     className="button button-secondary"
-                    onClick={() => void onStatus(selected, 'completed')}
+                    onClick={() =>
+                      runRowAction(async () => {
+                        await onStatus(selected, 'completed');
+                      }, 'Could not update the interview')
+                    }
                     type="button"
                   >
                     Mark completed
                   </button>
                   <button
                     className="button button-secondary"
-                    onClick={() => void onStatus(selected, 'cancelled')}
+                    onClick={() =>
+                      runRowAction(async () => {
+                        await onStatus(selected, 'cancelled');
+                      }, 'Could not update the interview')
+                    }
                     type="button"
                   >
                     Cancel
@@ -554,7 +580,9 @@ export const InterviewsPage = () => {
                   name="interview-outcome"
                   value={selected.outcome ?? ''}
                   onChange={(event) =>
-                    void onOutcome(selected, event.target.value as InterviewOutcome)
+                    runRowAction(async () => {
+                      await onOutcome(selected, event.target.value as InterviewOutcome);
+                    }, 'Could not update the outcome')
                   }
                 >
                   <option value="">Set outcome…</option>
@@ -600,7 +628,11 @@ export const InterviewsPage = () => {
                           ) : null}
                           <button
                             className="button button-secondary"
-                            onClick={() => void onWithdraw(feedback)}
+                            onClick={() =>
+                            runRowAction(async () => {
+                              await onWithdraw(feedback);
+                            }, 'Could not withdraw the feedback')
+                          }
                             type="button"
                           >
                             Withdraw
