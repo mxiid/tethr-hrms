@@ -63,8 +63,11 @@ const configObjectSchema = z.object({
 
   // Auth boundary throttles (ten-minute windows): login per email+IP and
   // signup per IP. The login limiter also bounds the scrypt work an attacker
-  // can demand; the per-request candidate cap bounds it further.
+  // can demand; the per-request candidate cap bounds it further. The IP
+  // admission limit runs first so one source cannot mint unlimited distinct
+  // email keys and exhaust the shared rate-limit map.
   AUTH_LOGIN_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(10),
+  AUTH_LOGIN_IP_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(30),
   AUTH_SIGNUP_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(5),
 
   GRAPHQL_PLAYGROUND: envBoolean(false),

@@ -78,10 +78,20 @@ export class AccountResolver {
     @Args('input') input: LoginInput,
     @Context() context: GraphqlContext,
   ): Promise<LoginResult> {
+    const address = clientAddress(context);
+    // Admission limit per client address FIRST: the email+IP key below is
+    // distinct per email, so without this one source could mint thousands of
+    // keys with different emails and exhaust the shared map (CWE-400).
+    this.rateLimiter.consume(
+      `login-ip:${address}`,
+      this.config.get('AUTH_LOGIN_IP_LIMIT_PER_10_MIN'),
+      RATE_LIMIT_WINDOW_MS,
+      'Too many sign-in attempts — please try again later.',
+    );
     // Throttled per email+IP: bounds both brute force and the scrypt work a
     // caller can demand (TET-214).
     this.rateLimiter.consume(
-      `login:${input.email.toLowerCase()}:${clientAddress(context)}`,
+      `login:${input.email.toLowerCase()}:${address}`,
       this.config.get('AUTH_LOGIN_LIMIT_PER_10_MIN'),
       RATE_LIMIT_WINDOW_MS,
       'Too many sign-in attempts — please try again later.',

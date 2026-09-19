@@ -26,7 +26,9 @@ CodeRabbit's review of PR #12 posted 12 findings (11 inline + 1 outside-diff; Gr
 
 **Skipped with reason.** The five-candidate scrypt cap can exclude a valid account when an email belongs to more than five workspaces — the interim mitigation is deliberate and user-approved, and the proper fix (Slack-style workspace-first login) is filed as TET-252 under TET-180. The thread was answered with that reference.
 
-**Verification.** Gates **376 API / 36 shared / 11 UI / 13 web / 7 worker tests** (2 worker specs skipped), lint 0 errors, typecheck/build clean.
+**Second round.** CodeRabbit re-reviewed the fixes and raised two rate-limiter points. Fixed: a per-client-address admission limit now runs before the email-specific consume (`login-ip:<address>`, `AUTH_LOGIN_IP_LIMIT_PER_10_MIN` default 30), so one source cannot mint unlimited distinct email keys and exhaust the shared map. Deferred with a ticket: the counters are process-local, so limits do not hold across multiple API processes or restarts — moving them to shared atomic TTL storage (Redis) is an architecture-level change and is filed as TET-253 under TET-180.
+
+**Verification.** Gates **378 API / 36 shared / 11 UI / 13 web / 7 worker tests** (2 worker specs skipped), lint 0 errors, typecheck/build clean. The session-expiry path was re-verified in the browser after the Jotai-store fix: a revoked session gets `UNAUTHENTICATED` on its next queries and the shell redirects to `/login`.
 
 ## Reliability phase 2: worker, queue, outbox (2026-09-18, TET-187)
 
