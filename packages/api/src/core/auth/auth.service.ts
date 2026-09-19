@@ -122,23 +122,12 @@ export class AuthService {
     });
   }
 
-  // Public-facing precheck for signup: does any workspace already have an
-  // account for this email? Deliberately returns only a boolean — never org
-  // names or a count — so an unauthenticated caller can't enumerate which
-  // companies exist or who's registered where.
-  async emailIsAlreadyRegistered(email: string): Promise<boolean> {
-    const count = await this.userRepository.count({
-      where: { email: email.toLowerCase() } as FindOptionsWhere<User>,
-    });
-    return count > 0;
-  }
-
-  // Same cross-tenant lookup, same trust boundary (boolean-only, no org
-  // names) as emailIsAlreadyRegistered — but a narrower question: has this
-  // email specifically FOUNDED a workspace before, not just joined one as an
-  // invited member. Backs the one-self-serve-workspace-per-person cap.
-  // A caller inside its own transaction (signUp, behind the email advisory
-  // lock) passes the manager so the count sees the same snapshot as its writes.
+  // Same cross-tenant lookup as findVerifiedUsers / hasOtherWorkspaces — but a
+  // narrower question: has this email specifically FOUNDED a workspace before,
+  // not just joined one as an invited member. Backs the one-self-serve-
+  // workspace-per-person cap. A caller inside its own transaction (signUp,
+  // behind the email advisory lock) passes the manager so the count sees the
+  // same snapshot as its writes.
   async hasCreatedWorkspace(email: string, manager?: EntityManager): Promise<boolean> {
     const where = {
       email: email.toLowerCase(),
@@ -227,13 +216,12 @@ export class AuthService {
     return user;
   }
 
-  // Powers the header's workspace switcher: is it worth showing at all? Unlike
-  // emailIsAlreadyRegistered (unauthenticated, boolean-only, never org names —
-  // see that method) this is scoped to the CALLER'S OWN email, so confirming
-  // "yes, you have other accounts" leaks nothing beyond what they already
-  // know. It still never reveals which orgs or their names — that only ever
-  // comes from re-verifying a password via login (findVerifiedUsers), so an
-  // org with a different password is never confirmed to exist either way.
+  // Powers the header's workspace switcher: is it worth showing at all? Scoped
+  // to the CALLER'S OWN email, so confirming "yes, you have other accounts"
+  // leaks nothing beyond what they already know. It never reveals which orgs
+  // or their names — that only ever comes from re-verifying a password via
+  // login (findVerifiedUsers), so an org with a different password is never
+  // confirmed to exist either way.
   async hasOtherWorkspaces(): Promise<boolean> {
     const current = await this.getCurrentUser();
     const count = await this.userRepository.count({

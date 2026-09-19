@@ -117,11 +117,14 @@ const requireSupabaseStorage = (
     }
   }
   // Production must state its browser origins explicitly: reflecting any
-  // origin with credentials is a session-hijack surface (TET-215).
-  if (
-    config.NODE_ENV === 'production' &&
-    (config.CORS_ORIGINS === undefined || config.CORS_ORIGINS.trim().length === 0)
-  ) {
+  // origin with credentials is a session-hijack surface (TET-215). A
+  // delimiter-only value (`CORS_ORIGINS=,`) is as empty as an unset one —
+  // parseCorsOrigins would return [] and every browser request would fail.
+  const corsOrigins = (config.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  if (config.NODE_ENV === 'production' && corsOrigins.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['CORS_ORIGINS'],

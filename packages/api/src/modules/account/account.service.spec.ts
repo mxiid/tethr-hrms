@@ -91,6 +91,7 @@ const buildService = () => {
   } as unknown as AuthorizationService;
   const tenantContext = {
     run: jest.fn((_context: unknown, callback: () => unknown) => callback()),
+    getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
   } as unknown as TenantContextService;
   const manager = {
     query: jest.fn().mockResolvedValue(undefined),
@@ -271,5 +272,45 @@ describe('AccountService', () => {
       { organizationId: ORGANIZATION, organizationName: 'Acme' },
     ]);
     expect(organizationService.getById).toHaveBeenCalledTimes(2);
+  });
+
+  describe('createWorkspaceUser', () => {
+    it('creates the user and its role in one transaction', async () => {
+      const { service, authService, authorization, manager, dataSource } = buildService();
+
+      const created = await service.createWorkspaceUser({
+        email: 'new@acme.test',
+        password: 'password123',
+        employeeId: null,
+        roleKey: 'clientMember',
+      });
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(authService.createUser).toHaveBeenCalledWith(
+        { email: 'new@acme.test', password: 'password123', employeeId: null },
+        manager,
+      );
+      expect(authorization.assignSystemRole).toHaveBeenCalledWith(
+        created.id,
+        'clientMember',
+        manager,
+      );
+    });
+
+    it('translates a duplicate-email race into a domain conflict', async () => {
+      const { service, authService } = buildService();
+      (authService.createUser as jest.Mock).mockRejectedValueOnce({
+        driverError: { code: '23505' },
+      });
+
+      await expect(
+        service.createWorkspaceUser({
+          email: 'taken@acme.test',
+          password: 'password123',
+          employeeId: null,
+          roleKey: 'clientMember',
+        }),
+      ).rejects.toThrow(/already exists/);
+    });
   });
 });

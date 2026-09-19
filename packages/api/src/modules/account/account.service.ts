@@ -298,29 +298,39 @@ export class AccountService {
 
   // Provision a login for an employee/member in the CURRENT tenant. The
   // employee link is validated by the caller (EmployeeLinkGuard) before it
-  // reaches here; the unique (organizationId, email) index is the race backstop
-  // and surfaces as a domain conflict instead of a raw 500 (TET-216).
+  // reaches here; the user row and its role assignment commit together, so a
+  // failure cannot leave a role-less login holding the unique
+  // (organizationId, email) slot. The unique index is the race backstop and
+  // surfaces as a domain conflict instead of a raw 500 (TET-216).
   async createWorkspaceUser(input: CreateWorkspaceUserData): Promise<User> {
     const organizationId = this.tenantContext.getOrganizationId();
-    const user = await this.tenantContext.run({ organizationId, userId: null }, async () => {
-      try {
-        const created = await this.authService.createUser({
+    try {
+      return await this.dataSource.transaction((manager) =>
+        this.tenantContext.run({ organizationId, userId: null }, async () => {
+          const created = await this.authService.createUser(
+            {
+              email: input.email,
+              password: input.password,
+              employeeId: input.employeeId ?? null,
+            },
+            manager,
+          );
+          await this.authorization.assignSystemRole(
+            toId<UserId>(created.id),
+            input.roleKey,
+            manager,
+          );
+          return created;
+        }),
+      );
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictError('A login already exists for that email in this workspace', {
           email: input.email,
-          password: input.password,
-          employeeId: input.employeeId ?? null,
         });
-        await this.authorization.assignSystemRole(toId<UserId>(created.id), input.roleKey);
-        return created;
-      } catch (error) {
-        if (isUniqueViolation(error)) {
-          throw new ConflictError('A login already exists for that email in this workspace', {
-            email: input.email,
-          });
-        }
-        throw error;
       }
-    });
-    return user;
+      throw error;
+    }
   }
 
   // Change a workspace user's role and (optionally) their employee link. The

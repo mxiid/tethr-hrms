@@ -48,6 +48,13 @@ describe('loadConfig', () => {
       SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
     };
     expect(() => loadConfig(productionEnv as NodeJS.ProcessEnv)).toThrow(/CORS_ORIGINS/);
+    // Delimiter-only values are as empty as an unset one.
+    expect(() =>
+      loadConfig({ ...productionEnv, CORS_ORIGINS: ',' } as NodeJS.ProcessEnv),
+    ).toThrow(/CORS_ORIGINS/);
+    expect(() =>
+      loadConfig({ ...productionEnv, CORS_ORIGINS: ' , , ' } as NodeJS.ProcessEnv),
+    ).toThrow(/CORS_ORIGINS/);
 
     const config = loadConfig({
       ...productionEnv,
