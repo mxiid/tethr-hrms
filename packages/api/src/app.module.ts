@@ -64,6 +64,10 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
         autoSchemaFile: true,
         sortSchema: true,
         playground: config.get('GRAPHQL_PLAYGROUND'),
+        // Introspection is a separate switch: off in production unless the
+        // environment explicitly opts in (TET-215).
+        introspection:
+          config.get('GRAPHQL_INTROSPECTION') || config.get('NODE_ENV') !== 'production',
         context: ({ req }: { req: unknown }) => ({ req }),
       }),
     }),

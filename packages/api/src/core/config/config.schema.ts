@@ -59,6 +59,14 @@ const configObjectSchema = z.object({
   AUTH_SIGNUP_LIMIT_PER_10_MIN: z.coerce.number().int().positive().default(5),
 
   GRAPHQL_PLAYGROUND: envBoolean(false),
+  // Introspection defaults to the playground's visibility: on in development
+  // (where the playground is a tool), off in production unless explicitly
+  // enabled. Tools like GraphQL Codegen can still run against dev.
+  GRAPHQL_INTROSPECTION: envBoolean(false),
+
+  // Browser origins allowed to call the API. Comma-separated; unset keeps the
+  // Vite dev origins in development and refuses to boot in production.
+  CORS_ORIGINS: z.string().optional(),
 
   // Object storage. 'supabase' is the real driver; 'local' writes to disk under
   // the API's working directory and exists so development can exercise the real
@@ -98,6 +106,18 @@ const requireSupabaseStorage = (
         });
       }
     }
+  }
+  // Production must state its browser origins explicitly: reflecting any
+  // origin with credentials is a session-hijack surface (TET-215).
+  if (
+    config.NODE_ENV === 'production' &&
+    (config.CORS_ORIGINS === undefined || config.CORS_ORIGINS.trim().length === 0)
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['CORS_ORIGINS'],
+      message: 'CORS_ORIGINS is required in production (comma-separated allowed origins)',
+    });
   }
 };
 

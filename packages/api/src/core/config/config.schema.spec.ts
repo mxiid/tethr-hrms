@@ -38,4 +38,27 @@ describe('loadConfig', () => {
     expect(config.DATABASE_SYNCHRONIZE).toBe(false);
     expect(config.DATABASE_LOGGING).toBe(true);
   });
+
+  it('requires explicit CORS origins in production', () => {
+    const productionEnv = {
+      ...validEnv,
+      NODE_ENV: 'production',
+      STORAGE_DRIVER: 'supabase',
+      SUPABASE_URL: 'https://project.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+    };
+    expect(() => loadConfig(productionEnv as NodeJS.ProcessEnv)).toThrow(/CORS_ORIGINS/);
+
+    const config = loadConfig({
+      ...productionEnv,
+      CORS_ORIGINS: 'https://app.example.com',
+    } as NodeJS.ProcessEnv);
+    expect(config.CORS_ORIGINS).toBe('https://app.example.com');
+  });
+
+  it('defaults introspection off', () => {
+    const config = loadConfig(validEnv as NodeJS.ProcessEnv);
+    expect(config.GRAPHQL_INTROSPECTION).toBe(false);
+    expect(config.GRAPHQL_PLAYGROUND).toBe(false);
+  });
 });
