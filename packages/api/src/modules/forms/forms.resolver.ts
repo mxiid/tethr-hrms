@@ -1,10 +1,8 @@
 import { toId, type FormFieldType, type FormId, type OrganizationId } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { FormTokenService } from '../../core/auth/form-token.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { CreateFormDefinitionInput, FormLinkInput } from './dto/form.inputs';
@@ -23,14 +21,12 @@ export class FormsResolver {
   ) {}
 
   @Query(() => [FormDefinitionView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.formManage)
   async formDefinitions(): Promise<FormDefinitionView[]> {
     return (await this.forms.listForms()).map(toFormDefinitionView);
   }
 
   @Mutation(() => FormDefinitionView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.formManage)
   async createFormDefinition(
     @Args('input') input: CreateFormDefinitionInput,
@@ -56,14 +52,12 @@ export class FormsResolver {
   // Seeds the standard application form (the form builder's first consumer) in
   // the caller's workspace; idempotent, so a posting can call it every time.
   @Mutation(() => FormDefinitionView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.formManage)
   async ensureApplicationFormDefinition(): Promise<FormDefinitionView> {
     return toFormDefinitionView(await this.forms.ensureApplicationForm());
   }
 
   @Mutation(() => FormLinkView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.formManage)
   async createFormLink(@Args('input') input: FormLinkInput): Promise<FormLinkView> {
     const record = await this.forms.getPublicForm(toId<FormId>(input.formDefinitionId));

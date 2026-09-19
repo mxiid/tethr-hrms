@@ -1,4 +1,3 @@
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { AuthPayload } from '../../core/auth/dto/auth-payload.output';
@@ -6,7 +5,7 @@ import { toCurrentUserView } from '../../core/auth/dto/current-user.output';
 import { LoginInput } from '../../core/auth/dto/login.input';
 import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { Public } from '../../core/authz/public.decorator';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 import { toClientView } from '../clients/dto/client.output';
 import { toWorkspaceSummaryView } from '../organization/dto/workspace-summary.output';
@@ -25,6 +24,7 @@ export class AccountResolver {
   ) {}
 
   @Mutation(() => AuthPayload)
+  @Public()
   async signUp(@Args('input') input: SignUpInput): Promise<AuthPayload> {
     const { user, token } = await this.accountService.signUp({
       organizationName: input.organizationName,
@@ -42,6 +42,7 @@ export class AccountResolver {
   // candidate organization's display name for the picker — an Organization
   // (modules) read that core is not allowed to depend on.
   @Mutation(() => LoginResult)
+  @Public()
   async login(@Args('input') input: LoginInput): Promise<LoginResult> {
     const outcome = await this.accountService.login(input.email, input.password);
     if (outcome.kind === 'authenticated') {
@@ -63,6 +64,7 @@ export class AccountResolver {
   // Public precheck, same trust boundary as signUp/login: workspace names ARE
   // unique now, so this predicts the real create()-time check exactly.
   @Query(() => Boolean)
+  @Public()
   legalNameIsAlreadyUsed(@Args('legalName') legalName: string): Promise<boolean> {
     return this.accountService.legalNameIsAlreadyUsed(legalName);
   }
@@ -71,12 +73,12 @@ export class AccountResolver {
   // this email already founded a workspace (as opposed to merely being a
   // member of one)? Same boolean-only trust boundary as the two checks above.
   @Query(() => Boolean)
+  @Public()
   hasCreatedWorkspace(@Args('email') email: string): Promise<boolean> {
     return this.accountService.hasCreatedWorkspace(email);
   }
 
   @Mutation(() => OnboardClientPayload)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.clientManage)
   async onboardClient(@Args('input') input: OnboardClientInput): Promise<OnboardClientPayload> {
     const { client, workspace, initialAdmin, initialHrAdmin } =
@@ -110,6 +112,7 @@ export class AccountResolver {
   // session (getCurrentUser throws without one) but no extra permission — a
   // user may always see and enter their own accounts.
   @Query(() => [WorkspaceOption])
+  @Public()
   async switchableWorkspaces(): Promise<WorkspaceOption[]> {
     const workspaces = await this.accountService.listSwitchableWorkspaces();
     return workspaces.map((workspace) => ({
@@ -121,6 +124,7 @@ export class AccountResolver {
   // Enter another of the caller's workspaces without re-entering a password —
   // the current valid session is the authority (see AccountService).
   @Mutation(() => AuthPayload)
+  @Public()
   async switchWorkspace(
     @Args('organizationId', { type: () => ID }) organizationId: string,
   ): Promise<AuthPayload> {

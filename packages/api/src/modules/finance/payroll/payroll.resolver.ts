@@ -6,13 +6,11 @@ import {
   type PayrollRunId,
   type TaxSlabGroupId,
 } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../../common/errors';
 import { AuthService } from '../../../core/auth/auth.service';
 import { PERMISSIONS } from '../../../core/authz/permissions';
-import { PermissionsGuard } from '../../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../../core/authz/require-permissions.decorator';
 import { ConfigService } from '../../../core/config/config.service';
 
@@ -239,14 +237,12 @@ export class PayrollResolver {
   // --- Runs (finance) ---
 
   @Query(() => [PayrollRunView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async payrollRuns(): Promise<PayrollRunView[]> {
     return (await this.runService.listRuns()).map(toRunView);
   }
 
   @Query(() => PayrollRunView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async payrollRun(
     @Args('runId', { type: () => ID }) runId: string,
@@ -256,7 +252,6 @@ export class PayrollResolver {
   }
 
   @Query(() => PayrollReadinessView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async payrollReadiness(
     @Args('periodYear', { type: () => Number }) periodYear: number,
@@ -268,7 +263,6 @@ export class PayrollResolver {
   // One employee's readiness, for the record's Pay tab (avoids a tenant-wide
   // computation just to render one person).
   @Query(() => EmployeePayrollReadinessView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async employeePayrollReadiness(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -291,7 +285,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => PayrollRunView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollWrite)
   async createPayrollRun(@Args('input') input: CreatePayrollRunInput): Promise<PayrollRunView> {
     const run = await this.runService.createRun({
@@ -306,7 +299,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => PayrollRunView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollWrite)
   async regeneratePayrollRun(
     @Args('runId', { type: () => ID }) runId: string,
@@ -317,7 +309,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => PayrollRunView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollWrite)
   async updatePayrollRunLine(
     @Args('input') input: UpdatePayrollRunLineInput,
@@ -334,7 +325,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => PayrollRunView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollWrite)
   async removePayrollRunLine(
     @Args('lineId', { type: () => ID }) lineId: string,
@@ -346,7 +336,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => PayrollRunView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollFinalize)
   async finalizePayrollRun(@Args() args: FinalizePayrollRunArgs): Promise<PayrollRunView> {
     const user = await this.authService.getCurrentUser();
@@ -363,7 +352,6 @@ export class PayrollResolver {
   }
 
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async bankAdviceCsv(
     @Args('runId', { type: () => ID }) runId: string,
@@ -372,7 +360,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => PayrollRunView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollFinalize)
   async markPayrollRunPaid(
     @Args('runId', { type: () => ID }) runId: string,
@@ -390,7 +377,6 @@ export class PayrollResolver {
   // --- Final settlement ---
 
   @Query(() => FinalSettlementView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async finalSettlement(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -402,7 +388,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => FinalSettlementView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollFinalize)
   async computeFinalSettlement(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -417,7 +402,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => FinalSettlementView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollFinalize)
   async markFinalSettlementPaid(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -435,7 +419,6 @@ export class PayrollResolver {
   // --- Payslips ---
 
   @Query(() => [PayslipView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payslipOwnRead)
   async myPayslips(): Promise<PayslipView[]> {
     const user = await this.authService.getCurrentUser();
@@ -449,7 +432,6 @@ export class PayrollResolver {
   }
 
   @Query(() => PayslipView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payslipOwnRead)
   async myPayslip(
     @Args('payslipId', { type: () => ID }) payslipId: string,
@@ -466,7 +448,6 @@ export class PayrollResolver {
   }
 
   @Query(() => PayslipView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payslipRead)
   async payslip(
     @Args('payslipId', { type: () => ID }) payslipId: string,
@@ -476,7 +457,6 @@ export class PayrollResolver {
   }
 
   @Query(() => [PayslipView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async employeePayslips(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -487,7 +467,6 @@ export class PayrollResolver {
   }
 
   @Query(() => [PayslipView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async runPayslips(
     @Args('runId', { type: () => ID }) runId: string,
@@ -507,7 +486,6 @@ export class PayrollResolver {
   }
 
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payslipRead)
   async payslipPdf(@Args('payslipId', { type: () => ID }) payslipId: string): Promise<string> {
     return this.renderPayslipPdfBase64(payslipId);
@@ -515,7 +493,6 @@ export class PayrollResolver {
 
   // Self-service variant: the payslip must belong to the signed-in employee.
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payslipOwnRead)
   async myPayslipPdf(@Args('payslipId', { type: () => ID }) payslipId: string): Promise<string> {
     const user = await this.authService.getCurrentUser();
@@ -532,7 +509,6 @@ export class PayrollResolver {
   // --- Tax configuration ---
 
   @Query(() => [TaxSlabGroupView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async taxSlabGroups(): Promise<TaxSlabGroupView[]> {
     const groups = await this.taxConfig.listGroups();
@@ -540,7 +516,6 @@ export class PayrollResolver {
   }
 
   @Query(() => TaxSlabGroupView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollRead)
   async taxSlabGroup(
     @Args('groupId', { type: () => ID }) groupId: string,
@@ -555,7 +530,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => TaxSlabGroupView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollWrite)
   async createTaxSlabGroup(
     @Args('input') input: CreateTaxSlabGroupInput,
@@ -569,7 +543,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => [TaxSlabView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollWrite)
   async replaceTaxSlabs(@Args() args: ReplaceTaxSlabsArgs): Promise<TaxSlabView[]> {
     const slabs = await this.taxConfig.replaceSlabs(
@@ -584,7 +557,6 @@ export class PayrollResolver {
   }
 
   @Mutation(() => TaxSlabGroupView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.payrollFinalize)
   async activateTaxSlabGroup(
     @Args('groupId', { type: () => ID }) groupId: string,

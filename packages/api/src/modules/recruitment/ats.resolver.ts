@@ -1,10 +1,8 @@
 import { toId, type HiringRequestId, type JobPostingId, type OrganizationId } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { FormTokenService } from '../../core/auth/form-token.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { AtsService } from './ats.service';
@@ -39,7 +37,6 @@ export class AtsResolver {
   ) {}
 
   @Query(() => [CandidateView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateRead)
   async candidates(): Promise<CandidateView[]> {
     const [candidates, applications] = await Promise.all([
@@ -54,7 +51,6 @@ export class AtsResolver {
   }
 
   @Query(() => CandidateDetailView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateRead)
   async candidate(@Args('id', { type: () => ID }) id: string): Promise<CandidateDetailView> {
     const candidate = await this.ats.getCandidate(toId(id));
@@ -66,7 +62,6 @@ export class AtsResolver {
   }
 
   @Query(() => [JobPostingView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateRead)
   async jobPostings(): Promise<JobPostingView[]> {
     return (await this.ats.listPostings()).map((posting) => this.toPostingView(posting));
@@ -74,7 +69,6 @@ export class AtsResolver {
 
   // Applications for one posting: what the shortlist builder ranks from.
   @Query(() => [ApplicationView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateRead)
   async postingApplications(
     @Args('jobPostingId', { type: () => ID }) jobPostingId: string,
@@ -84,7 +78,6 @@ export class AtsResolver {
 
   // Applications ready for scheduling (shortlisted / interviewing).
   @Query(() => [ApplicationView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateRead)
   async shortlistReadyApplications(): Promise<ApplicationView[]> {
     return this.toApplicationViews(await this.ats.shortlistReadyApplications());
@@ -93,7 +86,6 @@ export class AtsResolver {
   // Publishes the client's request as a posting and returns the signed apply
   // link in one step — the operator's whole "go live" action.
   @Mutation(() => PublishedPostingView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.hiringRequestManage)
   async publishHiringRequest(
     @Args('input') input: PublishHiringRequestInput,
@@ -113,7 +105,6 @@ export class AtsResolver {
   // request does this automatically; this is the manual lever (and the only one
   // for a client-cancelled request, whose posting lives in Tethr's workspace).
   @Mutation(() => JobPostingView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.hiringRequestManage)
   async unpublishJobPosting(
     @Args('postingId', { type: () => ID }) postingId: string,
@@ -125,7 +116,6 @@ export class AtsResolver {
   // operator panel shows the truth after a reload — the signed apply link is
   // re-minted from the posting, never stored.
   @Query(() => JobPostingView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.hiringRequestManage)
   async postingForRequest(
     @Args('hiringRequestId', { type: () => ID }) hiringRequestId: string,
@@ -151,7 +141,6 @@ export class AtsResolver {
   }
 
   @Mutation(() => CandidateView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async createCandidate(@Args('input') input: CreateCandidateInput): Promise<CandidateView> {
     const candidate = await this.ats.createCandidate({
@@ -166,7 +155,6 @@ export class AtsResolver {
   }
 
   @Mutation(() => ApplicationView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async updateApplication(
     @Args('input') input: UpdateApplicationInput,

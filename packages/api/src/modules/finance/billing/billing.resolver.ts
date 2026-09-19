@@ -1,4 +1,4 @@
-﻿import {
+import {
   toId,
   type BillingGroupId,
   type EmployeeId,
@@ -6,12 +6,10 @@
   type InvoiceLineKind,
   type IsoDate,
 } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../../common/errors';
 import { PERMISSIONS } from '../../../core/authz/permissions';
-import { PermissionsGuard } from '../../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../../core/authz/require-permissions.decorator';
 import { EmployeeDirectoryService } from '../../employee';
 
@@ -154,14 +152,12 @@ export class BillingResolver {
   // --- Configuration & groups (finance) ---
 
   @Query(() => ClientBillingConfigView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async billingConfig(): Promise<ClientBillingConfigView> {
     return toConfigView(await this.invoicesService.getConfig());
   }
 
   @Mutation(() => ClientBillingConfigView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async updateBillingConfig(
     @Args('input') input: UpdateBillingConfigInput,
@@ -170,7 +166,6 @@ export class BillingResolver {
   }
 
   @Query(() => [BillingGroupView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async billingGroups(): Promise<BillingGroupView[]> {
     const groups = await this.invoicesService.listGroups();
@@ -182,7 +177,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => BillingGroupView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async createBillingGroup(
     @Args('input') input: CreateBillingGroupInput,
@@ -191,7 +185,6 @@ export class BillingResolver {
   }
 
   @Query(() => [BillingMemberView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async billingMembers(
     @Args('groupId', { type: () => ID, nullable: true }) groupId?: string,
@@ -211,7 +204,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => BillingMemberView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async setBillingMember(@Args('input') input: SetBillingMemberInput): Promise<BillingMemberView> {
     const member = await this.invoicesService.setMember({
@@ -229,7 +221,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => Boolean)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async removeBillingMember(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -241,7 +232,6 @@ export class BillingResolver {
   // --- Invoices ---
 
   @Query(() => [InvoiceView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async invoices(): Promise<InvoiceView[]> {
     const [invoices, groups] = await Promise.all([
@@ -255,7 +245,6 @@ export class BillingResolver {
 
   // Client-portal read path: issued and paid only.
   @Query(() => [InvoiceView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingOwnRead)
   async clientInvoices(): Promise<InvoiceView[]> {
     const [invoices, groups] = await Promise.all([
@@ -268,7 +257,6 @@ export class BillingResolver {
   }
 
   @Query(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async invoice(
     @Args('invoiceId', { type: () => ID }) invoiceId: string,
@@ -278,7 +266,6 @@ export class BillingResolver {
   }
 
   @Query(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingOwnRead)
   async clientInvoice(
     @Args('invoiceId', { type: () => ID }) invoiceId: string,
@@ -293,7 +280,6 @@ export class BillingResolver {
   // Client-portal spend view: per-employee cost and a period trend across
   // issued/paid invoices (plan Phase 4 #28).
   @Query(() => ClientCostBreakdownView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingOwnRead)
   async clientCostBreakdown(): Promise<ClientCostBreakdownView> {
     const breakdown = await this.invoicesService.getClientCostBreakdown();
@@ -307,7 +293,6 @@ export class BillingResolver {
 
   // Month-by-month view of invoiced salary vs actual payroll cost (finance).
   @Query(() => [BillingReconciliationPeriodView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async billingReconciliation(): Promise<BillingReconciliationPeriodView[]> {
     const periods = await this.invoicesService.listReconciliation();
@@ -317,7 +302,6 @@ export class BillingResolver {
   // Manual re-trigger of the auto-drafter for a finalized run (the event
   // consumer normally does this; useful for retries and backfills).
   @Mutation(() => [InvoiceView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async draftInvoicesFromRun(
     @Args('runId', { type: () => ID }) runId: string,
@@ -330,7 +314,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async openExpensesInvoice(@Args() args: OpenExpensesInvoiceArgs): Promise<InvoiceView> {
     const invoice = await this.invoicesService.openDraftExpensesInvoice(
@@ -343,7 +326,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async addInvoiceLine(@Args('input') input: AddInvoiceLineInput): Promise<InvoiceView> {
     await this.invoicesService.addDraftLine(toId<InvoiceId>(input.invoiceId), {
@@ -358,7 +340,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async updateInvoiceLine(@Args('input') input: UpdateInvoiceLineInput): Promise<InvoiceView> {
     const line = await this.invoicesService.updateDraftLine({
@@ -371,7 +352,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async removeInvoiceLine(
     @Args('lineId', { type: () => ID }) lineId: string,
@@ -382,7 +362,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async issueInvoice(
     @Args('invoiceId', { type: () => ID }) invoiceId: string,
@@ -392,7 +371,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async markInvoicePaid(@Args() args: MarkInvoicePaidArgs): Promise<InvoiceView> {
     await this.invoicesService.markInvoicePaid({
@@ -404,7 +382,6 @@ export class BillingResolver {
   }
 
   @Mutation(() => InvoiceView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async voidInvoice(
     @Args('invoiceId', { type: () => ID }) invoiceId: string,
@@ -443,14 +420,12 @@ export class BillingResolver {
   }
 
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async invoicePdf(@Args('invoiceId', { type: () => ID }) invoiceId: string): Promise<string> {
     return this.renderInvoicePdfBase64(invoiceId, 'invoice');
   }
 
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async invoiceAddendumPdf(
     @Args('invoiceId', { type: () => ID }) invoiceId: string,
@@ -468,14 +443,12 @@ export class BillingResolver {
   }
 
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingOwnRead)
   async clientInvoicePdf(@Args('invoiceId', { type: () => ID }) invoiceId: string): Promise<string> {
     return this.renderClientPdfBase64(invoiceId, 'invoice');
   }
 
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingOwnRead)
   async clientInvoiceAddendumPdf(
     @Args('invoiceId', { type: () => ID }) invoiceId: string,

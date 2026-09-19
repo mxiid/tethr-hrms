@@ -6,13 +6,11 @@ import {
   type OrganizationId,
   type UserId,
 } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { CreateHiringRequestInput } from './dto/create-hiring-request.input';
@@ -87,7 +85,6 @@ export class RecruitmentResolver {
   ) {}
 
   @Query(() => [HiringRequestView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.hiringRequestRead)
   async hiringRequests(): Promise<HiringRequestView[]> {
     const audience = { forClient: await this.isClientCaller() };
@@ -99,7 +96,6 @@ export class RecruitmentResolver {
   // The platform board: every client workspace plus Tethr's own. The service
   // enforces kind + platform:read-all; the guard here is the permission half.
   @Query(() => [ClientHiringRequestView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.platformReadAll)
   async clientHiringRequests(): Promise<ClientHiringRequestView[]> {
     const records: ClientHiringRequestRecord[] =
@@ -112,7 +108,6 @@ export class RecruitmentResolver {
   }
 
   @Mutation(() => HiringRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.hiringRequestWrite)
   async createHiringRequest(
     @Args('input') input: CreateHiringRequestInput,
@@ -146,7 +141,6 @@ export class RecruitmentResolver {
   }
 
   @Mutation(() => HiringRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.hiringRequestManage)
   async updateHiringRequest(
     @Args('input') input: UpdateHiringRequestInput,

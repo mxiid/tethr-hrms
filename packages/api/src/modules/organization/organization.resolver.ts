@@ -1,9 +1,8 @@
-import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../common/errors';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { Public } from '../../core/authz/public.decorator';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 
@@ -29,6 +28,7 @@ export class OrganizationResolver {
   ) {}
 
   @Query(() => MyOrganizationView)
+  @Public()
   async myOrganization(): Promise<MyOrganizationView> {
     const organization = await this.organizationService.getById(
       this.tenantContext.getOrganizationId(),
@@ -40,7 +40,6 @@ export class OrganizationResolver {
   }
 
   @Mutation(() => MyOrganizationView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.organizationManage)
   async updateMyOrganizationBrandColor(
     @Args('input') input: UpdateBrandColorInput,

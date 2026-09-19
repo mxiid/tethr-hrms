@@ -1,10 +1,8 @@
 import { toId, type UserId } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import {
@@ -23,14 +21,12 @@ export class OfferResolver {
   ) {}
 
   @Query(() => [OfferView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateRead)
   async offers(): Promise<OfferView[]> {
     return (await this.offerService.listOffers()).map((record) => this.toView(record));
   }
 
   @Mutation(() => OfferView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async createOffer(@Args('input') input: CreateOfferInput): Promise<OfferView> {
     const record = await this.offerService.createOffer({
@@ -47,28 +43,24 @@ export class OfferResolver {
   }
 
   @Mutation(() => OfferView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async sendOffer(@Args('input') input: OfferIdInput): Promise<OfferView> {
     return this.toView(await this.offerService.send(input.offerId));
   }
 
   @Mutation(() => OfferView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async withdrawOffer(@Args('input') input: OfferIdInput): Promise<OfferView> {
     return this.toView(await this.offerService.withdraw(input.offerId));
   }
 
   @Mutation(() => OfferView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async declineOffer(@Args('input') input: DeclineOfferInput): Promise<OfferView> {
     return this.toView(await this.offerService.decline(input.offerId, input.note ?? null));
   }
 
   @Mutation(() => AcceptedOfferView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async acceptOffer(@Args('input') input: OfferIdInput): Promise<AcceptedOfferView> {
     const user = await this.authService.getCurrentUser();

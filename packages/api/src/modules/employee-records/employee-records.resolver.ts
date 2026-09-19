@@ -10,14 +10,12 @@ import {
   type EmployeeOnboardingTaskStatus,
   type UserId,
 } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
 import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 import type { DocumentAccessDescriptor } from '../../core/documents';
 
@@ -47,9 +45,9 @@ import type {
   EmployeeOnboardingTaskRecord,
 } from './employee-records.service';
 import { EmployeeRecordsService } from './employee-records.service';
+import type { BankDetailChangeRequest } from './entities/bank-detail-change-request.entity';
 import { EmployeeAssessment } from './entities/employee-assessment.entity';
 import { EmployeeHrRecord } from './entities/employee-hr-record.entity';
-import type { BankDetailChangeRequest } from './entities/bank-detail-change-request.entity';
 
 const toAssessmentView = (assessment: EmployeeAssessment): EmployeeAssessmentView => ({
   id: assessment.id,
@@ -149,7 +147,6 @@ export class EmployeeRecordsResolver {
   ) {}
 
   @Query(() => [EmployeeAssessmentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.assessmentRead)
   async employeeAssessments(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -160,7 +157,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Query(() => EmployeeHrRecordView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSensitiveRead)
   async employeeHrRecord(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -170,7 +166,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Query(() => [EmployeeOnboardingTaskView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSensitiveRead)
   async employeeOnboardingTasks(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -183,7 +178,6 @@ export class EmployeeRecordsResolver {
   // The aggregate gate: complete / total / allComplete, derived from the same
   // checklist (bank details included) so surfaces never re-count.
   @Query(() => EmployeeOnboardingProgressView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSensitiveRead)
   async employeeOnboardingProgress(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -195,7 +189,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => EmployeeHrRecordView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async updateEmployeeHrRecord(
     @Args('input') input: UpdateEmployeeHrRecordInput,
@@ -218,7 +211,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => EmployeeOnboardingTaskView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async updateEmployeeOnboardingTask(
     @Args('input') input: UpdateEmployeeOnboardingTaskInput,
@@ -237,7 +229,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => EmployeeAssessmentView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.assessmentWrite)
   async recordEmployeeAssessment(
     @Args('input') input: RecordEmployeeAssessmentInput,
@@ -256,7 +247,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Query(() => [EmployeeDocumentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.documentRead)
   async employeeDocuments(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -268,7 +258,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Query(() => DocumentAccessView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.documentRead)
   async employeeDocumentDownloadAccess(
     @Args('employeeDocumentLinkId', { type: () => ID }) employeeDocumentLinkId: string,
@@ -283,7 +272,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => DocumentAccessView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.documentManage)
   async prepareEmployeeDocumentUpload(
     @Args('input') input: PrepareEmployeeDocumentUploadInput,
@@ -298,7 +286,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => EmployeeDocumentView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.documentManage)
   async attachEmployeeDocument(
     @Args('input') input: AttachEmployeeDocumentInput,
@@ -324,7 +311,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => EmployeeDocumentView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.documentManage)
   async addEmployeeDocumentVersion(
     @Args('input') input: AddEmployeeDocumentVersionInput,
@@ -346,7 +332,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => EmployeeDocumentSignatureRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.documentManage)
   async requestEmployeeDocumentSignature(
     @Args('input') input: RequestEmployeeDocumentSignatureInput,
@@ -366,7 +351,6 @@ export class EmployeeRecordsResolver {
   // --- Bank details (payment instruction) ---
 
   @Query(() => BankDetailsView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfRead)
   async myBankDetails(): Promise<BankDetailsView | null> {
     const user = await this.auth.getCurrentUser();
@@ -378,7 +362,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Query(() => [BankDetailChangeRequestView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfRead)
   async myBankDetailChangeRequests(): Promise<BankDetailChangeRequestView[]> {
     const user = await this.auth.getCurrentUser();
@@ -391,7 +374,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => BankDetailChangeRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfWrite)
   async requestMyBankDetailChange(
     @Args('input') input: RequestBankDetailChangeInput,
@@ -413,7 +395,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Query(() => [BankDetailChangeRequestView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSensitiveRead)
   async bankDetailChangeRequests(
     @Args('employeeId', { type: () => ID, nullable: true }) employeeId?: string,
@@ -426,7 +407,6 @@ export class EmployeeRecordsResolver {
   }
 
   @Mutation(() => BankDetailChangeRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async decideBankDetailChange(
     @Args('input') input: DecideBankDetailChangeInput,

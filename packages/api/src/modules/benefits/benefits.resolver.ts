@@ -1,11 +1,9 @@
 import { toId, type EmployeeId } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import type { BenefitEnrollmentDetail } from './benefit.service';
@@ -57,14 +55,12 @@ export class BenefitsResolver {
   ) {}
 
   @Query(() => [BenefitPlanView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async benefitPlans(): Promise<BenefitPlanView[]> {
     return (await this.benefits.listPlans()).map(toPlanView);
   }
 
   @Mutation(() => BenefitPlanView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async createBenefitPlan(
     @Args('input') input: CreateBenefitPlanInput,
@@ -73,7 +69,6 @@ export class BenefitsResolver {
   }
 
   @Mutation(() => BenefitPlanView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async updateBenefitPlan(
     @Args('input') input: UpdateBenefitPlanInput,
@@ -82,7 +77,6 @@ export class BenefitsResolver {
   }
 
   @Query(() => [BenefitEnrollmentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async benefitEnrollments(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -93,7 +87,6 @@ export class BenefitsResolver {
   }
 
   @Mutation(() => BenefitEnrollmentView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async setBenefitEnrollment(
     @Args('input') input: SetBenefitEnrollmentInput,
@@ -110,7 +103,6 @@ export class BenefitsResolver {
   }
 
   @Mutation(() => Boolean)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async endBenefitEnrollment(@Args() args: EndBenefitEnrollmentArgs): Promise<boolean> {
     await this.benefits.endEnrollment(
@@ -123,7 +115,6 @@ export class BenefitsResolver {
 
   // Self-service: the caller's own enrollments (identity from the session).
   @Query(() => [BenefitEnrollmentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationOwnRead)
   async myBenefitEnrollments(): Promise<BenefitEnrollmentView[]> {
     const user = await this.authService.getCurrentUser();

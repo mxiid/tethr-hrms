@@ -1,10 +1,12 @@
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
 import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
 
 import { AuditModule } from './core/audit/audit.module';
 import { AuthModule } from './core/auth/auth.module';
 import { AuthzModule } from './core/authz/authz.module';
+import { PermissionsGuard } from './core/authz/permissions.guard';
 import { ConfigModule } from './core/config/config.module';
 import { ConfigService } from './core/config/config.service';
 import { DatabaseModule } from './core/database/database.module';
@@ -79,7 +81,13 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
     ExpensesModule,
     BenefitsModule,
   ],
-  providers: [HealthResolver],
+  providers: [
+    HealthResolver,
+    // Deny-by-default authorization for every entrypoint (GraphQL operations,
+    // field resolvers, REST handlers). Operations opt in explicitly through
+    // @RequirePermissions/@RequireAnyPermissions or opt out through @Public().
+    { provide: APP_GUARD, useClass: PermissionsGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

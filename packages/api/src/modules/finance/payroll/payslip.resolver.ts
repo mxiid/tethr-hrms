@@ -1,5 +1,8 @@
 import { Parent, ResolveField, Resolver } from '@nestjs/graphql';
 
+import { PERMISSIONS } from '../../../core/authz/permissions';
+import { RequireAnyPermissions } from '../../../core/authz/require-permissions.decorator';
+
 import { PayslipLineView, PayslipView } from './dto/payslip.view';
 import { PayrollRunService } from './payroll-run.service';
 
@@ -12,6 +15,7 @@ export class PayslipLinesResolver {
   constructor(private readonly runService: PayrollRunService) {}
 
   @ResolveField(() => [PayslipLineView], { nullable: true })
+  @RequireAnyPermissions(PERMISSIONS.payslipRead, PERMISSIONS.payslipOwnRead)
   async lines(@Parent() payslip: PayslipView): Promise<PayslipLineView[]> {
     const { lines } = await this.runService.getPayslipWithLines(payslip.id);
     return lines.map((line) => ({

@@ -1,11 +1,10 @@
 import { toId, type EmployeeId, type SystemRoleKey, type UserId } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { ValidationFailedError } from '../../common/errors';
 import { AuthorizationService } from '../authz/authz.service';
 import { PERMISSIONS } from '../authz/permissions';
-import { PermissionsGuard } from '../authz/permissions.guard';
+import { Public } from '../authz/public.decorator';
 import { RequirePermissions } from '../authz/require-permissions.decorator';
 
 import { AuthService } from './auth.service';
@@ -25,6 +24,7 @@ export class AuthResolver {
   // Redeems the short-lived token from a multi-workspace login (AccountService)
   // for a real session, once the user has picked which workspace to enter.
   @Mutation(() => AuthPayload)
+  @Public()
   async selectWorkspace(@Args('input') input: SelectWorkspaceInput): Promise<AuthPayload> {
     const user = await this.authService.resolveWorkspaceSelection(
       input.selectionToken,
@@ -41,23 +41,25 @@ export class AuthResolver {
   // account" without revealing anything about which workspace(s) — no auth
   // required, same trust boundary as login/signUp themselves.
   @Query(() => Boolean)
+  @Public()
   emailIsAlreadyRegistered(@Args('email') email: string): Promise<boolean> {
     return this.authService.emailIsAlreadyRegistered(email);
   }
 
   @Query(() => CurrentUserView)
+  @Public()
   async me(): Promise<CurrentUserView> {
     const user = await this.authService.getCurrentUser();
     return toCurrentUserView(user, await this.authorization.getCurrentAccess());
   }
 
   @Query(() => Boolean)
+  @Public()
   async hasOtherWorkspaces(): Promise<boolean> {
     return this.authService.hasOtherWorkspaces();
   }
 
   @Query(() => [CurrentUserView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.userManage)
   async workspaceUsers(): Promise<CurrentUserView[]> {
     const users = await this.authService.listUsers();
@@ -72,14 +74,12 @@ export class AuthResolver {
   }
 
   @Query(() => [String])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.userManage)
   async assignableWorkspaceRoles(): Promise<string[]> {
     return [...(await this.authorization.listAssignableSystemRoleKeys())];
   }
 
   @Mutation(() => CurrentUserView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.userManage)
   async createWorkspaceUser(
     @Args('input') input: CreateWorkspaceUserInput,
@@ -102,7 +102,6 @@ export class AuthResolver {
   }
 
   @Mutation(() => CurrentUserView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.userManage)
   async updateWorkspaceUserRole(
     @Args('input') input: UpdateWorkspaceUserRoleInput,

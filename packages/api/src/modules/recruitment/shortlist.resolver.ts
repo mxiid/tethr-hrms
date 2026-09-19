@@ -1,9 +1,7 @@
 import { type ShortlistDecision } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { AtsService } from './ats.service';
@@ -37,7 +35,6 @@ export class ShortlistResolver {
   ) {}
 
   @Query(() => [ShortlistView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.shortlistRead)
   async shortlists(
     @Args('jobPostingId', { type: () => ID }) jobPostingId: string,
@@ -47,7 +44,6 @@ export class ShortlistResolver {
   }
 
   @Mutation(() => ShortlistView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async createShortlist(@Args('input') input: CreateShortlistInput): Promise<ShortlistView> {
     const record = await this.shortlistService.createShortlist({
@@ -60,7 +56,6 @@ export class ShortlistResolver {
   }
 
   @Mutation(() => ShortlistView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async presentShortlist(@Args('input') input: ShortlistIdInput): Promise<ShortlistView> {
     const record = await this.shortlistService.present(input.shortlistId);
@@ -69,7 +64,6 @@ export class ShortlistResolver {
   }
 
   @Mutation(() => ShortlistView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async closeShortlist(@Args('input') input: ShortlistIdInput): Promise<ShortlistView> {
     const record = await this.shortlistService.close(input.shortlistId);
@@ -78,7 +72,6 @@ export class ShortlistResolver {
   }
 
   @Query(() => [ClientShortlistView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.shortlistRead)
   async myShortlists(): Promise<ClientShortlistView[]> {
     const records = await this.shortlistService.listPresentedForClientOrganization();
@@ -86,7 +79,6 @@ export class ShortlistResolver {
   }
 
   @Mutation(() => ShortlistDecisionResultView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.shortlistDecide)
   async recordShortlistDecision(
     @Args('input') input: RecordShortlistDecisionInput,

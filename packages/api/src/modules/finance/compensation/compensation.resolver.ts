@@ -13,13 +13,11 @@ import {
   type StructureComponentCalcType,
   type UserId,
 } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../../common/errors';
 import { AuthService } from '../../../core/auth/auth.service';
 import { PERMISSIONS } from '../../../core/authz/permissions';
-import { PermissionsGuard } from '../../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../../core/authz/require-permissions.decorator';
 import { PlatformScopeService } from '../../../core/tenancy/platform-scope.service';
 import { TenantContextService } from '../../../core/tenancy/tenant-context.service';
@@ -147,7 +145,6 @@ export class CompensationResolver {
   ) {}
 
   @Query(() => [PayComponentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async payComponents(
     @Args('organizationId', { type: () => ID, nullable: true }) organizationId?: string,
@@ -171,7 +168,6 @@ export class CompensationResolver {
   }
 
   @Mutation(() => PayComponentView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async createPayComponent(
     @Args('input') input: CreatePayComponentInput,
@@ -188,14 +184,12 @@ export class CompensationResolver {
   }
 
   @Query(() => [SalaryStructureView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async salaryStructures(): Promise<SalaryStructureView[]> {
     return (await this.compensationService.listSalaryStructures()).map(toSalaryStructureView);
   }
 
   @Mutation(() => SalaryStructureView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async createSalaryStructure(
     @Args('input') input: CreateSalaryStructureInput,
@@ -212,7 +206,6 @@ export class CompensationResolver {
   }
 
   @Query(() => [SalaryStructureComponentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async salaryStructureComponents(
     @Args('structureId', { type: () => ID }) structureId: string,
@@ -224,7 +217,6 @@ export class CompensationResolver {
   }
 
   @Mutation(() => [SalaryStructureComponentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async setSalaryStructureComponents(
     @Args('structureId', { type: () => ID }) structureId: string,
@@ -244,7 +236,6 @@ export class CompensationResolver {
   }
 
   @Query(() => [SalaryRevisionView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async salaryRevisions(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -258,7 +249,6 @@ export class CompensationResolver {
   // --- Employee tax profiles ---
 
   @Query(() => [EmployeeTaxProfileView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async employeeTaxProfiles(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -271,7 +261,6 @@ export class CompensationResolver {
 
   // The profile in force today; null when payroll falls back to the ladder.
   @Query(() => EmployeeTaxProfileView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async employeeTaxProfile(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -284,7 +273,6 @@ export class CompensationResolver {
   }
 
   @Mutation(() => EmployeeTaxProfileView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async setEmployeeTaxProfile(
     @Args('input') input: SetEmployeeTaxProfileInput,
@@ -305,7 +293,6 @@ export class CompensationResolver {
   // Self-service read: the caller's own salary history ("your last raise,
   // effective when"). Identity comes from the session, never an argument.
   @Query(() => [SalaryRevisionView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationOwnRead)
   async mySalaryRevisions(): Promise<SalaryRevisionView[]> {
     const user = await this.authService.getCurrentUser();
@@ -319,7 +306,6 @@ export class CompensationResolver {
   }
 
   @Query(() => [BonusAwardView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationOwnRead)
   async myBonusAwards(): Promise<BonusAwardView[]> {
     const user = await this.authService.getCurrentUser();
@@ -332,7 +318,6 @@ export class CompensationResolver {
   }
 
   @Query(() => [PayAdjustmentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationOwnRead)
   async myPayAdjustments(): Promise<PayAdjustmentView[]> {
     const user = await this.authService.getCurrentUser();
@@ -345,7 +330,6 @@ export class CompensationResolver {
   }
 
   @Query(() => SalaryRevisionView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async currentSalaryRevision(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -359,7 +343,6 @@ export class CompensationResolver {
   }
 
   @Mutation(() => SalaryRevisionView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async reviseSalary(@Args('input') input: ReviseSalaryInput): Promise<SalaryRevisionView> {
     const user = await this.authService.getCurrentUser();
@@ -378,7 +361,6 @@ export class CompensationResolver {
   }
 
   @Query(() => SalaryRevisionView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationOwnRead)
   async myCurrentSalaryRevision(@Args('asOf') asOf: string): Promise<SalaryRevisionView | null> {
     const user = await this.authService.getCurrentUser();
@@ -390,7 +372,6 @@ export class CompensationResolver {
   }
 
   @Query(() => [BonusAwardView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async bonusAwards(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -401,7 +382,6 @@ export class CompensationResolver {
   }
 
   @Mutation(() => BonusAwardView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.bonusManage)
   async awardBonus(@Args('input') input: AwardBonusInput): Promise<BonusAwardView> {
     const user = await this.authService.getCurrentUser();
@@ -419,7 +399,6 @@ export class CompensationResolver {
   }
 
   @Query(() => [PayAdjustmentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationRead)
   async payAdjustments(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -430,7 +409,6 @@ export class CompensationResolver {
   }
 
   @Mutation(() => PayAdjustmentView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.compensationWrite)
   async createPayAdjustment(
     @Args('input') input: CreatePayAdjustmentInput,

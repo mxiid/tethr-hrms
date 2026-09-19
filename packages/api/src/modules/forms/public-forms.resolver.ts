@@ -2,6 +2,7 @@ import { type FormId } from '@hrms/shared';
 import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { FormTokenService } from '../../core/auth/form-token.service';
+import { Public } from '../../core/authz/public.decorator';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 
 import {
@@ -29,8 +30,10 @@ const clientAddress = (context: GraphqlContext): string =>
 // The anonymous surface. Deliberately unguarded (no session exists) but never
 // trusting the caller: every operation verifies the signed form-link token
 // first and then runs inside the link's tenant, like a session would. The
-// signed token is the entire authorization story here.
+// signed token is the entire authorization story here — @Public() records that
+// opt-out explicitly for the deny-by-default guard.
 @Resolver()
+@Public()
 export class PublicFormsResolver {
   constructor(
     private readonly forms: FormsService,
