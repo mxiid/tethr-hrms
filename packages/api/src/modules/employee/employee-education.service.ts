@@ -1,4 +1,5 @@
 import type { EducationLevel, EmployeeId, UserId } from '@hrms/shared';
+import { toId, type EmployeeEducationId } from '@hrms/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -7,8 +8,8 @@ import type { FindOptionsWhere } from 'typeorm';
 import { NotFoundError } from '../../common/errors';
 import { AuditService } from '../../core/audit/audit.service';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
-import { toId, type EmployeeEducationId } from '@hrms/shared';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
+
 import { EmployeeDirectoryService } from './employee-directory.service';
 import { EMPLOYEE_EDUCATION_REPOSITORY } from './employee.tokens';
 import { EmployeeEducation } from './entities/employee-education.entity';
@@ -103,7 +104,7 @@ export class EmployeeEducationService {
   async delete(id: string): Promise<void> {
     const existing = await this.educations.findById(id);
     if (!existing) throw new NotFoundError('Employee education not found', { id });
-    await this.educations.unsafeRepository.delete(id);
+    await this.educations.deleteById(id);
     await this.audit.record({ action: 'delete', resourceType: 'employee_education', resourceId: id, after: {} });
   }
 }

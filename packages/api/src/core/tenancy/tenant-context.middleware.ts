@@ -11,6 +11,7 @@ import { TenantContextService } from './tenant-context.service';
 // Minimal request shape — avoids depending on express types here.
 type RequestLike = {
   headers: Record<string, string | string[] | undefined>;
+  user?: unknown;
 };
 
 // Establishes tenant + principal for the request from the `Authorization: Bearer`
@@ -19,6 +20,11 @@ type RequestLike = {
 // fallback: an unauthenticated way to choose a tenant would defeat the whole
 // scoping guarantee (and anonymous public flows carry their own signed tokens,
 // verified by the service that owns them — never here).
+//
+// The token is verified here on shape + signature only; user existence, tenant
+// match, status, and session epoch are enforced by the global SessionGuard on
+// every operation, so a disabled user or bumped tokenVersion is rejected even
+// though the JWT itself still verifies.
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   constructor(
@@ -34,7 +40,14 @@ export class TenantContextMiddleware implements NestMiddleware {
     }
     const organizationId = toId<OrganizationId>(claims.org);
     const userId = toId<UserId>(claims.sub);
-    this.tenantContext.run({ organizationId, userId }, () => next());
+    request.user = { userId, organizationId, email: claims.email, permissions: [] };
+    // The session epoch travels with the context so SessionGuard can reject a
+    // revoked token without re-verifying the JWT. Status/existence are checked
+    // there (and enforced again in AuthorizationService), so a disabled user
+    // loses access on the next request rather than at token expiry.
+    this.tenantContext.run({ organizationId, userId, tokenVersion: claims.ver ?? 0 }, () =>
+      next(),
+    );
   }
 
   private readToken(request: RequestLike): JwtClaims | null {

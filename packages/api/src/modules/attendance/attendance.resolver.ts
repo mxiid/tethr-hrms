@@ -1,11 +1,9 @@
 import { toId, type EmployeeId, type UserId } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { AttendanceService } from './attendance.service';
@@ -65,21 +63,18 @@ export class AttendanceResolver {
   }
 
   @Mutation(() => ClockEventView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceOwnWrite)
   async clockInMe(): Promise<ClockEventView> {
     return toClockEventView(await this.attendanceService.clockIn(await this.currentEmployeeId()));
   }
 
   @Mutation(() => TimeEntryView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceOwnWrite)
   async clockOutMe(): Promise<TimeEntryView> {
     return toTimeEntryView(await this.attendanceService.clockOut(await this.currentEmployeeId()));
   }
 
   @Query(() => [TimeEntryView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceOwnRead)
   async myTimeEntries(
     @Args('from') from: string,
@@ -96,7 +91,6 @@ export class AttendanceResolver {
   // Clocking someone else in is an administrative correction, so it sits behind
   // the approve permission rather than the self-service one.
   @Mutation(() => ClockEventView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceApprove)
   async clockIn(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -105,7 +99,6 @@ export class AttendanceResolver {
   }
 
   @Mutation(() => TimeEntryView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceApprove)
   async clockOut(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -114,7 +107,6 @@ export class AttendanceResolver {
   }
 
   @Mutation(() => TimeEntryView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceApprove)
   async recordTimeEntry(@Args('input') input: RecordTimeEntryInput): Promise<TimeEntryView> {
     const entry = await this.attendanceService.recordEntry({
@@ -127,7 +119,6 @@ export class AttendanceResolver {
   }
 
   @Query(() => [TimeEntryView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceTeamRead)
   async timeEntries(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -139,7 +130,6 @@ export class AttendanceResolver {
   }
 
   @Query(() => [TimesheetView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceTeamRead)
   async timesheets(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -149,7 +139,6 @@ export class AttendanceResolver {
   }
 
   @Mutation(() => TimesheetView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceApprove)
   async openTimesheet(@Args('input') input: OpenTimesheetInput): Promise<TimesheetView> {
     const timesheet = await this.timesheetService.open({
@@ -163,7 +152,6 @@ export class AttendanceResolver {
   // The actor on submit/approve is taken from the session, not an argument, so
   // the audit trail cannot be attributed to someone else.
   @Mutation(() => TimesheetView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceApprove)
   async submitTimesheet(
     @Args('timesheetId', { type: () => ID }) timesheetId: string,
@@ -173,7 +161,6 @@ export class AttendanceResolver {
   }
 
   @Mutation(() => TimesheetView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceApprove)
   async approveTimesheet(
     @Args('timesheetId', { type: () => ID }) timesheetId: string,
@@ -183,7 +170,6 @@ export class AttendanceResolver {
   }
 
   @Mutation(() => TimesheetView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.attendanceApprove)
   async lockTimesheet(
     @Args('timesheetId', { type: () => ID }) timesheetId: string,

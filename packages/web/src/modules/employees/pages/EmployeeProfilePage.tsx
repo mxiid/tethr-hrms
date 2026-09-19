@@ -31,7 +31,6 @@ import { uploadToSignedUrl } from '../../../app/upload';
 import { StatusChip } from '../../../components/chip/StatusChip';
 import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 import { useTheme } from '../../../providers/theme/useTheme';
-import { CREATE_WORKSPACE_USER_MUTATION } from '../../auth/graphql/auth.operations';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { DetailSection } from '../components/DetailSection';
 import { EmployeeJobPayHub } from '../components/EmployeeJobPayHub';
@@ -528,7 +527,6 @@ export const EmployeeProfilePage = () => {
   const [updatePhoto, { loading: savingPhoto }] = useMutation(UPDATE_EMPLOYEE_PHOTO_MUTATION);
   const [updateEmployee, { loading: updatingEmployee }] = useMutation(UPDATE_EMPLOYEE_MUTATION);
   const [separateEmployee, { loading: separatingEmployee }] = useMutation(SEPARATE_EMPLOYEE_MUTATION);
-  const [createWorkspaceUser, { loading: creatingWorkspaceUser }] = useMutation(CREATE_WORKSPACE_USER_MUTATION);
   const [updateOffboardingTask, { loading: savingOffboardingTask }] = useMutation(UPDATE_OFFBOARDING_TASK_MUTATION);
   const [upsertExitInterview, { loading: savingExitInterview }] = useMutation(UPSERT_EXIT_INTERVIEW_MUTATION);
 
@@ -639,6 +637,7 @@ export const EmployeeProfilePage = () => {
   const {
     data: hrRecordData,
     loading: hrRecordLoading,
+    error: hrRecordError,
     refetch: refetchHrRecord,
   } = useQuery<EmployeeHrRecordData>(EMPLOYEE_HR_RECORD_QUERY, {
     skip: !employeeId || !canManageHrRecord,
@@ -724,19 +723,74 @@ export const EmployeeProfilePage = () => {
     }));
   }, [detailEmployee?.currentAssignment?.reportsToEmployeeId]);
 
+  // The HR-record form may only be saved from a completed, successful read. A
+  // loading or failed query leaves the form empty; saving it would overwrite
+  // stored bank details with nulls, so the save stays blocked until the read
+  // has actually delivered data (TET-219 review round).
+  const hrRecordReady = !hrRecordLoading && !hrRecordError && hrRecordData !== undefined;
+  // Value signatures, not object identities: a refetch hands back new objects
+  // with the same values, and re-seeding on that would wipe in-progress edits
+  // (TET-219).
+  const hrRecordSignature = useMemo(
+    () =>
+      hrRecord
+        ? JSON.stringify([
+            hrRecord.roleTitle,
+            hrRecord.salaryBreakdown,
+            hrRecord.paymentMode,
+            hrRecord.bankName,
+            hrRecord.bankAccountTitle,
+            hrRecord.bankAccountNumber,
+            hrRecord.bankIban,
+            hrRecord.hardwareInfo,
+            hrRecord.employeeRecordForm,
+          ])
+        : null,
+    [hrRecord],
+  );
+  const onboardingSignature = useMemo(
+    () =>
+      JSON.stringify(
+        onboardingTasks.map((task) => [task.taskKey, task.status, task.dueDate, task.notes]),
+      ),
+    [onboardingTasks],
+  );
+  const offboardingSignature = useMemo(
+    () =>
+      JSON.stringify(
+        offboardingTasks.map((task) => [task.taskKey, task.status, task.dueDate, task.notes]),
+      ),
+    [offboardingTasks],
+  );
+  const salarySignature = useMemo(
+    () =>
+      salary
+        ? JSON.stringify([salary.salaryStructureId, salary.annualAmount, salary.validFrom])
+        : null,
+    [salary],
+  );
   useEffect(() => {
+    // A completed read that found no record clears the form — otherwise the
+    // previous employee's values would stay on screen and be saved against the
+    // new one. Re-seeding on a mere refetch identity change would wipe
+    // in-progress edits, so the value signature (plus the employee id) drives
+    // this effect.
+    if (!hrRecord) {
+      setHrRecordForm(emptyHrRecordForm);
+      return;
+    }
     setHrRecordForm({
-      roleTitle: hrRecord?.roleTitle ?? detailEmployee?.roleTitle ?? '',
-      salaryBreakdown: hrRecord?.salaryBreakdown ?? '',
-      paymentMode: hrRecord?.paymentMode ?? '',
-      bankName: hrRecord?.bankName ?? '',
-      bankAccountTitle: hrRecord?.bankAccountTitle ?? '',
-      bankAccountNumber: hrRecord?.bankAccountNumber ?? '',
-      bankIban: hrRecord?.bankIban ?? '',
-      hardwareInfo: hrRecord?.hardwareInfo ?? '',
-      employeeRecordForm: hrRecord?.employeeRecordForm ?? '',
+      roleTitle: hrRecord.roleTitle ?? detailEmployee?.roleTitle ?? '',
+      salaryBreakdown: hrRecord.salaryBreakdown ?? '',
+      paymentMode: hrRecord.paymentMode ?? '',
+      bankName: hrRecord.bankName ?? '',
+      bankAccountTitle: hrRecord.bankAccountTitle ?? '',
+      bankAccountNumber: hrRecord.bankAccountNumber ?? '',
+      bankIban: hrRecord.bankIban ?? '',
+      hardwareInfo: hrRecord.hardwareInfo ?? '',
+      employeeRecordForm: hrRecord.employeeRecordForm ?? '',
     });
-  }, [detailEmployee?.roleTitle, hrRecord]);
+  }, [hrRecordSignature, detailEmployee?.id, detailEmployee?.roleTitle]);
 
   useEffect(() => {
     setOnboardingDrafts(
@@ -751,7 +805,10 @@ export const EmployeeProfilePage = () => {
         ]),
       ),
     );
-  }, [onboardingTasks]);
+    // `onboardingTasks` is a new array on every refetch; depending on it alone
+    // would wipe in-progress edits. Re-seed only when the server values
+    // actually change (or the employee changes).
+  }, [onboardingSignature, detailEmployee?.id]);
 
   useEffect(() => {
     setOffboardingDrafts(
@@ -766,7 +823,7 @@ export const EmployeeProfilePage = () => {
         ]),
       ),
     );
-  }, [offboardingTasks]);
+  }, [offboardingSignature, detailEmployee?.id]);
 
   useEffect(() => {
     setSalaryRevisionForm({
@@ -776,7 +833,7 @@ export const EmployeeProfilePage = () => {
       reason: 'merit',
       note: '',
     });
-  }, [defaultSalaryStructureId, salary, detailEmployee?.id]);
+  }, [defaultSalaryStructureId, salarySignature, detailEmployee?.id]);
 
   useEffect(() => {
     setPhotoNotice(null);
@@ -797,7 +854,7 @@ export const EmployeeProfilePage = () => {
         roleTitle: detailEmployee.roleTitle ?? '',
       });
     }
-  }, [detailEmployee]);
+  }, [detailEmployee?.id]);
 
   const onUpdateEmployee = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -822,7 +879,7 @@ export const EmployeeProfilePage = () => {
         },
       });
       setShowEdit(false);
-      await Promise.all([refetchDetail(), refetchDetail()]);
+      await refetchDetail();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not update employee');
     }
@@ -1098,7 +1155,9 @@ export const EmployeeProfilePage = () => {
 
   const onSaveHrRecord = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!detailEmployee) return;
+    // Belt and braces: the button/fields are disabled until the read lands, but
+    // a stray submit must never write an unloaded (empty) form over stored data.
+    if (!detailEmployee || !hrRecordReady) return;
     setDetailError(null);
     try {
       await updateHrRecord({
@@ -1158,7 +1217,7 @@ export const EmployeeProfilePage = () => {
         },
       });
       setShowSeparation(false);
-      await Promise.all([refetchDetail(), refetchDetail()]);
+      await refetchDetail();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not record separation');
     }
@@ -1209,27 +1268,6 @@ export const EmployeeProfilePage = () => {
       await refetchDetail();
     } catch (caught) {
       setDetailError(caught instanceof Error ? caught.message : 'Could not save exit interview');
-    }
-  };
-
-  const onCreateLogin = async (): Promise<void> => {
-    if (!detailEmployee) return;
-    setDetailError(null);
-    try {
-      await createWorkspaceUser({
-        variables: {
-          input: {
-            email: detailEmployee?.workEmail ?? `${detailEmployee.employeeNumber}@example.com`,
-            password: 'Temp1234!',
-            employeeId: detailEmployee.id,
-            roleId: undefined,
-          },
-        },
-      });
-      setDetailError('Login created for ' + detailEmployee.employeeNumber);
-      await refetchDetail();
-    } catch (caught) {
-      setDetailError(caught instanceof Error ? caught.message : 'Could not create login');
     }
   };
 
@@ -1760,10 +1798,17 @@ export const EmployeeProfilePage = () => {
                 {hrRecordLoading ? (
                   <p className="page-subtitle">Loading private HR record…</p>
                 ) : null}
+                {hrRecordError ? (
+                  <p className="auth-error" role="alert">
+                    Could not load the private HR record — saving is disabled so the stored bank
+                    details cannot be overwritten with blanks. Refresh to try again.
+                  </p>
+                ) : null}
                 <form className="config-form compact-form" onSubmit={onSaveHrRecord}>
                   <div className="field">
                     <label htmlFor="hr-role">Role</label>
                     <input
+                      disabled={!hrRecordReady}
                       id="hr-role"
                       name="hr-role"
                       maxLength={160}
@@ -1779,6 +1824,7 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="hr-salary-breakdown">Salary breakdown</label>
                     <textarea
+                      disabled={!hrRecordReady}
                       id="hr-salary-breakdown"
                       name="hr-salary-breakdown"
                       maxLength={8000}
@@ -1794,6 +1840,7 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="hr-payment-mode">Payment mode</label>
                       <select
+                        disabled={!hrRecordReady}
                         id="hr-payment-mode"
                         name="hr-payment-mode"
                         value={hrRecordForm.paymentMode}
@@ -1814,6 +1861,7 @@ export const EmployeeProfilePage = () => {
                     <div className="field">
                       <label htmlFor="hr-bank-name">Bank</label>
                       <input
+                        disabled={!hrRecordReady}
                         id="hr-bank-name"
                         name="hr-bank-name"
                         maxLength={160}
@@ -1829,6 +1877,7 @@ export const EmployeeProfilePage = () => {
                     <div className="field">
                       <label htmlFor="hr-bank-title">Account title</label>
                       <input
+                        disabled={!hrRecordReady}
                         id="hr-bank-title"
                         name="hr-bank-title"
                         maxLength={160}
@@ -1846,6 +1895,7 @@ export const EmployeeProfilePage = () => {
                     <div className="field">
                       <label htmlFor="hr-bank-account">Account number</label>
                       <input
+                        disabled={!hrRecordReady}
                         id="hr-bank-account"
                         name="hr-bank-account"
                         maxLength={80}
@@ -1861,6 +1911,7 @@ export const EmployeeProfilePage = () => {
                     <div className="field">
                       <label htmlFor="hr-bank-iban">IBAN</label>
                       <input
+                        disabled={!hrRecordReady}
                         id="hr-bank-iban"
                         name="hr-bank-iban"
                         maxLength={80}
@@ -1877,6 +1928,7 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="hr-hardware">Hardware</label>
                     <textarea
+                      disabled={!hrRecordReady}
                       id="hr-hardware"
                       name="hr-hardware"
                       maxLength={8000}
@@ -1892,6 +1944,7 @@ export const EmployeeProfilePage = () => {
                   <div className="field">
                     <label htmlFor="hr-employee-form">Employee record form</label>
                     <textarea
+                      disabled={!hrRecordReady}
                       id="hr-employee-form"
                       name="hr-employee-form"
                       maxLength={20000}
@@ -1906,7 +1959,7 @@ export const EmployeeProfilePage = () => {
                   </div>
                   <button
                     className="button button-secondary"
-                    disabled={savingHrRecord}
+                    disabled={savingHrRecord || !hrRecordReady}
                     type="submit"
                   >
                     <IconDeviceFloppy aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -2845,9 +2898,18 @@ export const EmployeeProfilePage = () => {
           {tab === 'lifecycle' ? (
             <>
             <DetailSection title="Access">
-              <p className="page-subtitle">Create a login for this employee or manage their account.</p>
-              <button className="button button-secondary" type="button" onClick={() => void onCreateLogin()} disabled={creatingWorkspaceUser}>
-                {creatingWorkspaceUser ? 'Creating…' : 'Create login'}
+              <p className="page-subtitle">
+                Logins are provisioned through the workspace invitation flow. Invitations
+                (one-time setup links by email) are not available yet, so login creation is
+                disabled for now.
+              </p>
+              <button
+                className="button button-secondary"
+                type="button"
+                disabled
+                title="Available once the invitation flow ships"
+              >
+                Create login
               </button>
             </DetailSection>
             <DetailSection title="Separation">

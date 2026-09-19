@@ -11,6 +11,7 @@ export type DomainErrorCode =
   | 'TENANT_CONTEXT_MISSING'
   | 'IMMUTABLE_RECORD'
   | 'EFFECTIVE_DATE_OVERLAP'
+  | 'RATE_LIMITED'
   | 'INTERNAL_ERROR';
 
 export type SerializedDomainError = {

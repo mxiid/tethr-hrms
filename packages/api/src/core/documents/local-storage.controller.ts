@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import { Controller, Get, Logger, NotFoundException, Put, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
+import { Public } from '../authz/public.decorator';
 import { ConfigService } from '../config/config.service';
 
 import {
@@ -16,10 +17,12 @@ import { verifyLocalStorageToken } from './local-storage.signing';
 // The API's first REST controller: the dev storage driver's byte transfer.
 // Deliberately tiny — PUT streams one object to disk under a signed link, GET
 // streams it back. Every route 404s unless STORAGE_DRIVER=local, and config
-// validation already refuses that driver in production.
+// validation already refuses that driver in production. @Public() records that
+// every route does its own signed-token check instead of a session check.
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 @Controller('storage/local')
+@Public()
 export class LocalStorageController {
   private readonly logger = new Logger(LocalStorageController.name);
 

@@ -8,9 +8,10 @@ import {
 } from '@hrms/shared';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, type EntityManager } from 'typeorm';
 
 import { ForbiddenError, UnauthenticatedError } from '../../common/errors';
+import { User } from '../auth/user.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
 
 import { type Permission } from './permissions';
@@ -33,6 +34,7 @@ export class AuthorizationService {
     @InjectRepository(Role) private readonly roles: Repository<Role>,
     @InjectRepository(UserRoleAssignment)
     private readonly assignments: Repository<UserRoleAssignment>,
+    @InjectRepository(User) private readonly users: Repository<User>,
     private readonly tenantContext: TenantContextService,
   ) {}
 
@@ -41,15 +43,25 @@ export class AuthorizationService {
     if (!userId) {
       throw new UnauthenticatedError();
     }
+    if (!(await this.activeUser(userId))) {
+      throw new UnauthenticatedError('Your session is no longer valid. Please sign in again.');
+    }
     return this.getAccessForUserInOrganization(userId, this.tenantContext.getOrganizationId());
   }
 
+  // Resolves access for one user in one organization. A user that is missing or
+  // no longer active resolves to empty access — the session path rejects it as
+  // unauthenticated (SessionGuard/getCurrentAccess), while admin listings can
+  // still render disabled accounts without breaking.
   async getAccessForUserInOrganization(
     userId: UserId | string,
     organizationId: OrganizationId | string,
   ): Promise<EffectiveAccess> {
     const scopedUserId = toId<UserId>(userId);
     const scopedOrganizationId = toId<OrganizationId>(organizationId);
+    if (!(await this.activeUser(scopedUserId))) {
+      return { roleKeys: [], permissions: [], portal: 'none' };
+    }
     const assignments = await this.assignments.find({
       where: { userId: scopedUserId, organizationId: scopedOrganizationId },
     });
@@ -68,16 +80,23 @@ export class AuthorizationService {
     return { roleKeys, permissions, portal: portalForRoleKeys(roleKeys) };
   }
 
-  async assignSystemRole(userId: UserId, roleKey: SystemRoleKey): Promise<void> {
+  // A caller that owns a wider transaction (signUp) passes its manager so the
+  // role assignment commits with the organization and user.
+  async assignSystemRole(
+    userId: UserId,
+    roleKey: SystemRoleKey,
+    manager?: EntityManager,
+  ): Promise<void> {
     const organizationId = this.tenantContext.getOrganizationId();
-    const role = await this.ensureSystemRole(organizationId, roleKey);
-    const existing = await this.assignments.findOne({
+    const role = await this.ensureSystemRole(organizationId, roleKey, manager);
+    const repository = manager ? manager.getRepository(UserRoleAssignment) : this.assignments;
+    const existing = await repository.findOne({
       where: { organizationId, userId, roleId: toId<RoleId>(role.id) },
     });
     if (existing) return;
 
-    await this.assignments.save(
-      this.assignments.create({ organizationId, userId, roleId: toId<RoleId>(role.id) }),
+    await repository.save(
+      repository.create({ organizationId, userId, roleId: toId<RoleId>(role.id) }),
     );
   }
 
@@ -100,6 +119,15 @@ export class AuthorizationService {
     );
   }
 
+  // Revoke every role assignment a user holds in the current tenant. Used when
+  // a login is disabled (termination), in the same transaction as the status
+  // change, so no role row can outlive the account.
+  async removeAllRolesForUser(userId: UserId, manager?: EntityManager): Promise<void> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const repository = manager ? manager.getRepository(UserRoleAssignment) : this.assignments;
+    await repository.delete({ organizationId, userId });
+  }
+
   async assertCurrentUserCanAssign(roleKey: SystemRoleKey): Promise<void> {
     if ((await this.listAssignableSystemRoleKeys()).includes(roleKey)) return;
     throw new ForbiddenError('Your role cannot assign that workspace role');
@@ -116,16 +144,30 @@ export class AuthorizationService {
     return [];
   }
 
+  // One user read per request (memoized): the SessionGuard warms this key, so
+  // authorization reuses the same row instead of querying again per call.
+  private async activeUser(userId: UserId): Promise<User | null> {
+    const user = await this.tenantContext.memo(`session-user:${userId}`, () =>
+      this.users.findOne({ where: { id: userId } }),
+    );
+    if (!user || user.status !== 'active') {
+      return null;
+    }
+    return user;
+  }
+
   private async ensureSystemRole(
     organizationId: OrganizationId,
     roleKey: SystemRoleKey,
+    manager?: EntityManager,
   ): Promise<Role> {
-    const existing = await this.roles.findOne({ where: { organizationId, key: roleKey } });
+    const repository = manager ? manager.getRepository(Role) : this.roles;
+    const existing = await repository.findOne({ where: { organizationId, key: roleKey } });
     if (existing) return existing;
 
     const definition = SYSTEM_ROLES[roleKey];
-    return this.roles.save(
-      this.roles.create({
+    return repository.save(
+      repository.create({
         organizationId,
         key: definition.key,
         name: definition.name,

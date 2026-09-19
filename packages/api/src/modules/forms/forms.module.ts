@@ -9,7 +9,6 @@ import { FormDefinition } from './entities/form-definition.entity';
 import { FormField } from './entities/form-field.entity';
 import { FormSubmission } from './entities/form-submission.entity';
 import { FormUploadTicket } from './entities/form-upload-ticket.entity';
-import { FormRateLimiter } from './form-rate-limiter';
 import { FormsResolver } from './forms.resolver';
 import { FormsService } from './forms.service';
 import {
@@ -33,7 +32,6 @@ import { PublicFormsResolver } from './public-forms.resolver';
     FormsService,
     FormsResolver,
     PublicFormsResolver,
-    FormRateLimiter,
     provideTenantScopedRepository(FORM_DEFINITION_REPOSITORY, FormDefinition),
     provideTenantScopedRepository(FORM_FIELD_REPOSITORY, FormField),
     provideTenantScopedRepository(FORM_SUBMISSION_REPOSITORY, FormSubmission),

@@ -2,13 +2,13 @@ import { toId, type FormId, type OrganizationId } from '@hrms/shared';
 
 import type { StorageService } from '../../core/documents/storage.service';
 import type { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
+import { RateLimiterService } from '../../core/security/rate-limiter.service';
 import type { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
 import { FormDefinition } from './entities/form-definition.entity';
 import { FormField } from './entities/form-field.entity';
 import { FormSubmission } from './entities/form-submission.entity';
 import { FormUploadTicket } from './entities/form-upload-ticket.entity';
-import { FormRateLimiter } from './form-rate-limiter';
 import { FormsService } from './forms.service';
 
 const ORGANIZATION = toId<OrganizationId>('org-1');
@@ -104,7 +104,7 @@ const buildService = (
     publish: jest.fn().mockResolvedValue(undefined),
     publishWithin: jest.fn().mockResolvedValue(undefined),
   } as unknown as DomainEventPublisher;
-  const rateLimiter = new FormRateLimiter();
+  const rateLimiter = new RateLimiterService();
   const config = {
     get: jest.fn((key: string) => (key === 'FORM_SUBMIT_LIMIT_PER_10_MIN' ? 10 : 30)),
   };
@@ -397,11 +397,13 @@ describe('FormsService', () => {
   });
 
   it('limits repeated submissions per key', () => {
-    const limiter = new FormRateLimiter();
+    const limiter = new RateLimiterService();
     for (let index = 0; index < 6; index += 1) {
-      limiter.consume('form:ip', 6, 60_000);
+      limiter.consume('form:ip', 6, 60_000, 'Too many submissions');
     }
-    expect(() => limiter.consume('form:ip', 6, 60_000)).toThrow('Too many submissions');
+    expect(() => limiter.consume('form:ip', 6, 60_000, 'Too many submissions')).toThrow(
+      'Too many submissions',
+    );
     expect(() => limiter.consume('form:other-ip', 6, 60_000)).not.toThrow();
   });
 });

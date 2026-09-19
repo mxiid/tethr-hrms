@@ -19,6 +19,7 @@ const makeMockRepository = (): Repository<Row> =>
     count: jest.fn().mockResolvedValue(0),
     create: jest.fn((value: unknown) => value),
     save: jest.fn((value: unknown) => Promise.resolve(value)),
+    delete: jest.fn().mockResolvedValue({ affected: 1 }),
   }) as unknown as Repository<Row>;
 
 describe('TenantScopedRepository', () => {
@@ -44,6 +45,11 @@ describe('TenantScopedRepository', () => {
     expect(repository.findOne).toHaveBeenCalledWith({
       where: { id: 'row-1', organizationId: ORG_A },
     });
+  });
+
+  it('scopes deleteById to the tenant by predicate', async () => {
+    await context.run({ organizationId: ORG_A, userId: null }, () => scoped.deleteById('row-1'));
+    expect(repository.delete).toHaveBeenCalledWith({ id: 'row-1', organizationId: ORG_A });
   });
 
   it('stamps the tenant on save()', async () => {

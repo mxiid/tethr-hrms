@@ -1,8 +1,6 @@
-import { UseGuards } from '@nestjs/common';
 import { Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
 
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 import { toWorkspaceSummaryView, WorkspaceSummaryView } from '../organization/dto/workspace-summary.output';
 import { OrganizationService } from '../organization/organization.service';
@@ -14,7 +12,6 @@ import { ClientView, toClientView } from './dto/client.output';
 // client:manage (today: tethrAdmin) — the same guard onboardClient already
 // uses, moved to live alongside the entity it actually owns.
 @Resolver(() => ClientView)
-@UseGuards(PermissionsGuard)
 @RequirePermissions(PERMISSIONS.clientManage)
 export class ClientResolver {
   constructor(

@@ -1,10 +1,8 @@
 import { toId, type InterviewOutcome, type InterviewStatus, type UserId } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { AtsService } from './ats.service';
@@ -33,7 +31,6 @@ export class InterviewResolver {
   ) {}
 
   @Query(() => [InterviewRoundView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateRead)
   async interviewRounds(): Promise<InterviewRoundView[]> {
     return (await this.interviewService.ensureDefaultRounds()).map((round) =>
@@ -42,7 +39,6 @@ export class InterviewResolver {
   }
 
   @Query(() => [InterviewView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateRead)
   async interviews(): Promise<InterviewView[]> {
     const details = await this.interviewService.listInterviews();
@@ -50,7 +46,6 @@ export class InterviewResolver {
   }
 
   @Query(() => [ClientInterviewOutcomeView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.shortlistRead)
   async myInterviewOutcomes(): Promise<ClientInterviewOutcomeView[]> {
     return (await this.interviewService.listOutcomesForClientOrganization()).map((outcome) => ({
@@ -64,7 +59,6 @@ export class InterviewResolver {
   }
 
   @Mutation(() => InterviewRoundView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async createInterviewRound(
     @Args('input') input: CreateInterviewRoundInput,
@@ -79,7 +73,6 @@ export class InterviewResolver {
   }
 
   @Mutation(() => InterviewView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async scheduleInterview(@Args('input') input: ScheduleInterviewInput): Promise<InterviewView> {
     const user = await this.authService.getCurrentUser();
@@ -100,7 +93,6 @@ export class InterviewResolver {
   }
 
   @Mutation(() => InterviewView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async updateInterview(@Args('input') input: UpdateInterviewInput): Promise<InterviewView> {
     await this.interviewService.updateStatus({
@@ -118,7 +110,6 @@ export class InterviewResolver {
   }
 
   @Mutation(() => InterviewFeedbackView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async recordInterviewFeedback(
     @Args('input') input: RecordInterviewFeedbackInput,
@@ -146,7 +137,6 @@ export class InterviewResolver {
   }
 
   @Mutation(() => Boolean)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.candidateManage)
   async withdrawInterviewFeedback(@Args('input') input: FeedbackIdInput): Promise<boolean> {
     await this.interviewService.withdrawFeedback(input.feedbackId);

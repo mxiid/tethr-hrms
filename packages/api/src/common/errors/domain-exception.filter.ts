@@ -18,6 +18,7 @@ const HTTP_STATUS_BY_CODE: Record<ThrownDomainErrorCode, number> = {
   CONFLICT: 409,
   TENANT_CONTEXT_MISSING: 400,
   EFFECTIVE_DATE_OVERLAP: 409,
+  RATE_LIMITED: 429,
 };
 
 // Minimal shape of the HTTP response — avoids depending on express types here.

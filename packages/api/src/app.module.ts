@@ -1,10 +1,13 @@
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
 import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
 
 import { AuditModule } from './core/audit/audit.module';
 import { AuthModule } from './core/auth/auth.module';
+import { SessionGuard } from './core/auth/session.guard';
 import { AuthzModule } from './core/authz/authz.module';
+import { PermissionsGuard } from './core/authz/permissions.guard';
 import { ConfigModule } from './core/config/config.module';
 import { ConfigService } from './core/config/config.service';
 import { DatabaseModule } from './core/database/database.module';
@@ -12,6 +15,7 @@ import { DocumentsModule } from './core/documents/documents.module';
 import { EventsModule } from './core/events/events.module';
 import { NotificationModule } from './core/notifications/notification.module';
 import { QueueModule } from './core/queue/queue.module';
+import { SecurityModule } from './core/security/security.module';
 import { PlatformScopeModule } from './core/tenancy/platform-scope.module';
 import { TenancyModule } from './core/tenancy/tenancy.module';
 import { TenantContextMiddleware } from './core/tenancy/tenant-context.middleware';
@@ -48,6 +52,7 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
     WorkflowModule,
     NotificationModule,
     QueueModule,
+    SecurityModule,
     DocumentsModule,
     // Code-first GraphQL. Schema is generated in memory at boot from the
     // decorators on resolvers and types (architecture.md §2.5, §11).
@@ -59,6 +64,10 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
         autoSchemaFile: true,
         sortSchema: true,
         playground: config.get('GRAPHQL_PLAYGROUND'),
+        // Introspection is a separate switch: off in production unless the
+        // environment explicitly opts in (TET-215).
+        introspection:
+          config.get('GRAPHQL_INTROSPECTION') || config.get('NODE_ENV') !== 'production',
         context: ({ req }: { req: unknown }) => ({ req }),
       }),
     }),
@@ -79,7 +88,15 @@ import { RecruitmentModule } from './modules/recruitment/recruitment.module';
     ExpensesModule,
     BenefitsModule,
   ],
-  providers: [HealthResolver],
+  providers: [
+    HealthResolver,
+    // Session validity first (active user, tenant match, session epoch), then
+    // deny-by-default authorization. Both are global so no entrypoint can
+    // forget them; @Public() operations still pass through the session check,
+    // which is what makes termination revoke access on the next request.
+    { provide: APP_GUARD, useClass: SessionGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

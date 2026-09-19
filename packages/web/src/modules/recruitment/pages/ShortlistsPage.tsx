@@ -23,6 +23,7 @@ import {
 import { Tooltip } from '../../../components/tooltip/Tooltip';
 import { useListView } from '../../../components/view-bar/useListView';
 import { ViewBar } from '../../../components/view-bar/ViewBar';
+import { useAsyncAction } from '../../../hooks/useAsyncAction';
 import { useTheme } from '../../../providers/theme/useTheme';
 import { JOB_POSTINGS_QUERY } from '../graphql/ats.operations';
 import {
@@ -138,6 +139,8 @@ export const ShortlistsPage = () => {
   const [building, setBuilding] = useState(false);
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<readonly string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  // Pending/error bookkeeping for fire-and-forget actions (row actions, loads).
+  const rowAction = useAsyncAction();
   const view = useListView({ routeKey: '/hiring/shortlists' });
   const selectedShortlist = shortlists.find((entry) => entry.id === selectedShortlistId) ?? null;
 
@@ -146,7 +149,12 @@ export const ShortlistsPage = () => {
     setBuilding(true);
     setSelectedApplicationIds([]);
     setFormError(null);
-    void loadApplications({ variables: { jobPostingId: selectedPostingId } });
+    void rowAction.run(
+      async () => {
+        await loadApplications({ variables: { jobPostingId: selectedPostingId } });
+      },
+      'Could not load applications for this role',
+    );
   };
 
   const toggleApplication = (applicationId: string): void => {
@@ -190,6 +198,16 @@ export const ShortlistsPage = () => {
     if (!confirmed) return;
     await closeShortlist({ variables: { input: { shortlistId: shortlist.id } } });
     await refetch();
+  };
+
+  const runRowAction = (
+    action: (shortlist: ShortlistRecord) => Promise<void>,
+    shortlist: ShortlistRecord,
+    fallbackMessage: string,
+  ): void => {
+    void rowAction.run(async () => {
+      await action(shortlist);
+    }, fallbackMessage);
   };
 
   const interestedCount = (shortlist: ShortlistRecord): number =>
@@ -262,7 +280,7 @@ export const ShortlistsPage = () => {
               disabled={presenting}
               onClick={(event) => {
                 event.stopPropagation();
-                void onPresent(shortlist);
+                runRowAction(onPresent, shortlist, 'Could not present this shortlist');
               }}
               type="button"
             >
@@ -275,7 +293,7 @@ export const ShortlistsPage = () => {
               disabled={closing}
               onClick={(event) => {
                 event.stopPropagation();
-                void onClose(shortlist);
+                runRowAction(onClose, shortlist, 'Could not close this shortlist');
               }}
               type="button"
             >
@@ -324,7 +342,11 @@ export const ShortlistsPage = () => {
               <button
                 aria-label="Refresh shortlists"
                 className="icon-button"
-                onClick={() => void refetch()}
+                onClick={() =>
+                  void rowAction.run(async () => {
+                    await refetch();
+                  }, 'Could not refresh shortlists')
+                }
                 type="button"
               >
                 <IconRefresh aria-hidden="true" size={theme.icon.size.md} stroke={theme.icon.stroke.md} />
@@ -341,6 +363,12 @@ export const ShortlistsPage = () => {
             </button>
           </div>
         </header>
+
+        {rowAction.error ? (
+          <p className="auth-error" role="alert">
+            {rowAction.error}
+          </p>
+        ) : null}
 
         <section className="table-shell" aria-label="Shortlists">
           <ViewBar

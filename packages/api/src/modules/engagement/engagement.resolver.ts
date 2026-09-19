@@ -7,14 +7,12 @@ import {
   type FeedbackStatus,
   type UserId,
 } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { ForbiddenError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
 import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import { AnnouncementView } from './dto/announcement.output';
@@ -57,7 +55,6 @@ export class EngagementResolver {
   ) {}
 
   @Query(() => [AnnouncementView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.announcementRead)
   async announcements(): Promise<AnnouncementView[]> {
     const access = await this.authorization.getCurrentAccess();
@@ -65,7 +62,6 @@ export class EngagementResolver {
   }
 
   @Mutation(() => AnnouncementView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.announcementWrite)
   async publishAnnouncement(
     @Args('input') input: PublishAnnouncementInput,
@@ -83,14 +79,12 @@ export class EngagementResolver {
   }
 
   @Query(() => [EmployeeFeedbackView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.feedbackRead)
   async employeeFeedback(): Promise<EmployeeFeedbackView[]> {
     return (await this.engagement.listFeedback()).map(toFeedbackView);
   }
 
   @Mutation(() => EmployeeFeedbackView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.feedbackWrite)
   async submitMyFeedback(
     @Args('input') input: SubmitMyFeedbackInput,
@@ -110,7 +104,6 @@ export class EngagementResolver {
   }
 
   @Mutation(() => EmployeeFeedbackView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.feedbackManage)
   async resolveEmployeeFeedback(
     @Args('input') input: ResolveFeedbackInput,

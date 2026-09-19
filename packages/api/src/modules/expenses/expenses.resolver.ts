@@ -1,11 +1,9 @@
 import { toId, type EmployeeId, type ExpenseClaimStatus, type IsoDate, type UserId } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 
 import {
@@ -130,21 +128,18 @@ export class ExpensesResolver {
   // --- Categories (approvers/admins manage; employees read their own view) ---
 
   @Query(() => [ExpenseCategoryView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseRead)
   async expenseCategories(): Promise<ExpenseCategoryView[]> {
     return (await this.claimService.listCategories()).map(toCategoryView);
   }
 
   @Query(() => [ExpenseCategoryView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnRead)
   async myExpenseCategories(): Promise<ExpenseCategoryView[]> {
     return (await this.claimService.listCategories()).map(toCategoryView);
   }
 
   @Mutation(() => ExpenseCategoryView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async createExpenseCategory(
     @Args('input') input: CreateExpenseCategoryInput,
@@ -153,7 +148,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseCategoryView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async updateExpenseCategory(
     @Args('input') input: UpdateExpenseCategoryInput,
@@ -164,7 +158,6 @@ export class ExpensesResolver {
   // --- Claim reads ---
 
   @Query(() => [ExpenseClaimView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseRead)
   async expenseClaims(
     @Args('status', { type: () => String, nullable: true }) status?: string,
@@ -178,21 +171,18 @@ export class ExpensesResolver {
   // The Tethr cross-workspace board: platformReadAll is Tethr-only, so client
   // roles can never reach the operator read even if they hold expenseRead.
   @Query(() => [ExpenseClaimView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseRead, PERMISSIONS.platformReadAll)
   async clientExpenseClaims(): Promise<ExpenseClaimView[]> {
     return (await this.claimService.listClientClaims()).map(toClaimView);
   }
 
   @Query(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseRead)
   async expenseClaim(@Args('claimId', { type: () => ID }) claimId: string): Promise<ExpenseClaimView> {
     return toClaimView(await this.claimService.getClaimDetail(claimId));
   }
 
   @Query(() => [ExpenseClaimView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnRead)
   async myExpenseClaims(): Promise<ExpenseClaimView[]> {
     const actor = await this.selfActor();
@@ -200,7 +190,6 @@ export class ExpensesResolver {
   }
 
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseRead)
   async expenseReceiptUrl(
     @Args('lineId', { type: () => ID }) lineId: string,
@@ -209,7 +198,6 @@ export class ExpensesResolver {
   }
 
   @Query(() => String)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnRead)
   async myExpenseReceiptUrl(
     @Args('lineId', { type: () => ID }) lineId: string,
@@ -220,7 +208,6 @@ export class ExpensesResolver {
   // --- Claim writes (admin / HR path) ---
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async createExpenseClaim(
     @Args('input') input: CreateExpenseClaimInput,
@@ -234,7 +221,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async addExpenseClaimLine(
     @Args('claimId', { type: () => ID }) claimId: string,
@@ -249,7 +235,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async updateExpenseClaimLine(
     @Args('input') input: UpdateExpenseClaimLineInput,
@@ -264,7 +249,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async removeExpenseClaimLine(
     @Args('lineId', { type: () => ID }) lineId: string,
@@ -275,7 +259,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async submitExpenseClaim(
     @Args('claimId', { type: () => ID }) claimId: string,
@@ -285,7 +268,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async cancelExpenseClaim(
     @Args('claimId', { type: () => ID }) claimId: string,
@@ -297,7 +279,6 @@ export class ExpensesResolver {
   // --- Approval & payout ---
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseApprove)
   async decideExpenseClaim(@Args() args: DecideExpenseClaimArgs): Promise<ExpenseClaimView> {
     const user = await this.authService.getCurrentUser();
@@ -312,7 +293,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expensePay)
   async markExpenseClaimReimbursed(
     @Args() args: MarkExpenseClaimReimbursedArgs,
@@ -332,7 +312,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => BillExpenseClaimResultView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expensePay, PERMISSIONS.billingWrite)
   async billExpenseClaimToClient(
     @Args() args: BillExpenseClaimArgs,
@@ -353,7 +332,6 @@ export class ExpensesResolver {
   // --- Self-service (employee portal) ---
 
   @Mutation(() => ExpenseReceiptUploadView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnWrite)
   async prepareMyExpenseReceiptUpload(
     @Args('input') input: PrepareExpenseReceiptUploadInput,
@@ -362,7 +340,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseReceiptUploadView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseWrite)
   async prepareExpenseReceiptUpload(
     @Args('input') input: PrepareExpenseReceiptUploadInput,
@@ -384,7 +361,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnWrite)
   async createMyExpenseClaim(
     @Args('input') input: CreateMyExpenseClaimInput,
@@ -399,7 +375,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnWrite)
   async addMyExpenseClaimLine(
     @Args('claimId', { type: () => ID }) claimId: string,
@@ -410,7 +385,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnWrite)
   async updateMyExpenseClaimLine(
     @Args('input') input: UpdateExpenseClaimLineInput,
@@ -424,7 +398,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnWrite)
   async removeMyExpenseClaimLine(
     @Args('lineId', { type: () => ID }) lineId: string,
@@ -435,7 +408,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnWrite)
   async submitMyExpenseClaim(
     @Args('claimId', { type: () => ID }) claimId: string,
@@ -445,7 +417,6 @@ export class ExpensesResolver {
   }
 
   @Mutation(() => ExpenseClaimView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.expenseOwnWrite)
   async cancelMyExpenseClaim(
     @Args('claimId', { type: () => ID }) claimId: string,

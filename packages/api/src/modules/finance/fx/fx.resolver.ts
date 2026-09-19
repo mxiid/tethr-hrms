@@ -1,9 +1,7 @@
-import { UseGuards } from '@nestjs/common';
 import { Field, ID, ObjectType } from '@nestjs/graphql';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { PERMISSIONS } from '../../../core/authz/permissions';
-import { PermissionsGuard } from '../../../core/authz/permissions.guard';
 import { RequirePermissions } from '../../../core/authz/require-permissions.decorator';
 
 import { ExchangeRate } from './entities/exchange-rate.entity';
@@ -44,14 +42,12 @@ export class FxResolver {
   constructor(private readonly fx: FxService) {}
 
   @Query(() => [ExchangeRateView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async exchangeRates(): Promise<ExchangeRateView[]> {
     return (await this.fx.listRates()).map(toView);
   }
 
   @Query(() => Number, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingRead)
   async exchangeRate(
     @Args('baseCurrency') baseCurrency: string,
@@ -62,7 +58,6 @@ export class FxResolver {
   }
 
   @Mutation(() => ExchangeRateView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.billingWrite)
   async setExchangeRate(
     @Args('baseCurrency') baseCurrency: string,

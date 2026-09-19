@@ -5,13 +5,12 @@ import {
   type LeaveTypeId,
   type UserId,
 } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { NotFoundError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { Public } from '../../core/authz/public.decorator';
 import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
 import { EmployeeService } from '../employee/employee.service';
 
@@ -100,12 +99,12 @@ export class LeaveResolver {
   ) {}
 
   @Query(() => [LeaveTypeView])
+  @Public()
   async leaveTypes(): Promise<LeaveTypeView[]> {
     return (await this.leaveTypeService.list()).map(toLeaveTypeView);
   }
 
   @Mutation(() => LeaveTypeView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveApprove)
   async createLeaveType(@Args('input') input: CreateLeaveTypeInput): Promise<LeaveTypeView> {
     const leaveType = await this.leaveTypeService.create({
@@ -120,7 +119,6 @@ export class LeaveResolver {
   }
 
   @Query(() => [LeaveRequestView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveTeamRead)
   async leaveRequests(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -130,14 +128,12 @@ export class LeaveResolver {
   }
 
   @Query(() => [LeaveRequestView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveTeamRead)
   async leaveRequestInbox(): Promise<LeaveRequestView[]> {
     return (await this.leaveRequestService.listAll()).map(toLeaveRequestView);
   }
 
   @Mutation(() => LeaveRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveTeamRead)
   async submitLeaveRequest(
     @Args('input') input: SubmitLeaveRequestInput,
@@ -157,7 +153,6 @@ export class LeaveResolver {
   }
 
   @Mutation(() => LeaveRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveApprove)
   async approveLeaveRequest(
     @Args('input') input: DecideLeaveRequestInput,
@@ -174,7 +169,6 @@ export class LeaveResolver {
   }
 
   @Mutation(() => LeaveRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveApprove)
   async rejectLeaveRequest(
     @Args('input') input: DecideLeaveRequestInput,
@@ -190,7 +184,6 @@ export class LeaveResolver {
   }
 
   @Mutation(() => LeaveRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveApprove)
   async approveTeamLeaveRequest(
     @Args('input') input: ReviewLeaveRequestInput,
@@ -205,7 +198,6 @@ export class LeaveResolver {
   }
 
   @Mutation(() => LeaveRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveApprove)
   async rejectTeamLeaveRequest(
     @Args('input') input: ReviewLeaveRequestInput,
@@ -220,7 +212,6 @@ export class LeaveResolver {
   }
 
   @Query(() => [LeaveBalanceView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveOwnRead)
   async myLeaveBalances(): Promise<LeaveBalanceView[]> {
     const user = await this.authService.getCurrentUser();
@@ -233,7 +224,6 @@ export class LeaveResolver {
   }
 
   @Query(() => [LeaveRequestView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveOwnRead)
   async myLeaveRequests(): Promise<LeaveRequestView[]> {
     const user = await this.authService.getCurrentUser();
@@ -246,7 +236,6 @@ export class LeaveResolver {
   }
 
   @Query(() => [HolidayView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.holidayRead)
   async upcomingHolidays(
     @Args('from') from: string,
@@ -256,7 +245,6 @@ export class LeaveResolver {
   }
 
   @Query(() => [HolidayView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.holidayRead)
   async myUpcomingHolidays(
     @Args('from') from: string,
@@ -277,7 +265,6 @@ export class LeaveResolver {
   }
 
   @Mutation(() => LeaveRequestView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveOwnWrite)
   async submitMyLeaveRequest(
     @Args('input') input: SubmitMyLeaveRequestInput,
@@ -310,7 +297,6 @@ export class LeaveResolver {
   // ---- Per-employee entitlement overrides (Phase 4) ----
 
   @Query(() => [EmployeeLeaveEntitlementView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveApprove)
   async employeeLeaveEntitlements(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeeLeaveEntitlementView[]> {
     const rows = await this.entitlementService.listForEmployee(toId<EmployeeId>(employeeId));
@@ -318,7 +304,6 @@ export class LeaveResolver {
   }
 
   @Query(() => [EmployeeLeaveEntitlementView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveOwnRead)
   async myLeaveEntitlements(): Promise<EmployeeLeaveEntitlementView[]> {
     const user = await this.authService.getCurrentUser();
@@ -328,7 +313,6 @@ export class LeaveResolver {
   }
 
   @Mutation(() => EmployeeLeaveEntitlementView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.leaveApprove)
   async upsertLeaveEntitlement(@Args('input') input: UpsertLeaveEntitlementInput): Promise<EmployeeLeaveEntitlementView> {
     const user = await this.authService.getCurrentUser();

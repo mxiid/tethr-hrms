@@ -13,6 +13,7 @@ import { NotFoundError, ValidationFailedError } from '../../common/errors';
 import { ConfigService } from '../../core/config/config.service';
 import { StorageService } from '../../core/documents/storage.service';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
+import { RateLimiterService } from '../../core/security/rate-limiter.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context.service';
 import { TenantScopedRepository } from '../../core/tenancy/tenant-scoped.repository';
 
@@ -20,7 +21,6 @@ import { FormDefinition, type FormDefinitionStatus } from './entities/form-defin
 import { FormField } from './entities/form-field.entity';
 import { FormSubmission, type FormSubmissionFile } from './entities/form-submission.entity';
 import { FormUploadTicket } from './entities/form-upload-ticket.entity';
-import { FormRateLimiter } from './form-rate-limiter';
 import {
   FORM_DEFINITION_REPOSITORY,
   FORM_FIELD_REPOSITORY,
@@ -118,7 +118,7 @@ export class FormsService {
     private readonly tenantContext: TenantContextService,
     private readonly storage: StorageService,
     private readonly publisher: DomainEventPublisher,
-    private readonly rateLimiter: FormRateLimiter,
+    private readonly rateLimiter: RateLimiterService,
     private readonly config: ConfigService,
   ) {}
 
@@ -230,6 +230,7 @@ export class FormsService {
       input.rateLimitKey,
       this.config.get('FORM_SUBMIT_LIMIT_PER_10_MIN'),
       RATE_LIMIT_WINDOW_MS,
+      'Too many submissions — please try again later.',
     );
     const publicForm = await this.getPublicForm(input.formId);
     this.validateSubmission(publicForm.fields, input.data);

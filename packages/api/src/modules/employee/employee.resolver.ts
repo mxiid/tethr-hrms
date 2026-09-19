@@ -10,15 +10,13 @@ import {
   type UserId,
   type WorkerType,
 } from '@hrms/shared';
-import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver, ResolveField, Parent } from '@nestjs/graphql';
 
 import { ForbiddenError, NotFoundError } from '../../common/errors';
 import { AuthService } from '../../core/auth/auth.service';
 import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
-import { PermissionsGuard } from '../../core/authz/permissions.guard';
-import { RequirePermissions } from '../../core/authz/require-permissions.decorator';
+import { RequireAnyPermissions, RequirePermissions } from '../../core/authz/require-permissions.decorator';
 import { AssignmentService } from '../assignment/assignment.service';
 import { DepartmentService } from '../organization/department.service';
 import { LocationService } from '../organization/location.service';
@@ -33,17 +31,17 @@ import { EmployeeOffboardingTaskView } from './dto/employee-offboarding-task.out
 import { EmployeePersonalDetailsView } from './dto/employee-personal-details.output';
 import { EmployeeProfileView } from './dto/employee-profile.output';
 import { EmployeeSeparationView } from './dto/employee-separation.output';
-import { EmployeeType } from './dto/employee.output';
-import { EmployeeWorkHistoryView } from './dto/employee-work-history.output';
 import { CreateEmployeeWorkHistoryInput, UpdateEmployeeWorkHistoryInput } from './dto/employee-work-history.input';
+import { EmployeeWorkHistoryView } from './dto/employee-work-history.output';
+import { EmployeeType } from './dto/employee.output';
 import { SeparateEmployeeInput } from './dto/separate-employee.input';
 import { SetEmployeeManagerInput } from './dto/set-employee-manager.input';
 import { TerminateEmployeeInput } from './dto/terminate-employee.input';
 import { UpdateEmployeePhotoInput } from './dto/update-employee-photo.input';
-import { UpdateMyPhotoInput } from './dto/update-my-photo.input';
 import { UpdateEmployeeInput } from './dto/update-employee.input';
-import { UpdateOffboardingTaskInput } from './dto/update-offboarding-task.input';
+import { UpdateMyPhotoInput } from './dto/update-my-photo.input';
 import { UpdateMyProfileInput } from './dto/update-my-profile.input';
+import { UpdateOffboardingTaskInput } from './dto/update-offboarding-task.input';
 import { UpdateMyPersonalDetailsInput, UpdatePersonalDetailsInput } from './dto/update-personal-details.input';
 import { UpsertExitInterviewInput } from './dto/upsert-exit-interview.input';
 import { EmployeeDirectoryService } from './employee-directory.service';
@@ -53,8 +51,8 @@ import { EmployeeOffboardingService } from './employee-offboarding.service';
 import { EmployeePersonalDetailsService } from './employee-personal-details.service';
 import { EmployeeProfileService } from './employee-profile.service';
 import { EmployeeSeparationService } from './employee-separation.service';
-import { EmployeeService } from './employee.service';
 import { EmployeeWorkHistoryService } from './employee-work-history.service';
+import { EmployeeService } from './employee.service';
 import { EmployeeEducation } from './entities/employee-education.entity';
 import { EmployeeExitInterview } from './entities/employee-exit-interview.entity';
 import { EmployeeOffboardingTask } from './entities/employee-offboarding-task.entity';
@@ -226,7 +224,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => [EmployeeType])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employees(): Promise<EmployeeType[]> {
     const employees = await this.employeeService.list();
@@ -234,14 +231,12 @@ export class EmployeeResolver {
   }
 
   @Query(() => EmployeeType)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employee(@Args('id', { type: () => ID }) id: string): Promise<EmployeeType> {
     return toEmployeeType(await this.employeeService.getById(id));
   }
 
   @Mutation(() => EmployeeType)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async createEmployee(@Args('input') input: CreateEmployeeInput): Promise<EmployeeType> {
     const employee = await this.employeeService.create({
@@ -267,7 +262,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeType)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async updateEmployee(@Args('input') input: UpdateEmployeeInput): Promise<EmployeeType> {
     const user = await this.authService.getCurrentUser().catch(() => null);
@@ -326,7 +320,6 @@ export class EmployeeResolver {
    * Passing a null manager makes the employee a root of the chart.
    */
   @Mutation(() => EmployeeType)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.assignmentWrite)
   async setEmployeeManager(@Args('input') input: SetEmployeeManagerInput): Promise<EmployeeType> {
     const employeeId = toId<EmployeeId>(input.employeeId);
@@ -353,7 +346,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeType)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async terminateEmployee(@Args('input') input: TerminateEmployeeInput): Promise<EmployeeType> {
     const employee = await this.employeeService.terminate(
@@ -365,7 +357,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeType)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async separateEmployee(@Args('input') input: SeparateEmployeeInput): Promise<EmployeeType> {
     const user = await this.authService.getCurrentUser().catch(() => null);
@@ -388,7 +379,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => EmployeeType)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfRead)
   async myEmployee(): Promise<EmployeeType> {
     const user = await this.authService.getCurrentUser();
@@ -401,6 +391,7 @@ export class EmployeeResolver {
   // ---- Field resolvers for composed org data (Phase 1) ----
 
   @ResolveField(() => EmployeeAssignmentView, { nullable: true })
+  @RequireAnyPermissions(PERMISSIONS.employeeRead, PERMISSIONS.employeeSelfRead)
   async currentAssignment(@Parent() employee: EmployeeType): Promise<EmployeeAssignmentView | null> {
     const assignments = await this.assignmentService.listForEmployee(toId<EmployeeId>(employee.id));
     if (assignments.length === 0) return null;
@@ -412,6 +403,7 @@ export class EmployeeResolver {
   }
 
   @ResolveField(() => [EmployeeAssignmentView])
+  @RequireAnyPermissions(PERMISSIONS.employeeRead, PERMISSIONS.employeeSelfRead)
   async assignmentHistory(@Parent() employee: EmployeeType): Promise<EmployeeAssignmentView[]> {
     const assignments = await this.assignmentService.listForEmployee(toId<EmployeeId>(employee.id));
     const sorted = [...assignments].sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1));
@@ -419,7 +411,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => [EmployeeAssignmentView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeAssignmentHistory(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeeAssignmentView[]> {
     const assignments = await this.assignmentService.listForEmployee(toId<EmployeeId>(employeeId));
@@ -428,7 +419,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => EmployeeAssignmentView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeCurrentAssignment(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeeAssignmentView | null> {
     const assignments = await this.assignmentService.listForEmployee(toId<EmployeeId>(employeeId));
@@ -501,7 +491,6 @@ export class EmployeeResolver {
   // ---- Profile ----
 
   @Query(() => EmployeeProfileView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeProfile(
     @Args('employeeId', { type: () => ID }) employeeId: string,
@@ -511,7 +500,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => EmployeeProfileView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfRead)
   async myEmployeeProfile(): Promise<EmployeeProfileView | null> {
     const user = await this.authService.getCurrentUser();
@@ -523,7 +511,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeProfileView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async updateEmployeePhoto(
     @Args('input') input: UpdateEmployeePhotoInput,
@@ -538,7 +525,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeProfileView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfWrite)
   async updateMyEmployeeProfile(
     @Args('input') input: UpdateMyProfileInput,
@@ -555,7 +541,6 @@ export class EmployeeResolver {
   // Employees set their own photo the same way admins do (a data URL from a
   // picked file), separate from the text profile form.
   @Mutation(() => EmployeeProfileView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfWrite)
   async updateMyEmployeePhoto(
     @Args('input') input: UpdateMyPhotoInput,
@@ -574,7 +559,6 @@ export class EmployeeResolver {
   // ---- Personal details (Phase 5) ----
 
   @Query(() => EmployeePersonalDetailsView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeePersonalDetails(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeePersonalDetailsView | null> {
     const details = await this.personalDetailsService.getForEmployee(toId<EmployeeId>(employeeId));
@@ -582,7 +566,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => EmployeePersonalDetailsView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfRead)
   async myEmployeePersonalDetails(): Promise<EmployeePersonalDetailsView | null> {
     const user = await this.authService.getCurrentUser();
@@ -592,7 +575,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeePersonalDetailsView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async updateEmployeePersonalDetails(@Args('input') input: UpdatePersonalDetailsInput): Promise<EmployeePersonalDetailsView> {
     const user = await this.authService.getCurrentUser();
@@ -606,7 +588,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeePersonalDetailsView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfWrite)
   async updateMyPersonalDetails(@Args('input') input: UpdateMyPersonalDetailsInput): Promise<EmployeePersonalDetailsView> {
     const user = await this.authService.getCurrentUser();
@@ -619,7 +600,6 @@ export class EmployeeResolver {
   // ---- Education (Phase 6) ----
 
   @Query(() => [EmployeeEducationView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeEducations(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeeEducationView[]> {
     const rows = await this.educationService.listForEmployee(toId<EmployeeId>(employeeId));
@@ -627,7 +607,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => [EmployeeEducationView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfRead)
   async myEducations(): Promise<EmployeeEducationView[]> {
     const user = await this.authService.getCurrentUser();
@@ -637,7 +616,7 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeEducationView)
-  @UseGuards(PermissionsGuard)
+  @RequireAnyPermissions(PERMISSIONS.employeeWrite, PERMISSIONS.employeeSelfWrite)
   async createEmployeeEducation(@Args('input') input: CreateEmployeeEducationInput): Promise<EmployeeEducationView> {
     const user = await this.authService.getCurrentUser();
     const access = await this.authorization.getCurrentAccess();
@@ -666,7 +645,7 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeEducationView)
-  @UseGuards(PermissionsGuard)
+  @RequireAnyPermissions(PERMISSIONS.employeeWrite, PERMISSIONS.employeeSelfWrite)
   async updateEmployeeEducation(@Args('input') input: UpdateEmployeeEducationInput): Promise<EmployeeEducationView> {
     const user = await this.authService.getCurrentUser();
     const existing = await this.educationService.getById(input.id);
@@ -684,7 +663,7 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => Boolean)
-  @UseGuards(PermissionsGuard)
+  @RequireAnyPermissions(PERMISSIONS.employeeWrite, PERMISSIONS.employeeSelfWrite)
   async deleteEmployeeEducation(@Args('id', { type: () => ID }) id: string): Promise<boolean> {
     const existing = await this.educationService.getById(id);
     if (!existing) throw new NotFoundError('Employee education not found', { id });
@@ -696,7 +675,6 @@ export class EmployeeResolver {
   // ---- Work history (Phase 6) ----
 
   @Query(() => [EmployeeWorkHistoryView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeWorkHistories(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeeWorkHistoryView[]> {
     const rows = await this.workHistoryService.listForEmployee(toId<EmployeeId>(employeeId));
@@ -704,7 +682,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => [EmployeeWorkHistoryView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeSelfRead)
   async myWorkHistories(): Promise<EmployeeWorkHistoryView[]> {
     const user = await this.authService.getCurrentUser();
@@ -714,7 +691,7 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeWorkHistoryView)
-  @UseGuards(PermissionsGuard)
+  @RequireAnyPermissions(PERMISSIONS.employeeWrite, PERMISSIONS.employeeSelfWrite)
   async createEmployeeWorkHistory(@Args('input') input: CreateEmployeeWorkHistoryInput): Promise<EmployeeWorkHistoryView> {
     const user = await this.authService.getCurrentUser();
     const access = await this.authorization.getCurrentAccess();
@@ -743,7 +720,7 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeWorkHistoryView)
-  @UseGuards(PermissionsGuard)
+  @RequireAnyPermissions(PERMISSIONS.employeeWrite, PERMISSIONS.employeeSelfWrite)
   async updateEmployeeWorkHistory(@Args('input') input: UpdateEmployeeWorkHistoryInput): Promise<EmployeeWorkHistoryView> {
     const user = await this.authService.getCurrentUser();
     const existing = await this.workHistoryService.getById(input.id);
@@ -761,7 +738,7 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => Boolean)
-  @UseGuards(PermissionsGuard)
+  @RequireAnyPermissions(PERMISSIONS.employeeWrite, PERMISSIONS.employeeSelfWrite)
   async deleteEmployeeWorkHistory(@Args('id', { type: () => ID }) id: string): Promise<boolean> {
     const existing = await this.workHistoryService.getById(id);
     if (!existing) throw new NotFoundError('Employee work history not found', { id });
@@ -773,7 +750,6 @@ export class EmployeeResolver {
   // ---- Separation (Phase 3) ----
 
   @Query(() => [EmployeeSeparationView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeSeparations(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeeSeparationView[]> {
     const rows = await this.separationService.listForEmployee(toId<EmployeeId>(employeeId));
@@ -781,7 +757,6 @@ export class EmployeeResolver {
   }
 
   @Query(() => EmployeeSeparationView, { nullable: true })
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeSeparation(@Args('id', { type: () => ID }) id: string): Promise<EmployeeSeparationView | null> {
     const row = await this.separationService.getById(id);
@@ -791,7 +766,6 @@ export class EmployeeResolver {
   // ---- Exit interview (Phase 8) ----
 
   @Query(() => [EmployeeExitInterviewView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeExitInterviews(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeeExitInterviewView[]> {
     const rows = await this.exitInterviewService.listForEmployee(toId<EmployeeId>(employeeId));
@@ -799,7 +773,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeExitInterviewView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async upsertExitInterview(@Args('input') input: UpsertExitInterviewInput): Promise<EmployeeExitInterviewView> {
     const user = await this.authService.getCurrentUser();
@@ -819,7 +792,6 @@ export class EmployeeResolver {
   // ---- Offboarding tasks (Phase 3) ----
 
   @Query(() => [EmployeeOffboardingTaskView])
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeRead)
   async employeeOffboardingTasks(@Args('employeeId', { type: () => ID }) employeeId: string): Promise<EmployeeOffboardingTaskView[]> {
     const rows = await this.offboardingService.listForEmployee(toId<EmployeeId>(employeeId));
@@ -827,7 +799,6 @@ export class EmployeeResolver {
   }
 
   @Mutation(() => EmployeeOffboardingTaskView)
-  @UseGuards(PermissionsGuard)
   @RequirePermissions(PERMISSIONS.employeeWrite)
   async updateOffboardingTask(@Args('input') input: UpdateOffboardingTaskInput): Promise<EmployeeOffboardingTaskView> {
     const user = await this.authService.getCurrentUser();

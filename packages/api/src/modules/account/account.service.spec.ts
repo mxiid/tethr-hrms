@@ -1,4 +1,5 @@
 import { toId, type ClientId, type OrganizationId, type UserId } from '@hrms/shared';
+import type { DataSource } from 'typeorm';
 
 import type { AuthService } from '../../core/auth/auth.service';
 import type { User } from '../../core/auth/user.entity';
@@ -45,6 +46,7 @@ const adminUser = {
   email: 'admin@acme.test',
   passwordHash: 'hash',
   status: 'active',
+  tokenVersion: 0,
   mfaEnabled: false,
   employeeId: null,
   isWorkspaceCreator: true,
@@ -71,7 +73,11 @@ const buildService = () => {
     list: jest.fn().mockResolvedValue([client]),
   } as unknown as ClientService;
   const authService = {
-    createUser: jest.fn().mockResolvedValueOnce(adminUser).mockResolvedValueOnce(hrAdminUser),
+    createUser: jest
+      .fn()
+      .mockImplementation((input: { readonly email: string }) =>
+        Promise.resolve(input.email === hrAdminUser.email ? hrAdminUser : adminUser),
+      ),
     findVerifiedUsers: jest.fn(),
     issueToken: jest.fn().mockReturnValue('token'),
     issueWorkspaceSelectionToken: jest.fn().mockReturnValue('selection-token'),
@@ -85,7 +91,16 @@ const buildService = () => {
   } as unknown as AuthorizationService;
   const tenantContext = {
     run: jest.fn((_context: unknown, callback: () => unknown) => callback()),
+    getOrganizationId: jest.fn().mockReturnValue(ORGANIZATION),
   } as unknown as TenantContextService;
+  const manager = {
+    query: jest.fn().mockResolvedValue(undefined),
+    count: jest.fn(),
+    save: jest.fn((entity: unknown) => Promise.resolve(entity)),
+  };
+  const dataSource = {
+    transaction: jest.fn((callback: (m: unknown) => unknown) => callback(manager)),
+  } as unknown as DataSource;
 
   return {
     service: new AccountService(
@@ -94,19 +109,23 @@ const buildService = () => {
       authService,
       authorization,
       tenantContext,
+      dataSource,
     ),
     organizationService,
     clientService,
     authService,
     authorization,
     tenantContext,
+    manager,
+    dataSource,
   };
 };
 
 describe('AccountService', () => {
   describe('signUp', () => {
     it('founds a new workspace and marks the admin as its creator', async () => {
-      const { service, organizationService, authService, authorization } = buildService();
+      const { service, organizationService, authService, authorization, manager, dataSource } =
+        buildService();
 
       const result = await service.signUp({
         organizationName: 'Acme LLC',
@@ -114,14 +133,23 @@ describe('AccountService', () => {
         password: 'password123',
       });
 
-      expect(authService.hasCreatedWorkspace).toHaveBeenCalledWith('admin@acme.test');
-      expect(organizationService.create).toHaveBeenCalledWith({ legalName: 'Acme LLC' });
-      expect(authService.createUser).toHaveBeenCalledWith({
-        email: 'admin@acme.test',
-        password: 'password123',
-        isWorkspaceCreator: true,
-      });
-      expect(authorization.assignSystemRole).toHaveBeenCalledWith(USER, 'clientAdmin');
+      // The cap check and every write run inside one transaction, serialized
+      // per email by the advisory lock (TET-223).
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(manager.query).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        'admin@acme.test',
+      ]);
+      expect(authService.hasCreatedWorkspace).toHaveBeenCalledWith('admin@acme.test', manager);
+      expect(organizationService.create).toHaveBeenCalledWith({ legalName: 'Acme LLC' }, manager);
+      expect(authService.createUser).toHaveBeenCalledWith(
+        {
+          email: 'admin@acme.test',
+          password: 'password123',
+          isWorkspaceCreator: true,
+        },
+        manager,
+      );
+      expect(authorization.assignSystemRole).toHaveBeenCalledWith(USER, 'clientAdmin', manager);
       expect(result.token).toBe('token');
     });
 
@@ -137,6 +165,21 @@ describe('AccountService', () => {
         }),
       ).rejects.toThrow(/already created a workspace/);
       expect(organizationService.create).not.toHaveBeenCalled();
+    });
+
+    it('translates a duplicate-email race into a domain conflict', async () => {
+      const { service, authService } = buildService();
+      (authService.createUser as jest.Mock).mockRejectedValueOnce({
+        driverError: { code: '23505' },
+      });
+
+      await expect(
+        service.signUp({
+          organizationName: 'Race LLC',
+          email: 'admin@acme.test',
+          password: 'password123',
+        }),
+      ).rejects.toThrow(/already created a workspace|already exists/i);
     });
   });
 
@@ -229,5 +272,45 @@ describe('AccountService', () => {
       { organizationId: ORGANIZATION, organizationName: 'Acme' },
     ]);
     expect(organizationService.getById).toHaveBeenCalledTimes(2);
+  });
+
+  describe('createWorkspaceUser', () => {
+    it('creates the user and its role in one transaction', async () => {
+      const { service, authService, authorization, manager, dataSource } = buildService();
+
+      const created = await service.createWorkspaceUser({
+        email: 'new@acme.test',
+        password: 'password123',
+        employeeId: null,
+        roleKey: 'clientMember',
+      });
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(authService.createUser).toHaveBeenCalledWith(
+        { email: 'new@acme.test', password: 'password123', employeeId: null },
+        manager,
+      );
+      expect(authorization.assignSystemRole).toHaveBeenCalledWith(
+        created.id,
+        'clientMember',
+        manager,
+      );
+    });
+
+    it('translates a duplicate-email race into a domain conflict', async () => {
+      const { service, authService } = buildService();
+      (authService.createUser as jest.Mock).mockRejectedValueOnce({
+        driverError: { code: '23505' },
+      });
+
+      await expect(
+        service.createWorkspaceUser({
+          email: 'taken@acme.test',
+          password: 'password123',
+          employeeId: null,
+          roleKey: 'clientMember',
+        }),
+      ).rejects.toThrow(/already exists/);
+    });
   });
 });
