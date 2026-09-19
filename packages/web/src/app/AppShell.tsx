@@ -1,4 +1,4 @@
-import { useApolloClient, useLazyQuery, useQuery } from '@apollo/client';
+import { useLazyQuery, useQuery } from '@apollo/client';
 import type { PortalKind, WorkspaceBrandColor } from '@hrms/shared';
 import {
   IconArrowsRightLeft,
@@ -187,7 +187,6 @@ type JumpResult = {
 export const AppShell = () => {
   const { theme, toggle } = useTheme();
   const { user, logout, switchWorkspace, isBusy: authBusy } = useAuth();
-  const apolloClient = useApolloClient();
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -466,6 +465,15 @@ export const AppShell = () => {
     }
   };
 
+  const onLogout = async (): Promise<void> => {
+    try {
+      await logout();
+    } finally {
+      // Even a failed cache clear must not strand the user in a signed-out shell.
+      navigate('/login', { replace: true });
+    }
+  };
+
   const jumpResults = useMemo<readonly JumpResult[]>(() => {
     const query = search.trim().toLowerCase();
     if (!query) {
@@ -543,34 +551,30 @@ export const AppShell = () => {
   const brandColor = (organization?.brandColor ?? 'gray') as WorkspaceBrandColor;
   const chipColorVar = { '--chip-color': `var(--hrms-color-tag-${brandColor})` } as CSSProperties;
 
-  const onLogout = async (): Promise<void> => {
-    await logout();
-    navigate('/login', { replace: true });
-  };
-
   // Switches in place instead of bouncing out to /login, with no password
   // step: the caller already holds a valid session and every workspace in the
   // picker is one of their own accounts (same email), so `switchWorkspace`
-  // mints the new session straight from the current one.
-  const finishWorkspaceSwitch = async (portal: PortalKind): Promise<void> => {
+  // mints the new session straight from the current one. The hook clears the
+  // Apollo cache before installing the new session, so navigating here can
+  // never render the previous workspace's cached queries (TET-217).
+  const finishWorkspaceSwitch = (portal: PortalKind): void => {
     setOpenMenu(null);
     navigate(portalHome(portal), { replace: true });
-    // Runs after navigating away, not before: resetting first would briefly
-    // refetch the page we're leaving under the new org's identity.
-    await apolloClient.resetStore();
   };
 
   const openWorkspacePicker = (): void => {
     setSwitchError(null);
     setSwitchStep('picker');
-    void loadSwitchableWorkspaces();
+    void loadSwitchableWorkspaces().catch(() => {
+      setSwitchError('Could not load your workspaces');
+    });
   };
 
   const onPickSwitchWorkspace = async (organizationId: string): Promise<void> => {
     setSwitchError(null);
     try {
       const session = await switchWorkspace(organizationId);
-      await finishWorkspaceSwitch(session.user.portal);
+      finishWorkspaceSwitch(session.user.portal);
     } catch (caught) {
       setSwitchError(caught instanceof Error ? caught.message : 'Could not open that workspace');
     }

@@ -175,3 +175,11 @@ export const saveDashboardViews = (key: string, state: DashboardViewsState): voi
     // Storage disabled or full: the in-memory state stays authoritative.
   }
 };
+
+// Drops the previous identity's layout when the session ends (logout). The
+// next signed-in workspace + user reseeds from its own storage or the portal
+// defaults — workspace-scoped UI state must never leak across tenants.
+export const resetDashboardViewsAtom = atom(null, (_get, set) => {
+  set(dashboardViewsState, DEFAULT_STATE);
+  set(dashboardSeededKeyAtom, null);
+});

@@ -1,6 +1,7 @@
 import { useApolloClient, useMutation } from '@apollo/client';
-import { useAtom } from 'jotai';
+import { useAtom, useSetAtom } from 'jotai';
 
+import { resetDashboardViewsAtom } from '../../dashboard/states/dashboardViewsState';
 import {
   LOGIN_MUTATION,
   SELECT_WORKSPACE_MUTATION,
@@ -8,7 +9,7 @@ import {
   SWITCH_WORKSPACE_MUTATION,
 } from '../graphql/auth.operations';
 import { rememberWorkspace } from '../lastWorkspace';
-import { authState, type AuthSession } from '../states/authState';
+import { authState, clearStoredSession, type AuthSession } from '../states/authState';
 
 export type WorkspaceOption = {
   readonly organizationId: string;
@@ -49,6 +50,7 @@ const applyRememberedWorkspace = (session: AuthSession): AuthSession => {
 export const useAuth = () => {
   const [session, setSession] = useAtom(authState);
   const apollo = useApolloClient();
+  const resetDashboardViews = useSetAtom(resetDashboardViewsAtom);
   const [loginMutation, { loading: loggingIn }] = useMutation<LoginData, LoginVars>(LOGIN_MUTATION);
   const [selectWorkspaceMutation, { loading: selectingWorkspace }] = useMutation<
     SelectWorkspaceData,
@@ -76,6 +78,8 @@ export const useAuth = () => {
     }
     if (data.login.token && data.login.user) {
       const authenticatedSession: AuthSession = { token: data.login.token, user: data.login.user };
+      // Same ordering rule as switching: never render another identity's cache.
+      await apollo.clearStore();
       setSession(applyRememberedWorkspace(authenticatedSession));
       return { kind: 'authenticated', session: authenticatedSession };
     }
@@ -89,21 +93,28 @@ export const useAuth = () => {
     const { data } = await selectWorkspaceMutation({
       variables: { input: { selectionToken, organizationId } },
     });
-    if (data) {
-      setSession(applyRememberedWorkspace(data.selectWorkspace));
-      return data.selectWorkspace;
+    if (!data) {
+      throw new Error('Workspace selection did not return a session');
     }
-    throw new Error('Workspace selection did not return a session');
+    await apollo.clearStore();
+    setSession(applyRememberedWorkspace(data.selectWorkspace));
+    return data.selectWorkspace;
   };
 
   // In-app workspace switch: no password, straight from the current session.
+  // The Apollo cache is cleared BEFORE the new session lands in the atom, so
+  // the destination page can never render the previous workspace's cached
+  // queries — the cross-tenant stale-data window (TET-217). clearStore (not
+  // resetStore) is deliberate: no active queries may refetch under the old
+  // identity mid-switch; pages fetch their own data on mount.
   const switchWorkspace = async (organizationId: string): Promise<AuthSession> => {
     const { data } = await switchWorkspaceMutation({ variables: { organizationId } });
-    if (data) {
-      setSession(applyRememberedWorkspace(data.switchWorkspace));
-      return data.switchWorkspace;
+    if (!data) {
+      throw new Error('Workspace switch did not return a session');
     }
-    throw new Error('Workspace switch did not return a session');
+    await apollo.clearStore();
+    setSession(applyRememberedWorkspace(data.switchWorkspace));
+    return data.switchWorkspace;
   };
 
   const signUp = async (
@@ -114,15 +125,18 @@ export const useAuth = () => {
     const { data } = await signUpMutation({
       variables: { input: { organizationName, email, password } },
     });
-    if (data) {
-      setSession(data.signUp);
-      return data.signUp;
+    if (!data) {
+      throw new Error('Sign up did not return a session');
     }
-    throw new Error('Sign up did not return a session');
+    await apollo.clearStore();
+    setSession(data.signUp);
+    return data.signUp;
   };
 
   const logout = async (): Promise<void> => {
     setSession(null);
+    clearStoredSession();
+    resetDashboardViews();
     await apollo.clearStore();
   };
 
