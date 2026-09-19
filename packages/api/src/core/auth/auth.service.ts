@@ -42,7 +42,9 @@ export class AuthService {
   ) {}
 
   // Create a user in the CURRENT tenant context (the caller establishes it).
-  async createUser(input: CreateUserData): Promise<User> {
+  // A caller that owns a wider transaction (signUp) passes its manager so the
+  // user commits with the organization and role assignment.
+  async createUser(input: CreateUserData, manager?: EntityManager): Promise<User> {
     const passwordHash = await this.passwords.hash(input.password);
     const user = this.users.create({
       email: input.email.toLowerCase(),
@@ -52,6 +54,9 @@ export class AuthService {
       employeeId: input.employeeId ?? null,
       isWorkspaceCreator: input.isWorkspaceCreator ?? false,
     });
+    if (manager) {
+      return manager.save(user);
+    }
     return this.users.save(user);
   }
 
@@ -120,10 +125,16 @@ export class AuthService {
   // names) as emailIsAlreadyRegistered — but a narrower question: has this
   // email specifically FOUNDED a workspace before, not just joined one as an
   // invited member. Backs the one-self-serve-workspace-per-person cap.
-  async hasCreatedWorkspace(email: string): Promise<boolean> {
-    const count = await this.userRepository.count({
-      where: { email: email.toLowerCase(), isWorkspaceCreator: true } as FindOptionsWhere<User>,
-    });
+  // A caller inside its own transaction (signUp, behind the email advisory
+  // lock) passes the manager so the count sees the same snapshot as its writes.
+  async hasCreatedWorkspace(email: string, manager?: EntityManager): Promise<boolean> {
+    const where = {
+      email: email.toLowerCase(),
+      isWorkspaceCreator: true,
+    } as FindOptionsWhere<User>;
+    const count = manager
+      ? await manager.count(User, { where })
+      : await this.userRepository.count({ where });
     return count > 0;
   }
 

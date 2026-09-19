@@ -7,7 +7,7 @@ import {
 } from '@hrms/shared';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, type EntityManager } from 'typeorm';
 
 import { ConflictError, NotFoundError, ValidationFailedError } from '../../common/errors';
 import { DomainEventPublisher } from '../../core/events/domain-event-publisher.service';
@@ -49,39 +49,52 @@ export class OrganizationService {
   // Bootstrapping a tenant happens OUTSIDE any tenant scope (the tenant does not
   // exist yet). Create the org, then publish organization.created within the new
   // org's context, in the same transaction (transactional outbox).
-  async create(input: CreateOrganizationInput): Promise<Organization> {
+  //
+  // A caller that owns a wider transaction (signUp composes org + admin user +
+  // role) passes its manager so every write commits or rolls back together.
+  async create(input: CreateOrganizationInput, manager?: EntityManager): Promise<Organization> {
+    if (manager) {
+      return this.createWithin(manager, input);
+    }
+    return this.dataSource.transaction((transactionManager) =>
+      this.createWithin(transactionManager, input),
+    );
+  }
+
+  private async createWithin(
+    manager: EntityManager,
+    input: CreateOrganizationInput,
+  ): Promise<Organization> {
     const slug = slugify(input.legalName);
-    return this.dataSource.transaction(async (manager) => {
-      // Explicit precheck for a friendly error; the unique index on `slug`
-      // is the safety net for the race between two concurrent signups with
-      // the same name (workspace names are unique, like a Slack team name).
-      const existing = await manager.count(Organization, { where: { slug } });
-      if (existing > 0) {
-        throw new ConflictError('That workspace name is already taken', {
-          legalName: input.legalName,
-        });
-      }
-      const organization = manager.create(Organization, {
-        kind: input.kind ?? 'client',
+    // Explicit precheck for a friendly error; the unique index on `slug`
+    // is the safety net for the race between two concurrent signups with
+    // the same name (workspace names are unique, like a Slack team name).
+    const existing = await manager.count(Organization, { where: { slug } });
+    if (existing > 0) {
+      throw new ConflictError('That workspace name is already taken', {
         legalName: input.legalName,
-        displayName: input.displayName ?? input.legalName,
-        slug,
-        clientId: input.clientId ?? null,
-        defaultLocale: input.defaultLocale ?? 'en',
-        defaultCurrency: input.defaultCurrency ?? 'USD',
-        settings: {},
-        brandColor: randomBrandColor(),
       });
-      const saved = await manager.save(organization);
-      const organizationId = toId<OrganizationId>(saved.id);
-      await this.tenantContext.run({ organizationId, userId: null }, () =>
-        this.publisher.publishWithin(manager, {
-          name: 'organization.created',
-          payload: { organizationId, legalName: saved.legalName },
-        }),
-      );
-      return saved;
+    }
+    const organization = manager.create(Organization, {
+      kind: input.kind ?? 'client',
+      legalName: input.legalName,
+      displayName: input.displayName ?? input.legalName,
+      slug,
+      clientId: input.clientId ?? null,
+      defaultLocale: input.defaultLocale ?? 'en',
+      defaultCurrency: input.defaultCurrency ?? 'USD',
+      settings: {},
+      brandColor: randomBrandColor(),
     });
+    const saved = await manager.save(organization);
+    const organizationId = toId<OrganizationId>(saved.id);
+    await this.tenantContext.run({ organizationId, userId: null }, () =>
+      this.publisher.publishWithin(manager, {
+        name: 'organization.created',
+        payload: { organizationId, legalName: saved.legalName },
+      }),
+    );
+    return saved;
   }
 
   getById(id: OrganizationId): Promise<Organization | null> {

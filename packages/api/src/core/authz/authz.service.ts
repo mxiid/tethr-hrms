@@ -80,16 +80,23 @@ export class AuthorizationService {
     return { roleKeys, permissions, portal: portalForRoleKeys(roleKeys) };
   }
 
-  async assignSystemRole(userId: UserId, roleKey: SystemRoleKey): Promise<void> {
+  // A caller that owns a wider transaction (signUp) passes its manager so the
+  // role assignment commits with the organization and user.
+  async assignSystemRole(
+    userId: UserId,
+    roleKey: SystemRoleKey,
+    manager?: EntityManager,
+  ): Promise<void> {
     const organizationId = this.tenantContext.getOrganizationId();
-    const role = await this.ensureSystemRole(organizationId, roleKey);
-    const existing = await this.assignments.findOne({
+    const role = await this.ensureSystemRole(organizationId, roleKey, manager);
+    const repository = manager ? manager.getRepository(UserRoleAssignment) : this.assignments;
+    const existing = await repository.findOne({
       where: { organizationId, userId, roleId: toId<RoleId>(role.id) },
     });
     if (existing) return;
 
-    await this.assignments.save(
-      this.assignments.create({ organizationId, userId, roleId: toId<RoleId>(role.id) }),
+    await repository.save(
+      repository.create({ organizationId, userId, roleId: toId<RoleId>(role.id) }),
     );
   }
 
@@ -152,13 +159,15 @@ export class AuthorizationService {
   private async ensureSystemRole(
     organizationId: OrganizationId,
     roleKey: SystemRoleKey,
+    manager?: EntityManager,
   ): Promise<Role> {
-    const existing = await this.roles.findOne({ where: { organizationId, key: roleKey } });
+    const repository = manager ? manager.getRepository(Role) : this.roles;
+    const existing = await repository.findOne({ where: { organizationId, key: roleKey } });
     if (existing) return existing;
 
     const definition = SYSTEM_ROLES[roleKey];
-    return this.roles.save(
-      this.roles.create({
+    return repository.save(
+      repository.create({
         organizationId,
         key: definition.key,
         name: definition.name,

@@ -1,7 +1,9 @@
-import { toId, type ClientId, type OrganizationId, type UserId } from '@hrms/shared';
+import { toId, type ClientId, type EmployeeId, type OrganizationId, type SystemRoleKey, type UserId } from '@hrms/shared';
 import { Injectable } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
-import { ConflictError, UnauthenticatedError } from '../../common/errors';
+import { ConflictError, UnauthenticatedError, ValidationFailedError } from '../../common/errors';
 import { AuthService, type AuthResult } from '../../core/auth/auth.service';
 import type { User } from '../../core/auth/user.entity';
 import { AuthorizationService, type EffectiveAccess } from '../../core/authz/authz.service';
@@ -15,6 +17,27 @@ type SignUpData = {
   readonly organizationName: string;
   readonly email: string;
   readonly password: string;
+};
+
+type CreateWorkspaceUserData = {
+  readonly email: string;
+  readonly password: string;
+  readonly employeeId?: EmployeeId | null;
+  readonly roleKey: SystemRoleKey;
+};
+
+type UpdateWorkspaceUserRoleData = {
+  readonly userId: UserId;
+  // undefined leaves the link untouched; null clears it.
+  readonly employeeId?: EmployeeId | null;
+  readonly roleKey: SystemRoleKey;
+};
+
+// Postgres unique-violation, as surfaced by the pg driver. The users table has
+// one unique constraint that callers can hit here — (organizationId, email).
+const isUniqueViolation = (cause: unknown): boolean => {
+  const driverError = (cause as { readonly driverError?: { readonly code?: string } }).driverError;
+  return driverError?.code === '23505';
 };
 
 type OnboardClientData = {
@@ -58,33 +81,66 @@ export class AccountService {
     private readonly authService: AuthService,
     private readonly authorization: AuthorizationService,
     private readonly tenantContext: TenantContextService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
+  // The cap check and the org + admin-user + role writes run in ONE transaction
+  // under an advisory lock keyed by the email, so two concurrent signups with
+  // the same email can never both found a workspace: the loser waits on the
+  // lock, then re-runs the check and conflicts. A failure anywhere rolls back
+  // the whole workspace instead of orphaning it (TET-223).
   async signUp(input: SignUpData): Promise<AuthResult> {
-    // One self-serve workspace per person: being a MEMBER of several
-    // workspaces is unrestricted (see createWorkspaceUser); this only caps
-    // founding a brand-new one from this public, unauthenticated mutation.
-    if (await this.authService.hasCreatedWorkspace(input.email)) {
-      throw new ConflictError(
-        "You've already created a workspace with this email. Ask an admin to invite you into another one, or sign in.",
-      );
-    }
+    const email = input.email.toLowerCase();
+    let user: User;
+    try {
+      user = await this.dataSource.transaction(async (manager) => {
+        // Scoped to this transaction: released automatically at commit/rollback.
+        await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [email]);
 
-    const organization = await this.organizationService.create({
-      legalName: input.organizationName,
-    });
-    const organizationId = toId<OrganizationId>(organization.id);
+        // One self-serve workspace per person: being a MEMBER of several
+        // workspaces is unrestricted (see createWorkspaceUser); this only caps
+        // founding a brand-new one from this public, unauthenticated mutation.
+        if (await this.authService.hasCreatedWorkspace(email, manager)) {
+          throw new ConflictError(
+            "You've already created a workspace with this email. Ask an admin to invite you into another one, or sign in.",
+          );
+        }
 
-    // Create the first admin user inside the new tenant's context.
-    const user = await this.tenantContext.run({ organizationId, userId: null }, async () => {
-      const created = await this.authService.createUser({
-        email: input.email,
-        password: input.password,
-        isWorkspaceCreator: true,
+        const organization = await this.organizationService.create(
+          { legalName: input.organizationName },
+          manager,
+        );
+        const organizationId = toId<OrganizationId>(organization.id);
+
+        // Create the first admin user inside the new tenant's context. The manager
+        // is threaded through so the user + role commit with the organization.
+        return this.tenantContext.run({ organizationId, userId: null }, async () => {
+          const created = await this.authService.createUser(
+            {
+              email: input.email,
+              password: input.password,
+              isWorkspaceCreator: true,
+            },
+            manager,
+          );
+          await this.authorization.assignSystemRole(
+            toId<UserId>(created.id),
+            'clientAdmin',
+            manager,
+          );
+          return created;
+        });
       });
-      await this.authorization.assignSystemRole(toId<UserId>(created.id), 'clientAdmin');
-      return created;
-    });
+    } catch (error) {
+      // The advisory lock serializes same-email signups; the users unique index
+      // is the last-resort backstop. Never surface a raw 23505 (TET-223).
+      if (isUniqueViolation(error)) {
+        throw new ConflictError(
+          "You've already created a workspace with this email. Ask an admin to invite you into another one, or sign in.",
+        );
+      }
+      throw error;
+    }
 
     return { user, token: this.authService.issueToken(user) };
   }
@@ -220,6 +276,13 @@ export class AccountService {
   // Mint a session for another of the caller's workspaces straight from their
   // current session — no password step. Only ever crosses to an account that
   // shares the caller's email; a disabled or non-existent account is refused.
+  //
+  // Accepted-risk deviation (TET-223): the current session is treated as
+  // authority for every same-email workspace, so no password/MFA re-check runs
+  // here. The switcher is only offered for accounts that share the caller's
+  // email and the target must still be active; the trade-off (and the planned
+  // workspace-first login that removes it) is recorded in docs/STATUS.md and
+  // the TET-214 follow-up ticket.
   async switchWorkspace(targetOrganizationId: string): Promise<AuthResult> {
     const current = await this.authService.getCurrentUser();
     const accounts = await this.authService.findAccountsForEmail(current.email);
@@ -231,5 +294,48 @@ export class AccountService {
       throw new UnauthenticatedError('You do not have an account in that workspace');
     }
     return { user: target, token: this.authService.issueToken(target) };
+  }
+
+  // Provision a login for an employee/member in the CURRENT tenant. The
+  // employee link is validated by the caller (EmployeeLinkGuard) before it
+  // reaches here; the unique (organizationId, email) index is the race backstop
+  // and surfaces as a domain conflict instead of a raw 500 (TET-216).
+  async createWorkspaceUser(input: CreateWorkspaceUserData): Promise<User> {
+    const organizationId = this.tenantContext.getOrganizationId();
+    const user = await this.tenantContext.run({ organizationId, userId: null }, async () => {
+      try {
+        const created = await this.authService.createUser({
+          email: input.email,
+          password: input.password,
+          employeeId: input.employeeId ?? null,
+        });
+        await this.authorization.assignSystemRole(toId<UserId>(created.id), input.roleKey);
+        return created;
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          throw new ConflictError('A login already exists for that email in this workspace', {
+            email: input.email,
+          });
+        }
+        throw error;
+      }
+    });
+    return user;
+  }
+
+  // Change a workspace user's role and (optionally) their employee link. The
+  // link is validated by the caller before it reaches here.
+  async updateWorkspaceUserRole(input: UpdateWorkspaceUserRoleData): Promise<User> {
+    let user = await this.authService.getUserById(input.userId);
+    if (input.employeeId !== undefined) {
+      user = await this.authService.updateUserEmployeeLink(input.userId, input.employeeId);
+    }
+    if (input.roleKey === 'employee' && !user.employeeId) {
+      throw new ValidationFailedError(
+        'employeeId is required before assigning employee access',
+      );
+    }
+    await this.authorization.replaceSystemRole(toId<UserId>(user.id), input.roleKey);
+    return user;
   }
 }

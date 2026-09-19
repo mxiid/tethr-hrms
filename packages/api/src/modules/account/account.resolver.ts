@@ -1,7 +1,9 @@
+import { toId, type EmployeeId, type SystemRoleKey, type UserId } from '@hrms/shared';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
+import { ValidationFailedError } from '../../common/errors';
 import { AuthPayload } from '../../core/auth/dto/auth-payload.output';
-import { toCurrentUserView } from '../../core/auth/dto/current-user.output';
+import { toCurrentUserView, CurrentUserView } from '../../core/auth/dto/current-user.output';
 import { LoginInput } from '../../core/auth/dto/login.input';
 import { AuthorizationService } from '../../core/authz/authz.service';
 import { PERMISSIONS } from '../../core/authz/permissions';
@@ -12,15 +14,19 @@ import { toWorkspaceSummaryView } from '../organization/dto/workspace-summary.ou
 
 import { AccountService } from './account.service';
 import { OnboardClientPayload } from './dto/client-workspace.output';
+import { CreateWorkspaceUserInput } from './dto/create-workspace-user.input';
 import { LoginResult, WorkspaceOption } from './dto/login-result.output';
 import { OnboardClientInput } from './dto/onboard-client.input';
 import { SignUpInput } from './dto/sign-up.input';
+import { UpdateWorkspaceUserRoleInput } from './dto/update-workspace-user-role.input';
+import { EmployeeLinkGuard } from './employee-link-guard.service';
 
 @Resolver()
 export class AccountResolver {
   constructor(
     private readonly accountService: AccountService,
     private readonly authorization: AuthorizationService,
+    private readonly employeeLinkGuard: EmployeeLinkGuard,
   ) {}
 
   @Mutation(() => AuthPayload)
@@ -134,5 +140,61 @@ export class AccountResolver {
       user.organizationId,
     );
     return { token, user: toCurrentUserView(user, access) };
+  }
+
+  // Workspace-user administration lives here (not core/auth) so the employee
+  // link can be resolved through the employee module's published interface —
+  // a modules read core is not allowed to make. The link is verified to belong
+  // to the CALLER'S tenant before it is stored (TET-216), so an account can
+  // never point at another workspace's employee.
+  @Mutation(() => CurrentUserView)
+  @RequirePermissions(PERMISSIONS.userManage)
+  async createWorkspaceUser(
+    @Args('input') input: CreateWorkspaceUserInput,
+  ): Promise<CurrentUserView> {
+    const roleKey = input.roleKey as SystemRoleKey;
+    await this.authorization.assertCurrentUserCanAssign(roleKey);
+    if (roleKey === 'employee' && !input.employeeId) {
+      throw new ValidationFailedError('employeeId is required when creating an employee account');
+    }
+    if (input.employeeId) {
+      await this.employeeLinkGuard.assertEmployeeInTenant(input.employeeId);
+    }
+    const user = await this.accountService.createWorkspaceUser({
+      email: input.email,
+      password: input.password,
+      employeeId: input.employeeId ? toId<EmployeeId>(input.employeeId) : null,
+      roleKey,
+    });
+    return toCurrentUserView(
+      user,
+      await this.authorization.getAccessForUserInOrganization(user.id, user.organizationId),
+    );
+  }
+
+  @Mutation(() => CurrentUserView)
+  @RequirePermissions(PERMISSIONS.userManage)
+  async updateWorkspaceUserRole(
+    @Args('input') input: UpdateWorkspaceUserRoleInput,
+  ): Promise<CurrentUserView> {
+    const roleKey = input.roleKey as SystemRoleKey;
+    await this.authorization.assertCurrentUserCanAssign(roleKey);
+    if (input.employeeId) {
+      await this.employeeLinkGuard.assertEmployeeInTenant(input.employeeId);
+    }
+    const user = await this.accountService.updateWorkspaceUserRole({
+      userId: toId<UserId>(input.userId),
+      employeeId:
+        input.employeeId === undefined
+          ? undefined
+          : input.employeeId
+            ? toId<EmployeeId>(input.employeeId)
+            : null,
+      roleKey,
+    });
+    return toCurrentUserView(
+      user,
+      await this.authorization.getAccessForUserInOrganization(user.id, user.organizationId),
+    );
   }
 }
